@@ -1,0 +1,34 @@
+# ==========================================
+# 🏦 BANK-MICROSERVICES ANA GIT KALKANI
+# ==========================================
+
+# 1. Derlenmiş Çöpler ve Çıktılar (EN KRİTİK KISIM)
+**/target/
+*.jar
+*.war
+*.class
+*.log
+
+# 2. İşletim Sistemi ve IDE Dosyaları (Kimsenin Bilgisayarı Diğerini Bozmasın)
+.idea/
+*.iml
+*.iws
+.vscode/
+.DS_Store
+Thumbs.db
+
+# 3. Docker ve Veritabanı Kalıntıları (Eğer Dışarıya Volume Çıkardıysan)
+**/pgdata/
+**/.docker-data/
+
+# 4. Geçici ve Gizli Dosyalar
+*.tmp
+*.bak
+*.swp
+*~.nib
+local.properties
+
+# 5. Gizli Anahtarlar ve Çevre Değişkenleri (ASLA GITHUB'A ÇIKMAMALI)
+.env
+*.env
+.env.*

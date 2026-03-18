@@ -1,0 +1,56 @@
+# 💻 SEC-DEMO FRONTEND HAFIZA KARTI (V2 - ULTRA DETAYLI & SIKIŞTIRILMIŞ)
+
+Yapay zekanın (veya yeni bir geliştiricinin) arayüz kodlarına tek bakışta %100 hakim olması için tasarlanmış yapısal haritadır. Gereksiz metinler yerine **"Bileşen - İşlev - Beklenti"** formatında sıkıştırılmıştır.
+
+---
+
+## 🗺️ 1. MİMARİ VE ROTA (ROUTING) HARİTASI
+*   **Çekirdek Yığın:** Next.js 14+ (App Router), React Server Components, TypeScript, TailwindCSS, Shadcn UI.
+*   **Güvenlik Muhafızı (`proxy.ts` / Middleware):** Tüm istekler buradan geçer. Token yokken korumalı bir rotaya (örn: `/user`) girilirse anında `/login` sayfasına yönlendirir. Rolü `USER` olan biri `/admin`'e girmeye çalışırsa kendi paneline fırlatır (**Strict Routing**). (Not: Token UTF-8 decodesu `atob` yerine `Buffer` ile yapılır).
+*   **Mekansal Dağılım:**
+    *   `/(auth)/*`: Sadece tokenı olmayanların görebileceği giriş ve kayıt ekranları.
+    *   `/(dashboard)/*`: `Navbar` ve `Sidebar` içeren ortak çerçeve.
+        *   `/user/dashboard`: Bireysel Müşterilerin cüzdanları, transfer, fatura işlemleri.
+        *   `/company/dashboard`: Kurumsal Yöneticilerin iş gücü (personel) yönetimi ve toplu maaş ödemeleri.
+        *   `/admin/dashboard`: God-Mode. Tüm müşterileri ve hesapları dökme yetkisi.
+
+---
+
+## 🧠 2. MERKEZİ HAFIZA (STATE) VE TİPLER (TYPES)
+Frontend tarafı, backend'den gelen JSON'ı kesinlikle hata payı olmadan bu tiplere `types/index.ts` bağlar.
+
+| Tür / Bileşen | İçerik ve Mantık (Logic) |
+| :--- | :--- |
+| **`useAuthStore`** | Zustand mağazası. Global oturum durumunu yönetir. State: `user` (Profil bilgileri), `token`, `isAuthenticated`. Metotlar: `login()`, `logout()`, `updateUser()`. |
+| **Profil & Kayıt Tipleri** | `RegisterRequest` (Rol seçimine göre alanlar değişir: User için firstName, Company için companyName), `LoginRequest`, `UserProfileResponse` (Backend'deki Ad Soyad/Ünvan verisi `profileName` property'sinde tek parça gelir). |
+| **Hesap Tipleri** | `AccountResponse` (Müşteri IBAN ve bakiye bilgisi). Backend silmediği, soft delete yaptığı için `isActive` prop'u kontrol edilir. |
+| **Maaş & Personel Tipleri** | `CompanyEmployeeResponse` (Personel), `HireEmployeeRequest` (TC ve IBAN yollanır). |
+| **İşlem/Dekont Tipleri** | `TransactionResponse` (Eğer mevcut hesap no `senderAccountId` ise gönderilen paradır (- kırmızı), `receiverAccountId` ise gelen paradır (+ yeşil)). |
+
+---
+
+## 🔌 3. SERVİSLER VE CUSTOM HOOKS (API KATMANI)
+API istekleri doğrudan bileşenler (UI) içine yazılmaz. `services/` klasöründe Axios asenkron fonksiyonları hazırlanır, `hooks/` klasöründe loading/error durumları (State) paketlenip UI'a servis edilir.
+
+*   **`useAccounts.ts` (Hesap Motoru):** Kullanıcının hesaplarını çeker, `selectedAccount` state'ini tutar.
+*   **`useCompanyEmployees.ts` (İnsan Kaynakları Motoru):** Kurumsalın personellerini çeker. Fonksiyonları: `fetchEmployees`, `hireEmployee`, `updateEmployee`, `removeEmployee`. (İşlem başarılıysa listeyi otomatik re-fetch yapar veya optimistic UI kullanır).
+*   **`useBills.ts` (Fatura Motoru):** Fatura talimatı yollama (`createInstruction`), listeleme ve silme iş mantığı.
+*   **`useCustomers.ts` & `useUserDashboard.ts`:** Kullanıcı paneli verilerini harmanlar.
+
+---
+
+## 🧩 4. KRİTİK BİLEŞENLER VE MODALLAR (UI KATMANI)
+Next.js sayfaları (App Router) oldukça temiz bırakılmıştır. Bütün aksiyonlar **Modallar** üzerinden döner. Modallar asla direkt `fetch` yapmaz, veriyi parent Page veya Hook prop'larına fırlatır.
+
+*   **💳 Finans Modalleri:** `DepositModal`, `TransferModal`, `CreateAccountModal`, `CloseAccountModal`. 
+*   **🏢 Kurumsal Modaller:** `EmployeeModal` (Personel ekleme/düzenleme formu), `CorporatePaySalariesModal` (Toplu maaş onayı).
+*   **🛠️ Admin Modalleri:** `EditCustomerModal`, `OpenAccountModal` (Başkasının adına hesap açma), `AdminTransactionHistoryModal`.
+*   **📄 Fatura Modalleri:** `CreateBillInstructionModal` (Dropdown üzerinden Elektrik/Su seçilip abone no yazılır).
+*   **📦 Ortak Tablolar:** `TransactionTable` (Para giriyorsa yeşil, çıkıyorsa kırmızı renklendirme kuralı içerir), `AccountTable`.
+
+---
+
+## 🚨 5. YAPAY ZEKA VE GELİŞTİRİCİLER İÇİN SIKI KURALLAR
+1. **Double Path (URL Bug):** Axios `base_url` eğer `.env` dosyasında `/api/v1` ile bitiyorsa servislerde `/customers` yazılmaz (`/api/v1/customers` derseniz `api/v1/api/v1...` diyerek çift path oluşturur ve 404 döner!). **DOĞRUSU**: `const BASE_URL = '/customers';`
+2. **Naming Convention (İsimlendirme):** İsteklerde `tcNo` gibi değişkenler **asla** kullanılmaz. Uç nokta (endpoint) veya JSON property adı her zaman `identityNumber`'dır.
+3. **Modüllere Ekleme Yaparken:** Eğer Kredi Kartı gibi yeni bir modül ekleyeceksen, `types/index.ts` içine `CreditCardResponse` tiplerini yaz, `services/creditCard.service.ts` ile api katmanını yaz, ardından Hook ve UI arayüzünü oluştur. Component içinden axios çağırmak **KESİNLİKLE YASAKTIR**.

@@ -1,0 +1,31 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: api-gateway
+
+  cloud:
+    gateway:
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowedOrigins: "http://localhost:3000"
+            allowedMethods:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+              - OPTIONS
+            allowedHeaders: "*"
+
+      routes:
+        - id: monolith-route
+          uri: http://bank_backend_micro:8080
+          predicates:
+            - Path=/api/v1/**
+eureka:
+  client:
+    service-url:
+      # 🚀 TİRELİ VE GÜVENLİ SERVİS ADI: discovery-server
+      defaultZone: http://discovery-server:8761/eureka/

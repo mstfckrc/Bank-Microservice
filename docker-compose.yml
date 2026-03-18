@@ -1,0 +1,168 @@
+version: '3.8'
+
+name: bank-microservice-env
+
+services:
+  # 1. KASA DAİRESİ (PostgreSQL)
+  postgres:
+    image: postgres:15-alpine
+    container_name: bank_postgres_micro
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 1
+      POSTGRES_DB: bank_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata_micro:/var/lib/postgresql/data
+    networks:
+      - bank-network-micro
+
+  # 2. ESKİ MOTOR / MONOLİT (Spring Boot Backend)
+  backend:
+    build:
+      context: ./Bank-Demo-Backend
+      dockerfile: Dockerfile
+    container_name: bank_backend_micro
+    restart: on-failure
+    depends_on:
+      - postgres
+      - rabbitmq
+      - discovery-server
+    environment:
+      - DB_URL=jdbc:postgresql://postgres:5432/bank_db
+      - SPRING_RABBITMQ_HOST=rabbitmq 
+      - SPRING_RABBITMQ_PORT=5672
+      - SPRING_RABBITMQ_USERNAME=admin
+      - SPRING_RABBITMQ_PASSWORD=123456
+    ports:
+      - "8080:8080"
+    networks:
+      - bank-network-micro
+
+  # 🌟 3. YENİ SINIR KAPISI: API GATEWAY 🌟
+  api-gateway:
+    build:
+      context: ./api-gateway # Yeni Gateway klasörünün adı
+      dockerfile: Dockerfile
+    container_name: bank_api_gateway_micro
+    restart: on-failure
+    depends_on:
+      - backend # Backend ayağa kalkmadan kapıyı açmasın
+      - discovery-server
+    ports:
+      - "8081:8081" # Trafik Polisi 8081 portunda nöbette!
+    networks:
+      - bank-network-micro
+
+  # 4. YENİ BİRLİĞİMİZ: POSTANE (Notification Service)
+  notification-service:
+    build:
+      context: ./notification-service
+      dockerfile: Dockerfile
+    container_name: bank_notification_micro
+    restart: on-failure
+    depends_on:
+      - rabbitmq
+      - discovery-server
+    environment:
+      - SPRING_RABBITMQ_HOST=rabbitmq
+      - SPRING_RABBITMQ_PORT=5672
+      - SPRING_RABBITMQ_USERNAME=admin
+      - SPRING_RABBITMQ_PASSWORD=123456
+    ports:
+      - "8082:8082"
+    networks:
+      - bank-network-micro
+
+  # 5. VİTRİN (Next.js Frontend)
+  frontend:
+    build:
+      context: ./Bank-Demo-Frontend
+      dockerfile: Dockerfile
+    container_name: bank_frontend_micro
+    depends_on:
+      - api-gateway # 🚀 Artık Backend'i değil, Sınır Kapısını bekliyor!
+    environment:
+      # 🚀 KRİTİK DEĞİŞİKLİK: Hedef artık 8080 değil, 8081 (Gateway)
+      - NEXT_PUBLIC_API_URL=http://localhost:8081/api/v1
+    ports:
+      - "3000:3000"
+    networks:
+      - bank-network-micro
+
+  # 🏛️ 6. NÜFUS DAİRESİ (Eureka Service Discovery) 🏛️
+  discovery-server:
+    build:
+      context: ./discovery-server
+      dockerfile: Dockerfile
+    container_name: bank_discovery_server_micro
+    restart: on-failure
+    ports:
+      - "8761:8761" # Nüfus dairesinin kapısı
+    networks:
+      - bank-network-micro
+
+  # ==========================================
+  # 🕵️‍♂️ ELK İSTİHBARAT AĞI (LOGLAMA SİSTEMİ)
+  # ==========================================
+  elasticsearch:
+    image: elasticsearch:8.12.2
+    container_name: bank_elasticsearch_micro
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - "9200:9200"
+    networks:
+      - bank-network-micro
+
+  logstash:
+    image: logstash:8.12.2
+    container_name: bank_logstash_micro
+    ports:
+      - "5000:5000/tcp" 
+    environment:
+      - LS_JAVA_OPTS=-Xms256m -Xmx256m
+    volumes:
+      - ./logstash/logstash.conf:/usr/share/logstash/pipeline/logstash.conf:ro
+    depends_on:
+      - elasticsearch
+    networks:
+      - bank-network-micro
+
+  kibana:
+    image: kibana:8.12.2
+    container_name: bank_kibana_micro
+    ports:
+      - "5601:5601"
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    depends_on:
+      - elasticsearch
+    networks:
+      - bank-network-micro
+
+  # ==========================================
+  # 🐇 MESAJ AĞI (RabbitMQ)
+  # ==========================================
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: bank_rabbitmq_micro
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: 123456
+    networks:
+      - bank-network-micro
+    restart: unless-stopped
+
+volumes:
+  pgdata_micro:
+
+networks:
+  bank-network-micro:
+    driver: bridge
