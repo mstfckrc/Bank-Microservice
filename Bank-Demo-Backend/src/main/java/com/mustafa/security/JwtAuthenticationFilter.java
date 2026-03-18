@@ -20,7 +20,7 @@ import java.io.IOException;
 @RequiredArgsConstructor
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
-    private final JwtService jwtService;
+    // 🚀 DİKKAT: JwtService'i tamamen SİLİP ATTIK! Sınır Kapısı o işi halletti.
     private final UserDetailsService userDetailsService;
 
     @Override
@@ -30,35 +30,33 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             @NonNull FilterChain filterChain
     ) throws ServletException, IOException {
 
-        final String authHeader = request.getHeader("Authorization");
-        final String jwt;
-        final String userTcNo;
+        // 1. Sınır Kapısından (Gateway) gelen zımbalanmış kimliği oku!
+        final String userTcNo = request.getHeader("X-User-TC");
 
-        // Token yoksa veya "Bearer " ile başlamıyorsa diğer filtrelere geç (Belki login isteğidir)
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+        // 2. Eğer Gateway TC'yi eklememişse (Örn: /register gibi açık bir kapıysa) devam et.
+        if (userTcNo == null) {
             filterChain.doFilter(request, response);
             return;
         }
 
-        // "Bearer " kısmını atıp saf token'ı alıyoruz
-        jwt = authHeader.substring(7);
-        userTcNo = jwtService.extractUsername(jwt); // Biz Customer'da getUsername içine TC No koymuştuk
+        // 3. TC var ve sistemde henüz oturum açılmamışsa
+        if (SecurityContextHolder.getContext().getAuthentication() == null) {
 
-        // Eğer TC No çıkarılabildiyse ve şu an sistemde kimse yetkilendirilmemişse
-        if (userTcNo != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+            // Mimarinin geri kalanını bozmamak için veritabanından kullanıcıyı bul
             UserDetails userDetails = this.userDetailsService.loadUserByUsername(userTcNo);
 
-            // Token gerçekten bu kullanıcıya mı ait ve süresi geçerli mi?
-            if (jwtService.isTokenValid(jwt, userDetails)) {
-                UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
-                        userDetails,
-                        null,
-                        userDetails.getAuthorities()
-                );
-                authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                // Kullanıcıyı sisteme yetkili olarak kaydet
-                SecurityContextHolder.getContext().setAuthentication(authToken);
-            }
+            // 🚀 ŞİFRE ÇÖZME VEYA DOĞRULAMA YOK!
+            // Gateway bu adamı içeri soktuysa %100 temizdir. Doğrudan yetkiyi veriyoruz:
+            UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
+                    userDetails,
+                    null,
+                    userDetails.getAuthorities()
+            );
+
+            authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+
+            // Komutanı (Kullanıcıyı) sisteme yetkili olarak kaydet
+            SecurityContextHolder.getContext().setAuthentication(authToken);
         }
 
         // İsteği yoluna devam ettir

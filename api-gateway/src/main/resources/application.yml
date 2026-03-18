@@ -1,11 +1,13 @@
 server:
   port: 8081
 
+jwt:
+  secret: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
+
 spring:
   application:
     name: api-gateway
-
-  cloud:
+  cloud: # 🚀 DİKKAT: application ile AYNİ hizada olmalı!
     gateway:
       globalcors:
         cors-configurations:
@@ -21,11 +23,14 @@ spring:
 
       routes:
         - id: monolith-route
-          uri: http://bank_backend_micro:8080
+          # 🚀 EUREKA'NIN GÜCÜ: Doğrudan IP yazmak yok, ismini söylüyoruz o buluyor!
+          uri: lb://BANK-DEMO-BACKEND
           predicates:
             - Path=/api/v1/**
+          filters:
+            - AuthenticationFilter # 👮 Bordo Bereli Sınır Polisini kapıya diktik!
+
 eureka:
   client:
     service-url:
-      # 🚀 TİRELİ VE GÜVENLİ SERVİS ADI: discovery-server
       defaultZone: http://discovery-server:8761/eureka/
