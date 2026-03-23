@@ -30,7 +30,7 @@ services:
       - rabbitmq
       - discovery-server
     environment:
-      - DB_URL=jdbc:postgresql://postgres:5432/bank_db
+      - DB_URL=jdbc:postgresql://bank_postgres_micro:5432/bank_db
       - SPRING_RABBITMQ_HOST=rabbitmq 
       - SPRING_RABBITMQ_PORT=5672
       - SPRING_RABBITMQ_USERNAME=admin
@@ -52,6 +52,11 @@ services:
       - discovery-server
     ports:
       - "8081:8081" # Trafik Polisi 8081 portunda nöbette!
+    environment:
+      # 🚀 ROKET BURADA: YAML'ı ve JAR'ı ezip geçen doğrudan yönlendirme emri!
+      - SPRING_CLOUD_GATEWAY_ROUTES_0_ID=monolith-route
+      - SPRING_CLOUD_GATEWAY_ROUTES_0_URI=http://bank_backend_micro:8080
+      - SPRING_CLOUD_GATEWAY_ROUTES_0_PREDICATES_0=Path=/api/v1/**
     networks:
       - bank-network-micro
 

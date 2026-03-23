@@ -7,28 +7,29 @@ jwt:
 spring:
   application:
     name: api-gateway
-  cloud: # 🚀 DİKKAT: application ile AYNİ hizada olmalı!
+  cloud:
     gateway:
       globalcors:
+        # 🚀 1. ROKET: Tarayıcının öncü (OPTIONS) CORS isteklerini havada yakala!
+        add-to-simple-url-handler-mapping: true
         cors-configurations:
           '[/**]':
-            allowedOrigins: "http://localhost:3000"
+            # 🚀 2. ROKET: Origins ve Methods kısımlarını tireli liste (-) yapıyoruz, Spring böyle daha iyi anlar.
+            allowedOrigins:
+              - "http://localhost:3000"
             allowedMethods:
-              - GET
-              - POST
-              - PUT
-              - DELETE
-              - OPTIONS
-            allowedHeaders: "*"
+              - "*"
+            allowedHeaders:
+              - "*"
 
       routes:
         - id: monolith-route
-          # 🚀 EUREKA'NIN GÜCÜ: Doğrudan IP yazmak yok, ismini söylüyoruz o buluyor!
-          uri: lb://BANK-DEMO-BACKEND
+          # 🚀 AZ ÖNCEKİ HAYATİ DÜZELTME: Eureka'yı bekleme, doğrudan tanka git!
+          uri: http://bank_backend_micro:8080
           predicates:
             - Path=/api/v1/**
-          filters:
-            - AuthenticationFilter # 👮 Bordo Bereli Sınır Polisini kapıya diktik!
+          #filters:
+          #  - AuthenticationFilter
 
 eureka:
   client:
