@@ -1,68 +1,72 @@
-# 🏦 SEC-DEMO BACKEND HAFIZA KARTI (V2 - ULTRA DETAYLI & SIKIŞTIRILMIŞ)
+# 🏦 SEC-DEMO BACKEND HAFIZA KARTI (V2.1 - ULTRA DETAYLI & SIKIŞTIRILMIŞ)
 
-Bu dosya, yapay zekanın (veya bir geliştiricinin) projeyi tek bakışta %100 oranında anlaması için **giriş/çıkış/mantık** formatında sıkıştırılarak hazırlanmıştır.
+Bu dosya, yapay zekanın (veya bir geliştiricinin) projeyi tek bakışta %100 oranında anlaması için **giriş/çıkış/mantık** formatında sıkıştırılarak hazırlanmıştır. Tüm yeni servis, mesajlaşma ve mikroservis bağları güncellenmiştir.
 
 ---
 
-## 🏗️ 1. MİMARİ VE YENİ EKLENENLER (RabbitMQ)
+## 🏗️ 1. MİMARİ, MİKROSERVİS VE YENİ EKLENENLER
 *   **Temel:** Spring Boot 3, REST API, Katmanlı Mimari (Controller -> Impl -> Service -> Impl -> Repository).
-*   **Güvenlik:** Spring Security + JWT tabanlı durumsuz (stateless) mimari. 
-*   **🚀 YENİ (Asenkron Bildirim - RabbitMQ):** Sistem tamamen olay güdümlü (event-driven) hale getirildi. Artık AuthService, TransactionService vb. tüm servisler işlemi bitirince `RabbitTemplate.convertAndSend()` ile `bank_exchange`'e bir `NotificationMessage` yollar.
-    *   **Notification Tipi:** `EMAIL`, `SMS`, `PUSH_NOTIFICATION`, `SYSTEM_ALERT`.
-    *   **Kuyruk:** `notification_queue` (Jackson JSON çevirici ile dinler).
+*   **Güvenlik:** Spring Security + JWT (512-bit gizli anahtar) tabanlı durumsuz (stateless) mimari. `Principal` veya JWT'den extract edilmiş kimlik baz alınır.
+*   **🌐 Eureka Discovery:** Servis, `discovery-server:8761/eureka/` kaydında `bank-demo-backend` adıyla yerini alır.
+*   **🚀 RabbitMQ (Olay Güdümlü Mesajlaşma):** 
+    *   Sistem asenkron çalışır (`Jackson2JsonMessageConverter` kullanarak JSON fırlatır).
+    *   **Exchange:** `bank_exchange` (Direct).
+    *   **Queue:** `notification_queue`.
+    *   **Routing Key:** `notification_routing_key`.
+    *   **Kullanım:** AuthService (Hoşgeldin), TransactionService (Dekont) vb. işlemler bitince `RabbitTemplate.convertAndSend()` ile bildirim yollar (`NotificationMessage`: EMAIL, SMS, PUSH_NOTIFICATION, SYSTEM_ALERT).
 
 ---
 
 ## 🗄️ 2. ENTITY (VERİ TABANI) İSKELETİ
-*   **`AppUser`:** Sistemin kalbi. `id`, `identityNumber` (TC/Vergi No - Çok Kritik), `password`, `role` (ADMIN, RETAIL_CUSTOMER, CORPORATE_MANAGER), `status` (PENDING, APPROVED), `accounts` (OneToMany).
-*   **`RetailCustomer` / `Company`:** AppUser'a 1-1 bağlanan profil ek tabloları.
+*   **`AppUser`:** Sistemin kalbi. `id`, `identityNumber` (TC/Vergi No - Çok Kritik, eşsiz), `password`, `role` (ADMIN, RETAIL_CUSTOMER, CORPORATE_MANAGER), `status` (PENDING, APPROVED). `accounts` (OneToMany).
+*   **`RetailCustomer` / `Company`:** `AppUser`'a 1-1 bağlanan profil ek tabloları.
 *   **`CompanyEmployee` (Maaş Köprüsü):** `company` (ManyToOne), `retailCustomer` (ManyToOne), `salaryAmount`, `salaryIban`. Bir şirketin bir kişiyi işe almasını temsil eder.
-*   **`Account`:** `accountNumber`, `iban`, `balance`, `currency`, `isActive`. (Müşterinin cüzdanları).
-*   **`Transaction`:** `referenceNo` (UUID), `senderAccount`, `receiverAccount`, `amount`, `convertedAmount`, `transactionType`, `status`. (Dekont tablosu).
-*   **`BillPaymentInstruction`:** `account`, `billType`, `subscriberNo`, `paymentDay`, `lastPaymentDate`. (Otomatik fatura).
+*   **`Account`:** `accountNumber` (10 hane rastgele), `iban` (26 hane TR ile başlayan rastgele), `balance`, `currency` (TRY, USD, EUR vb.), `isActive`. (Soft delete edilir).
+*   **`Transaction`:** `referenceNo` (UUID), `senderAccount`, `receiverAccount`, `amount`, `convertedAmount`, `transactionType`, `status`. (İşlem dekontu tablosu).
+*   **`BillPaymentInstruction`:** `account`, `billType` (Elektrik, Su vb.), `subscriberNo`, `paymentDay`, `lastPaymentDate`. (Otomatik/manuel fatura talimatı).
 
 ---
 
 ## 🔄 3. SERVİSLER, KONTROLLER VE I/O (GİRDİ/ÇIKTI) HARİTASI
 
 ### 🔐 Auth Endpointleri (`/api/v1/auth` - PermitAll)
-| Metot | İstek (Input) | İş Mantığı (Logic - Özet) | Yanıt (Output) | RabbitMQ |
-| :--- | :--- | :--- | :--- | :--- |
-| **`POST /register`** | `RegisterRequest` (identityNo, role, şifre, vb) | TC varlığını kontrol eder, Hashler, Durumu PENDING yapar. Profil tablosunu doldurur. | `AuthResponse` (Token) | 📧 EMAIL (Hoşgeldin) |
-| **`POST /login`** | `LoginRequest` (identityNo, password) | SecurityContext'ten teyit eder. JWT token üretir. | `AuthResponse` (Token) | 📱 PUSH_NOTIF / SMS (Hatalıysa) |
+*   **`POST /register`:** `RegisterRequest` -> TC/Vergi No var mı bakar, Bcrypt yapar, PENDING durumla kaydeder -> `AuthResponse` + 📧 RabbitMQ (Hoşgeldin).
+*   **`POST /login`:** `LoginRequest` -> Spring Security ile JWT (~1 gün süreli) -> `AuthResponse`.
 
-### 👤 Profil Endpointleri (`/api/v1/customers` - Korumalı)
-| Metot | İstek (Input) | İş Mantığı (Logic - Özet) | Yanıt (Output) | RabbitMQ |
-| :--- | :--- | :--- | :--- | :--- |
-| **`GET /profile`** | - (Token'dan alır) | Oturum açan kullanıcının bireysel/kurumsal türüne göre profilini döner. | `UserProfileResponse` | - |
-| **`PUT /profile`** | `UpdateProfileRequest` | Sadece email ve profil adını(Ad Soyad) günceller. | `UserProfileResponse` | 📧 EMAIL (Profil Güncellendi) |
-| **`PUT /password`**| `ChangePasswordRequest` | Eski şifre doğrulaması yapar, bcrypt ile yenisini kaydeder. | `AuthResponse` (Yeni Token)| 💬 SMS (Şifre Değişti - Güvenlik) |
+### 👤 Profile / Customer Endpointleri (`/api/v1/customers` - Korumalı)
+*   **`GET /profile`:** Token kime aitse özelliklerini (Bireysel/Kurumsal detayları) JSON obje `UserProfileResponse` döner.
+*   **`PUT /profile`:** `UpdateProfileRequest` -> Ad/Soyad vb. kısmını günceller -> `UserProfileResponse` + 📧 RabbitMQ.
+*   **`PUT /password`:** `ChangePasswordRequest` -> Eski şifre onayı + Bcrypt -> 💬 RabbitMQ SMS ve yeni.
 
-### 💳 Hesap (Account) Endpointleri (`/api/v1/accounts`)
-*   **`POST /`:** In: `CreateAccountRequest(currency)`. Logic: Rastgele eşsiz 10 haneli Hesap No ve 26 haneli IBAN (`TR...`) üretir, kullanıcının `AppUser`'ına bağlar. Out: `AccountResponse`. Message: 📧 EMAIL.
-*   **`GET /` / `GET /{accountNumber}`:** Token sahibi kişinin kendi hesaplarını listeler/getirir.
-*   **`DELETE /{accountNumber}`:** Veri tabanından fiziksel SİLMEZ. `isActive = false` yapar (Soft Delete). İçinde bakiye varsa kapattırmaz.
+### 💳 Hesap Endpointleri (`/api/v1/accounts`)
+*   **`POST /`:** `CreateAccountRequest` -> 10 Hane Hesap No / 26 Hane IBAN üretir. `AppUser`'a bağlar -> `AccountResponse` + 📧 RabbitMQ.
+*   **`GET /` & `GET /{accountNumber}`:** Profildeki sadece `isActive=true` olan hesapları çeker.
+*   **`DELETE /{accountNumber}`:** SOFT DELETE (`isActive = false`). Bakiye > 0 ise HATA fırlatır (`BankOperationException`).
 
-### 💸 Finans & İşlem Endpointleri (`/api/v1/transactions`)
-*   **`POST /deposit`:** In: `DepositRequest(iban, amount)`. Logic: Sadece TRY kabul eder, hesaba parayı ekler. Out: `TransactionResponse`(DEPOSIT). Message: 📧 EMAIL.
-*   **`POST /transfer`:** In: `TransferRequest(senderIban, receiverIban, amount)`. Logic: MASAK Kontrolü (+50.000 TL), Bakiye kontrolü, **CurrencyService** üzerinden canlı Döviz(TRY-USD) çapraz kur hesaplaması yapar. Kensi hesabından düşer, karşı hesaba ekler. İşlemi kaydeder. Out: `TransactionResponse`(TRANSFER). Message: 📱 PUSH_NOTIF.
+### 💸 İşlem & Para Endpointleri (`/api/v1/transactions` & `/api/v1/currency`)
+*   **`POST /deposit`:** TRY yatırma -> `DepositRequest` -> Doğrudan bakiyeyi arttırır -> `TransactionResponse`.
+*   **`POST /transfer`:** `TransferRequest` -> MASAK kontrolü (+50k), Canlı kur tahmini, Gönderenden düş/alıcıya ekle -> `TransactionResponse` + 📱 RabbitMQ PUSH_NOTIF.
+*   **`Currency (Kur Merkezi)`:** `ICurrencyService` (`/api/v1/currency`) API dış dünyadan/kendi içinden kurları hesaplar: `getLiveRates`, `convertAmount`. Hızlı döviz dönüşümü (`ExchangeRateResponse`).
 
-### 📄 Fatura (Bill) Endpointleri (`/api/v1/bills`)
-*   **`POST /instructions`:** In: `BillInstructionRequest`. Logic: Fatura tipine (Elektrik vb.) göre aboneyi kaydeder, `paymentDay` belirler. Out: `BillInstructionResponse`. Message: 📧 EMAIL.
-*   **`DELETE /{id}`:** Fatura talimatını iptal eder.
+### 📄 Fatura & Kurum Endpointleri (`/api/v1/bills` & `IExternalBillService`)
+*   **`POST /instructions`:** `BillInstructionRequest` -> Yeni oto fatura döngüsü yaratır. `IExternalBillService` (`ExternalBillMockServiceImpl`) mock dış kurum borcu sorgular.
+*   **`GET /` & `DELETE /{id}`:** Listeleme ve İptal işlemleri.
 
-### 🏢 Kurumsal (CompanyEmployee) Endpointleri (`/api/v1/companies/employees` - Sadece CORPORATE_MANAGER)
-*   **`POST /`:** In: `HireEmployeeRequest(identityNumber, salaryIban, salaryAmount)`. Logic: Girilen TC sistemde bireysel müşteri mi? Evetse IBAN ona mı ait? Evetse ara tabloya ekler (İşe Alım). Çift maaş kaydı engellenir. Out: `CompanyEmployeeResponse`. Message: 📧 EMAIL.
-*   **`PUT /{tc}`:** Maas ve IBAN Guncelleme yapar. Logic: Yeni IBAN'ın tc'ye ait olup olmadığını tekrar doğrular. Message: 📧 EMAIL.
-*   **`DELETE /{tc}`:** İşi sonlandırır (Ara tablodan siler).
+### 🏢 İK & Kurumsal Maaş Endpointleri (`/api/v1/companies/employees` - Sadece CORPORATE_MANAGER)
+*   **İşe Alım:** `POST /` (`HireEmployeeRequest`) -> Bireysel müşteri bulunursa IBAN teyit edilir, `CompanyEmployee`'ye yazılır.
+*   **Maaş Güncelleme:** `PUT /{identityNumber}` (`UpdateEmployeeRequest`) -> Yeni maaş / IBAN onaylanır.
+*   **İşten Çıkarma:** `DELETE /{identityNumber}` -> Çalışan ara tablodan uçar.
+*   **🚀 YENİ - Toplu Maaş:** `POST /pay-salaries` (`SalaryPaymentRequest`) -> Şirket `Account`'undan her personel için masif işlem (Transaction) döndürerek çalışan hesaplarına otomatik gönderir.
+*   **🚀 YENİ - Otomatik Maaş Ayarları:** `PUT/GET /auto-payment-settings` (`AutoPaymentSettingsRequest`) -> Maaş günlerini otomatik senkronize eden özellik (Schedule altyapısı).
 
 ### 👑 God-Mode (Admin) Endpointleri (`/api/v1/admin` - Sadece ADMIN)
-*   **Kullanım:** Bütün parametreler Path param olan `{tcNo}` ile yönetilir. Müşteri hesaplarına zorla el koyma, tüm bankadaki logları izleme, `PENDING` olan müşterileri `APPROVED` yapma (Onaylama) tam yetkiyle çalışır. Message: Çoğunlukla 🚨 SYSTEM_ALERT veya 📧 EMAIL.
+*   `{tcNo}` ile hedef belirlenir. Sistemin dökümünü (`openAccount` (başka hesaba gişe yetkisi ile eklenti) dahil) PENDING onayı gibi en üst yetkiyle yapar. (Çoğunlukla `SYSTEM_ALERT` üretir).
 
 ---
 
-## 🔒 4. GÜVENLİK VE EKSTRA KURALLAR (AI İÇİN ÖNERİLER)
-1. **Veri Çekme (JPA):** Tüm aramalarda anahtar olarak `identityNumber` kullan. (`findByIdentityNumber`).
-2. **Kimlik Çözümleme:** Bir operasyonda oturum açan kişiyi bulmak için `SecurityContextHolder`'a bak, Controller'da `Principal` veya JWT'den extract edilmiş id kullan.
-3. **Maaş IBAN Doğrulaması:** Frontend'den gelen IBAN'ın o kişiye ait olup olmadığı `AccountRepository.existsByIbanAndAppUser_IdentityNumber` ile mutlak suretle denetlenmeli.
-4. **Hatalar:** RuntimeException fırlatma. Sadece fırlatman gereken: `throw new BankOperationException("Hata Mesajı");`. Global Handler yakalayacaktır.
+## 🔒 4. GÜVENLİK VE EKSTRA(AI) KURALLARI
+1. **İlişkiler (JPA):** Tüm aramalarda anahtar olarak `identityNumber` kullan. (`findByIdentityNumber`).
+2. **Kimlik Tespiti:** Endpoint parametrelerinde `Principal principal` objesi gelir. Bunu `principal.getName()` yaparak direkt `identityNumber`'a ulaşırsın.
+3. **Maaş IBAN Doğrula:** Bir çalışanın şirketten maaş alması için tanımladığı IBAN **mutlaka** o çalışanın bireysel hesabına ait olmalı. (`Repository.existsByIbanAndAppUser_IdentityNumber`).
+4. **Hatalar:** RuntimeException YASAKTIR. Sadece: `throw new BankOperationException("Hata Mesajı");`. Global Exception Handler bu fırlatmaları 4XX/5XX HTTP Error'larına Map'leyebilir.
+5. **Double Path (URL Bug):** Posta gönderimi esnasında RabbitMQ ile JSON paketlemesinde Jackson2JsonMessageConverter ayarına sadık kal.

@@ -1,0 +1,42 @@
+# 🌐 SEC-DEMO BANKA MİKROSERVİS EKOSİSTEMİ HAFIZA KARTI (V2.1 - ÖZET)
+
+Bu dosya, projenin en dış (Root) dizininde yer alır ve sisteme kuşbakışı bakmanızı sağlar. Sistemdeki her bir mikroservisin **çok detaylı iç yapısı, çalışma mantığı ve kural seti, kendi klasörlerinin içindeki `hafiza.txt` dosyalarında gizlidir.**
+
+Yapay zeka asistanı veya yeni bir geliştirici, sisteme dair her şeyi anlamak istediğinde sırasıyla klasör içlerindeki `hafiza.txt` dosyalarını okumalıdır.
+
+---
+
+## 🏛️ SİSTEMİN MİKROSERVİSLERİ VE KISACA ÖZETLERİ
+
+### 1. 🖥️ Bank-Demo-Frontend (Next.js 14 App Router)
+*   **Özet:** Kullanıcıların (Bireysel, Kurumsal, Admin) etkileşime girdiği arayüzdür. 
+*   **Ne Yapar?:** Hesap açma, para transferi, maaş ödeme, fatura talimatı ve döviz (Ticker) işlemlerini API Gateway üzerinden Backend'e iletir. Bütün istekler `proxy.ts` JWT filtrelemesi ile güvenlik çemberinden geçer. Özel Modallar (UI) ile desteklenmiştir.
+*   **Detay:** `Bank-Demo-Frontend/hafiza.txt` dosyasına bakınız.
+
+### 2. ⚙️ Bank-Demo-Backend (Spring Boot 3 - Monolith Core)
+*   **Özet:** Bankanın kalbidir. Bütün iş mantığı, veri tabanı kuralları ve Transaction dengelemeleri bu serviste döner.
+*   **Ne Yapar?:** JWT ile Auth işlemi, hesap açılışları, bakiye değişimleri, kurumsal maaş aktarımı (toplu ödeme motoru), döviz çevirimi (Kur servisi) gibi işlemleri yönetir. Tamamen RabbitMQ üreten (Producer) asenkron bir yapıya sahiptir.
+*   **Detay:** `Bank-Demo-Backend/hafiza.txt` dosyasına bakınız.
+
+### 3. 🚪 API Gateway (Spring Cloud Gateway)
+*   **Özet:** Sistemin dış dünyaya sızdırmaz sınır kapısıdır. Port: 8081.
+*   **Ne Yapar?:** Frontend'den gelen (`http://localhost:3000`) CORS isteklerini havada tutar. Bütün isteklerin Token (JWT) kısmını denetler, yetkisizleri kovar, onayladıklarını Eureka üzerinden dinamik olarak Monolith Backend'e uçurur.
+*   **Detay:** `api-gateway/hafiza.txt` dosyasına bakınız.
+
+### 4. 🔍 Discovery Server (Eureka Registry)
+*   **Özet:** Mikroservislerin birbirlerini donanım numaralarıyla (IP) değil, şirket hatlarıyla (İsim) bulmasını sağlayan Santral/Rehber servisidir. Port: 8761.
+*   **Ne Yapar?:** Gateway, Backend ve Notification servisi uyanır uyanmaz bu rehbere kaydedilir.
+*   **Detay:** `discovery-server/hafiza.txt` dosyasına bakınız.
+
+### 5. 📯 Notification Service (RabbitMQ Consumer)
+*   **Özet:** Postane işlevi gören asenkron bildirim servisidir. Port: 8082.
+*   **Ne Yapar?:** RabbitMQ'daki `notification_queue` kuyruğunda nöbet tutar. Backend'in fırlattığı JSON mesajları dinleyip müşterilere yollanacak olan EMAIL, SMS, PUSH ve SİSTEM ALARMI gibi bildirimleri kullanıcıyı bekletmeden arka planda dağıtır.
+*   **Detay:** `notification-service/hafiza.txt` dosyasına bakınız.
+
+### 6. 📊 Logstash (Merkezi Loglama Sistemi)
+*   **Özet:** Mikroservislerin yapılandırılmış log (günlük) verilerini merkezi bir noktada toplayan veri iletim hattıdır.
+*   **Ne Yapar?:** Tekil bir Java uygulaması ("Spring Boot") gibi çalışmaktan ziyade, Elasticsearch-Logstash-Kibana (ELK) yığınının bir ayağıdır. Sistem geneli logları (veya metrikleri) yakalayıp analiz motorlarına işlemek üzere iletir. Klasör içeriğinde `hafiza.txt` yoktur, sadece `.conf` dosyalarıyla ayarlanır.
+
+---
+
+> 💡 **NOT:** Sisteme eklenen her yeni modül veya uç nokta sonrasında, ilgili klasöründeki alt `hafiza.txt` dosyası kesinlikle güncellenmelidir. En ince teknik detayı (Class isimleri, DTO bağlamları ve JPA kuralları) alt klasörlerde bulabilirsiniz.

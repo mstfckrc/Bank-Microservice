@@ -1,0 +1,26 @@
+# 📯 SEC-DEMO NOTIFICATION (BİLDİRİM) SERVİSİ HAFIZA KARTI (V2.1 - DETAYLI)
+
+Sistemin olay güdümlü (Event-Driven) iletişiminden sorumlu, diğer tüm servislerden tamamen izole olarak çalışan asenkron işçisidir.
+
+---
+
+## 🏗️ 1. MİMARİ VE BAĞLANTILAR
+*   **Çekirdek:** Spring Boot (Port: 8082).
+*   **Keşif (Eureka):** Kendini `notification-service` adıyla Discovery Server'a kaydeder.
+*   **Altyapı (RabbitMQ):** Banka sistemindeki `bank_exchange` dağıtıcısından gelen mesajları bekler.
+
+## 🎧 2. DİNLEME MANTIĞI VE kuyruk (LISTENER KONSOLU)
+*   **Merkez:** `NotificationListener.java` sınıfı, RabbitMQ'nun `notification_queue` adlı gişesinde (Kuyruk) nöbet tutar.
+*   **Veri Formatı:** Backend tarafından fırlatılan nesneler, RabbitMQ'da `Jackson2JsonMessageConverter` sayesinde **JSON Zarfı (`NotificationMessage`)** olarak gelir ve bu servis onu direkt JSON'dan Obje formatına döndürür.
+*   **NotificationMessage Yapısı:**
+    *   `notificationType`: (Tip: `SMS`, `EMAIL`, `PUSH_NOTIFICATION`, `SYSTEM_ALERT`)
+    *   `destination`: (Hedef Örn: `iletisim@mustafa.com` veya `5551234567`)
+    *   `subject`: Konu başlığı (Örn: `Hesap Açılışı` veya `Dekont Bilgisi`)
+    *   `content`: Uzun mesaj içeriği.
+
+## 🛠️ 3. İŞ KURALI VE GÖNDERİM
+*   Listener uyandığı an bir `switch-case` yapısına girer. Gelen tipe göre log bastırır ve o tipin özel gönderici koduna (Email ise STMP Server, SMS ise Netgsm vb.) bağlanır.
+*   Mevcut durumda log bastıktan sonra `Thread.sleep(2000)` ile 2 saniye ağ gecikmesi simüle ederek (Senkronizasyonu test etmek için) mesaj gönderildi onayı verir.
+
+## 🚨 4. YAPAY ZEKA GELİŞTİRİCİ NOTLARI
+*   Sistem eklemelerinde (Örn: Webhook fırlatma) model tarafındaki Enum `NotificationType` güncellenmeli ve bu servisteki Switch-Case'e case `WEBHOOK:` eklenmelidir.
