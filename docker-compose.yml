@@ -52,11 +52,6 @@ services:
       - discovery-server
     ports:
       - "8081:8081" # Trafik Polisi 8081 portunda nöbette!
-    environment:
-      # 🚀 ROKET BURADA: YAML'ı ve JAR'ı ezip geçen doğrudan yönlendirme emri!
-      - SPRING_CLOUD_GATEWAY_ROUTES_0_ID=monolith-route
-      - SPRING_CLOUD_GATEWAY_ROUTES_0_URI=http://bank_backend_micro:8080
-      - SPRING_CLOUD_GATEWAY_ROUTES_0_PREDICATES_0=Path=/api/v1/**
     networks:
       - bank-network-micro
 
@@ -79,6 +74,18 @@ services:
       - "8082:8082"
     networks:
       - bank-network-micro
+
+  currency-service:
+    build: ./currency-service
+    container_name: bank_currency_micro
+    ports:
+      - "8083:8083"
+    environment:
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://discovery-server:8761/eureka/
+    depends_on:
+      - discovery-server
+    networks:
+      - bank-network-micro # 🚀 DÜZELTİLDİ: Sistemin gerçek ağ adı
 
   # 5. VİTRİN (Next.js Frontend)
   frontend:
@@ -107,6 +114,7 @@ services:
       - "8761:8761" # Nüfus dairesinin kapısı
     networks:
       - bank-network-micro
+
 
   # ==========================================
   # 🕵️‍♂️ ELK İSTİHBARAT AĞI (LOGLAMA SİSTEMİ)

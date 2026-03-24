@@ -10,11 +10,9 @@ spring:
   cloud:
     gateway:
       globalcors:
-        # 🚀 1. ROKET: Tarayıcının öncü (OPTIONS) CORS isteklerini havada yakala!
         add-to-simple-url-handler-mapping: true
         cors-configurations:
           '[/**]':
-            # 🚀 2. ROKET: Origins ve Methods kısımlarını tireli liste (-) yapıyoruz, Spring böyle daha iyi anlar.
             allowedOrigins:
               - "http://localhost:3000"
             allowedMethods:
@@ -23,8 +21,14 @@ spring:
               - "*"
 
       routes:
+        # 🚀 1. YENİ ROTA: Kur isteklerini doğrudan yeni askere yolla! (En üste yazılır)
+        - id: currency-route
+          uri: http://bank_currency_micro:8083
+          predicates:
+            - Path=/api/v1/currencies/**
+
+        # 2. ESKİ ROTA: Geri kalan her şeyi (Hesap, Kullanıcı vb.) eski Karargaha yolla
         - id: monolith-route
-          # 🚀 AZ ÖNCEKİ HAYATİ DÜZELTME: Eureka'yı bekleme, doğrudan tanka git!
           uri: http://bank_backend_micro:8080
           predicates:
             - Path=/api/v1/**
