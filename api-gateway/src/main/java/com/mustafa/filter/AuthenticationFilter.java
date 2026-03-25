@@ -25,6 +25,13 @@ public class AuthenticationFilter extends AbstractGatewayFilterFactory<Authentic
     public GatewayFilter apply(Config config) {
         return ((exchange, chain) -> {
 
+            // 🚀 HAYAT KURTARAN YAMA: Chrome'un gizli OPTIONS (CORS Ön Kontrol) isteklerini sorgusuz sualsiz geçir!
+            // Tarayıcılar asıl istekten önce "Girebilir miyim?" diye gizli bir OPTIONS isteği atar, bunda Token olmaz.
+            // Eğer bunu geçirmezsek, sistem daha JWT'ye bakamadan 403 Forbidden çakar!
+            if (exchange.getRequest().getMethod().name().equalsIgnoreCase("OPTIONS")) {
+                return chain.filter(exchange);
+            }
+
             // İstek korumalı bir rotaya mı gidiyor? (VIP listede değilse)
             if (validator.isSecured.test(exchange.getRequest())) {
 
@@ -49,11 +56,13 @@ public class AuthenticationFilter extends AbstractGatewayFilterFactory<Authentic
                     String identityNumber = claims.getSubject(); // TC numarası
                     String role = claims.get("role", String.class); // Rolü
 
-                    // İsteğin içine kendi mühürlü Header'larımızı basıp Backend'e yolluyoruz!
+                    // İsteğin içine kendi mühürlü Header'larımızı basıp yolluyoruz!
                     exchange = exchange.mutate().request(
                             exchange.getRequest().mutate()
-                                    .header("X-User-TC", identityNumber)
+                                    .header("X-User-TC", identityNumber) // Eski Karargah için kalsın
                                     .header("X-User-Role", role)
+                                    // 🚀 MİKROSERVİS DEVRİMİ: Fatura servisimizin beklediği yeni zımba!
+                                    .header("X-Identity-Number", identityNumber)
                                     .build()
                     ).build();
 

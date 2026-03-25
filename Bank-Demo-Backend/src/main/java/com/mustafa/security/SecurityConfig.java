@@ -38,6 +38,9 @@ public class SecurityConfig {
                         // Admin yetkileri
                         .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
 
+                        // 🚀 YENİ: İç hatlar telsiz kapısında kimlik/JWT sorma, direkt içeri al!
+                        .requestMatchers("/api/v1/internal/**").permitAll()
+
                         .anyRequest().authenticated()
                 )
 // ...

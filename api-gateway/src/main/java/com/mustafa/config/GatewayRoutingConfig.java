@@ -15,17 +15,24 @@ public class GatewayRoutingConfig {
         this.authenticationFilter = authenticationFilter;
     }
 
+    // 🗺️ KUSURSUZ HARİTA MERKEZİ (CORS işini CorsConfig.java'ya bıraktık)
     @Bean
     public RouteLocator customRouteLocator(RouteLocatorBuilder builder) {
+        AuthenticationFilter.Config filterConfig = new AuthenticationFilter.Config();
+
         return builder.routes()
-                // 🚀 1. YENİ ROTA: Kur Servisi (Alt çizgi yok, tire var!)
+                // 1. ÖNCELİK: Döviz Servisi
                 .route("currency-service-route", r -> r.path("/api/v1/currencies/**")
-                        .filters(f -> f.filter(authenticationFilter.apply(new AuthenticationFilter.Config())))
                         .uri("http://currency-service:8083"))
 
-                // 🚀 2. ESKİ ROTA: Monolit Karargah (Eski çalışan orijinal hali)
+                // 2. ÖNCELİK: Fatura Servisi
+                .route("bill-service-route", r -> r.path("/api/v1/bills/**")
+                        .filters(f -> f.filter(authenticationFilter.apply(filterConfig)))
+                        .uri("http://bill-service:8084"))
+
+                // 3. KARARGAH: Geri kalan her şey (Auth, Login vs.)
                 .route("java-monolith-route", r -> r.path("/api/v1/**")
-                        .filters(f -> f.filter(authenticationFilter.apply(new AuthenticationFilter.Config())))
+                        .filters(f -> f.filter(authenticationFilter.apply(filterConfig)))
                         .uri("http://backend:8080"))
                 .build();
     }

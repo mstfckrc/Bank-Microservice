@@ -46,11 +46,10 @@ Bu dosya, yapay zekanın (veya bir geliştiricinin) projeyi tek bakışta %100 o
 ### 💸 İşlem & Para Endpointleri (`/api/v1/transactions` & `/api/v1/currency`)
 *   **`POST /deposit`:** TRY yatırma -> `DepositRequest` -> Doğrudan bakiyeyi arttırır -> `TransactionResponse`.
 *   **`POST /transfer`:** `TransferRequest` -> MASAK kontrolü (+50k), Canlı kur tahmini, Gönderenden düş/alıcıya ekle -> `TransactionResponse` + 📱 RabbitMQ PUSH_NOTIF.
-*   **`Currency (Kur Merkezi)`:** `ICurrencyService` (`/api/v1/currency`) API dış dünyadan/kendi içinden kurları hesaplar: `getLiveRates`, `convertAmount`. Hızlı döviz dönüşümü (`ExchangeRateResponse`).
+*   **`Currency (Kur İletişimi - FeignClient)`:** `ICurrencyService` altında `CurrencyServiceClient` (OpenFeign) kullanarak `bank-currency-micro` mikroservisiyle konuşur. Backend artık kurları internetten kendi çekmez, dış servisten ister. (`convertAmount`, `ExchangeRateResponse`).
 
-### 📄 Fatura & Kurum Endpointleri (`/api/v1/bills` & `IExternalBillService`)
-*   **`POST /instructions`:** `BillInstructionRequest` -> Yeni oto fatura döngüsü yaratır. `IExternalBillService` (`ExternalBillMockServiceImpl`) mock dış kurum borcu sorgular.
-*   **`GET /` & `DELETE /{id}`:** Listeleme ve İptal işlemleri.
+### 📄 Gizli / İç (Internal) Endpointler (`/api/v1/internal/transactions`)
+*   **`POST /bill-payment`:** Dışarıdan ziyarete kapalıdır. Sadece `bill-service` mikroservisi FeignClient kullanarak buraya vurabilir. `InternalPaymentRequest` alır, faturanın tutarını müşterinin hesabından otomatik olarak eksiltir ve dekonte eder (`TransactionResponse` üretir). Sadece sistem arası iletişim içindir.
 
 ### 🏢 İK & Kurumsal Maaş Endpointleri (`/api/v1/companies/employees` - Sadece CORPORATE_MANAGER)
 *   **İşe Alım:** `POST /` (`HireEmployeeRequest`) -> Bireysel müşteri bulunursa IBAN teyit edilir, `CompanyEmployee`'ye yazılır.

@@ -1,6 +1,7 @@
 package com.mustafa.service;
 
 import com.mustafa.dto.request.DepositRequest;
+import com.mustafa.dto.request.InternalPaymentRequest;
 import com.mustafa.dto.request.TransferRequest;
 import com.mustafa.dto.response.TransactionResponse;
 
@@ -26,4 +27,6 @@ public interface ITransactionService {
     List<TransactionResponse> getAllTransactionsForAdmin(String status);
     TransactionResponse approveTransaction(String referenceNo);
     TransactionResponse rejectTransaction(String referenceNo);
+    // 🚀 İç Hatlar: Diğer mikroservislerden gelen para kesme emirleri
+    void processInternalPayment(String identityNumber, InternalPaymentRequest request);
 }

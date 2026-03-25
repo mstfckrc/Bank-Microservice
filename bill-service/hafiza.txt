@@ -1,0 +1,23 @@
+# 🧾 SEC-DEMO BILL (FATURA) SERVİSİ HAFIZA KARTI (V3.0 - DETAYLI)
+
+Sistemin otomatik fatura ödeme işlemlerini, bağımsız bir mikroservis yapısıyla ele alan zamanlanmış (Scheduled) motorudur.
+
+---
+
+## 🏗️ 1. MİMARİ VE BAĞLANTILAR
+*   **Çekirdek:** Spring Boot (Port: 8084). `bank-bill-micro` adıyla çalışır.
+*   **Veri Tabanı:** Kendine ait ayrı bir Veri Tabanı (`bank_bill_db`) kullanır. Ana bankacılık db'sinden (`bank_db`) izoledir.
+*   **RabbitMQ:** İşlemler bittiğinde mesaj gönderebilmek için `bank_exchange` santraline doğrudan bağlıdır.
+*   **İletişim:** Ana backend'e `BackendServiceClient` (OpenFeign) vasıtasıyla HTTP üzerinden konuşur.
+
+## 🛡️ 2. GÜVENLİK VE GATEWAY İLİŞKİSİ
+*   **X-Identity-Number Başlığı:** Bu servis artık gelen HTTP isteklerinde `Principal` (oturum) aramaz. Tüm güvenlik API Gateway'de halledilmiştir. Gateway token'ı açar ve kişinin TC'sini `X-Identity-Number` header'ı olarak bu servise gönderir (`BillPaymentControllerImpl`). Servis, gelen isteğin sahibini sadece bu header'dan yakalar.
+
+## ⚙️ 3. SERVİS VE İŞ MANTIĞI EKSENİ
+*   **`BillPaymentControllerImpl`:** Fatura talimatı verme (`createInstruction`), listeleme veya silme isteklerini dış dünyadan (Gateway üzerinden) karşılar.
+*   **`ExternalBillMockServiceImpl`:** Gerçek hayattaki elektrik/su kurumu gibi davranarak abonenin sözde borcunu simüle eder.
+*   **`BillScheduledTasks` (Motor):** Her gece saat tam 00:00'da (`cron = "0 0 0 * * *"`) uyanır. O gün ödenmesi gereken faturaları DB'den çeker ve `payBillAutomatically` fonksiyonunu tetikler.
+*   **`BackendServiceClient` (Tahsilat):** Fatura tahsil edilecekse, para kesme işlemi için bu servis `bank-demo-backend` içerisindeki gizli ve kapalı olan `/api/v1/internal/transactions/bill-payment` uç noktasına emir gönderir. 
+
+## 🚨 4. YAPAY ZEKA GELİŞTİRİCİ NOTLARI
+*   Bu servisteki herhangi bir Controller'a yeni bir Endpoint açıldığında, kimlik tespiti kesinlikle `@RequestHeader("X-Identity-Number") String identityNumber` parametresiyle yapılmalıdır. Security Context veya JWT sınıfları bu mikroservisin içinde yer almaz, gereksiz kütüphane eklemeyin.

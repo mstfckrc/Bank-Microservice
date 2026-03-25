@@ -1,0 +1,22 @@
+# 💶 SEC-DEMO CURRENCY (DÖVİZ) SERVİSİ HAFIZA KARTI (V2.1 - DETAYLI)
+
+Sistemin bağımsız döviz kurları sağlayıcısıdır. Dış dünyadaki döviz API'lerine giden istekleri kendi üzerinde toplayan, hafif ve hızlı bir mikroservistir.
+
+---
+
+## 🏗️ 1. MİMARİ VE BAĞLANTILAR
+*   **Çekirdek:** Spring Boot (Port: 8083). `bank-currency-micro` adıyla çalışır.
+*   **Keşif (Eureka):** Kendini Discovery Server'a kaydeder (`http://localhost:8761/eureka/`). IP adresi ile tanınmayı tercih eder (`prefer-ip-address: true`).
+*   **İletişim Şekli:** Bu servis banka sisteminin asıl veri tabanına veya RabbitMQ'ya bağlanmaz. Yalnızca HTTP GET isteklerine yanıt verir. Diğer servisler (Örn: Bank-Demo-Backend) bu servise **OpenFeign** üzerinden bağlanır.
+
+## 💱 2. DIŞ API MOTORU VE KONTROLLER (CONTROLLER)
+*   **`CurrencyControllerImpl` & `ICurrencyController`:** 
+    *   `GET /api/v1/currency/rates/{baseCurrency}` endpointi bulunur.
+*   **`CurrencyServiceImpl`:**
+    *   **RestTemplate İzolesi:** Eskiden Monolith'in içinde olan RestTemplate ile dış API bağlantısı (Örn: `https://open.er-api.com/v6/latest/...`) artık tamamen buradadır.
+    *   **İş Mantığı:** Verilen baz kura (Örn: TRY) göre dış internetten JSON kurlarını çeker, bunu kendi `ExchangeRateResponse` objesine (Base, Date, Rates Map) Maple'yerek bankaya döner.
+    *   **Çevirim Matematikleri:** Miktarı verilen iki kur arasında çapraz kur hesabı yaparak çeviren `convertAmount` metodu da bu servistedir.
+
+## 🚨 3. YAPAY ZEKA GELİŞTİRİCİ NOTLARI
+*   **Ayrışma (Decoupling):** Dış API çökerse sadece bu servis hata (`BankOperationException`) fırlatır/loglar, ana banka sistemi ayakta kalır ancak sadece dövizli işlemler hata alır.
+*   **Gelecek Eklenti:** İleride Redis gibi bir önbellek (Cache) mekanizması eklenecekse buradaki `getLiveRates` fonksiyonu `@Cacheable` ile desteklenmelidir, böylece dış API'ye atılan saniyelik limitler aşılmaz.

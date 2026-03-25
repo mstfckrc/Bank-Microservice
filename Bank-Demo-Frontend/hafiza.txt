@@ -9,6 +9,7 @@ Yapay zekanın (veya yeni bir geliştiricinin) arayüz kodlarına tek bakışta 
 *   **Güvenlik Muhafızı (`proxy.ts` / Middleware):** Tüm istekler buradan geçer. Token yokken korumalı rotaya (örn: `/user`) girilirse `/login`'e yönlendirir. Rol kısıtlamaları aktiftir (**Strict Routing**). (Token çözümlemesi `Buffer` ile yapılır).
 *   **Mekansal Dağılım:**
     *   `/(auth)/*`: Sadece tokenı olmayanların görebileceği giriş ve kayıt ekranları.
+    *   `/currencies`: Tüm ziyaretçilerin güncel kurları takip edebildiği canlı döviz tahtası.
     *   `/(dashboard)/*`: `Navbar` ve `Sidebar` içeren ortak çerçeve.
         *   `/user/dashboard`: Bireysel Müşterilerin cüzdanları, döviz transferleri, fatura işlemleri.
         *   `/company/dashboard`: Kurumsal Yöneticilerin iş gücü yönetimi, toplu maaş ödemeleri ve **Otomatik Maaş Ayarları**.

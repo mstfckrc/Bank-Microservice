@@ -1,6 +1,7 @@
 package com.mustafa.service.impl;
 
 import com.mustafa.dto.message.NotificationMessage;
+import com.mustafa.dto.request.InternalPaymentRequest;
 import com.mustafa.messaging.publisher.RabbitMQPublisher;
 import com.mustafa.dto.request.DepositRequest;
 import com.mustafa.dto.request.TransferRequest;
@@ -384,6 +385,73 @@ public class TransactionServiceImpl implements ITransactionService {
         rabbitPublisher.sendNotification(rejectMessage);
 
         return mapToResponse(transaction);
+    }
+
+    @Override
+    @Transactional
+    public void processInternalPayment(String identityNumber, InternalPaymentRequest request) {
+        // 1. Kasayı Bul
+        Account account = accountRepository.findById(request.getAccountId())
+                .orElseThrow(() -> new BankOperationException("Kasa bulunamadı!"));
+
+        // 2. Güvenlik: Bu kasa gerçekten o kişiye mi ait?
+        if (!account.getAppUser().getIdentityNumber().equals(identityNumber)) {
+            throw new BankOperationException("Yetkisiz işlem: Kasa sahibi eşleşmiyor!");
+        }
+
+        // 🚀 3. DÖVİZ ÇEVİRİCİ DEVREDE! (Fatura her zaman TRY olarak gelir)
+        BigDecimal amountToDeduct;
+        String enrichedDescription = request.getDescription();
+
+        if (account.getCurrency().toString().equals("TRY")) {
+            // Kasa zaten TL ise doğrudan faturayı kes
+            amountToDeduct = request.getAmount();
+        } else {
+            // Kasa Döviz ise, telsizle Kur Servisi'ne sor (TRY -> Kasanın Para Birimi)
+            Double convertedDouble = currencyService.convertAmount(
+                    request.getAmount().doubleValue(),
+                    "TRY",
+                    account.getCurrency().toString()
+            );
+            amountToDeduct = BigDecimal.valueOf(convertedDouble);
+
+            // Dekonta müşterinin göreceği şekilde kur detayını yaz!
+            enrichedDescription += String.format(" (Kur Çevrimi: %s TRY -> %.2f %s)",
+                    request.getAmount(), convertedDouble, account.getCurrency().toString());
+
+            log.info("💱 Dövizli Kasa Ödemesi: {} TRY tutarındaki fatura için kasadan {} {} çekilecek.",
+                    request.getAmount(), amountToDeduct, account.getCurrency());
+        }
+
+        // 4. Bakiye Kontrolü (Artık çevrilmiş tutar üzerinden yapılıyor!)
+        if (account.getBalance().compareTo(amountToDeduct) < 0) {
+            log.error("İç Hat İşlemi Reddedildi! Kasa: {}, İstenen: {} {}, Mevcut: {} {}",
+                    account.getAccountNumber(), amountToDeduct, account.getCurrency(), account.getBalance(), account.getCurrency());
+            throw new BankOperationException("Kasada yeterli bakiye yok!");
+        }
+
+        // 5. Parayı Kes
+        account.setBalance(account.getBalance().subtract(amountToDeduct));
+        accountRepository.save(account);
+
+        // 6. Dekont Oluştur (Transaction)
+        Transaction transaction = Transaction.builder()
+                .referenceNo(UUID.randomUUID().toString())
+                .senderAccount(account)
+
+                // 🚀 BÜYÜK DÜZELTME: Ekranda (Frontend'de) kasadan düşen gerçek döviz görünsün!
+                .amount(amountToDeduct)               // Kasadan fiilen düşen tutar (Örn: 22.50 USD)
+                .convertedAmount(request.getAmount()) // Orijinal Fatura Tutarı (732.31 TRY)
+
+                .transactionType(Transaction.TransactionType.BILL_PAYMENT)
+                .status(Transaction.TransactionStatus.COMPLETED)
+                .description(enrichedDescription)
+                .build();
+
+        transactionRepository.save(transaction);
+
+        log.info("🏦 [İÇ HATLAR] İşlem Başarılı! Kasadan {} {} kesildi. Dekont: {}",
+                amountToDeduct, account.getCurrency(), transaction.getReferenceNo());
     }
 
     private TransactionResponse mapToResponse(Transaction transaction) {

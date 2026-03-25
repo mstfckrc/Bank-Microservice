@@ -1,23 +1,23 @@
-# 🚪 SEC-DEMO API GATEWAY HAFIZA KARTI (V2.1 - DETAYLI)
+# 🚪 SEC-DEMO API GATEWAY HAFIZA KARTI (V3.0 - EXTREME DETAYLI)
 
-Sistemin dış dünyaya açılan tek ve güvenli kapısıdır. Tüm ön yüz (Frontend) istekleri buraya gelir ve filtrelenip arkadaki mikroservislere (Backend) aktarılır.
+Sistemin dış dünyaya açılan tek ve güvenli kapısıdır. Tüm ön yüz (Frontend) istekleri buraya gelir ve filtrelenip arkadaki mikroservislere (Backend, Currency, Bill) aktarılır.
 
 ---
 
 ## 🏗️ 1. MİMARİ VE YETKİLER
 *   **Çekirdek:** Spring Cloud Gateway (Port: 8081).
-*   **Keşif (Eureka):** Kendini `api-gateway` adıyla Discovery Server'a (`localhost:8761`) kaydeder.
-*   **CORS Politikası:** `application.yml` üzerinden Global Cors ayarlanmıştır. `http://localhost:3000` (Frontend) origin'ine ve `*` (Tüm Metot ve Header'lara) izin verilmiştir.
+*   **Keşif (Eureka):** Kendini `api-gateway` adıyla Discovery Server'a kaydedebilir veya `EUREKA_URL` env parametresiyle bulur.
+*   **CORS Politikası:** `application.yml` ve `CorsConfig.java` üzerinden Global Cors ayarlanmıştır. `allowedOriginPatterns: "*"` yapıldı, frontend kısıtlaması test ortamları için esnetildi (`allowCredentials: true`).
 
 ## 🛡️ 2. GÜVENLİK FİLTRESİ VE YÖNLENDİRME (ROUTING)
-*   **Rotasyon (Routing):** `GatewayRoutingConfig` üzerinden Java Config tabanlı ilerler. Gelen isteklerin `/api/v1/**` ile başlayan her biri yakalanır.
-*   **JwtUtil:** Backend ile birebir aynı 512-bit JWT secret anahtarına sahiptir (`404E6352...`).
-*   **AuthenticationFilter (`Polis`):**
-    *   İstek içeri girdiğinde, hedef `RouteValidator` ile kontrol edilir. Ziyaretçi serbest bölgeye (örn: `/auth/register` veya `/login`) gitmiyorsa:
-        1.  HTTP `Authorization` header'ında `Bearer ...` token aranır.
-        2.  `JwtUtil` sınıfı üzerinden Token'ın sahte veya süresi geçmiş (Expired) olup olmadığı denetlenir.
-        3.  Token geçerliyse istek arkadaki `bank_backend_micro:8080` (Backend servisine) yönlendirilir.
+*   **Rotasyon (Routing):** `GatewayRoutingConfig` üzerinden gelen istekler yakalanır:
+    1.  `/api/v1/currencies/**` -> `http://currency-service:8083` (Direct geçiş, polis filtresi yok)
+    2.  `/api/v1/bills/**` -> `http://bill-service:8084` (Auth Filter aktif)
+    3.  `/api/v1/**` -> `http://backend:8080` (Auth Filter aktif)
+*   **JwtUtil:** Backend ile birebir aynı 512-bit JWT secret anahtarına sahiptir.
+*   **AuthenticationFilter (`Polis`) & `RouteValidator`:**
+    *   `/api/v1/auth/register`, `/api/v1/auth/login`, `/eureka` ve **`/api/v1/currencies/rates` (Kurları vitrine açma)** rotaları "Pasaport Sorulmayacaklar (PermitAll)" listesindedir.
+    *   Diğer tüm rotalarda HTTP `Authorization` header'ında `Bearer ...` token aranır. Token sahte/süresi dolmuşsa Gateway isteği bloke eder (HTTP 401/403). Geçerliyse ilgili servise aktarır.
 
 ## 🚨 3. YAPAY ZEKA GELİŞTİRİCİ NOTLARI
-*   **Filter Ekleme:** Eğer yeni bir alt servis (örn: Kredi Servisi) gelirse, o servisin rotası `GatewayRoutingConfig.java` içine `.route("credit-route", r -> ...)` mantığıyla eklenmelidir.
-*   **Loglama:** Gateway üzerinden geçen istekleri loglamak istenirse yeni bir `GlobalFilter` tanımlanmalıdır.
+*   **Filter Ekleme:** Eğer yeni bir alt servis (örn: Kredi Servisi) gelirse, o servisin rotası `GatewayRoutingConfig.java` içine `.route("credit-route", r -> ...)` mantığıyla eklenmelidir. İsteğin auth isteyip istemediğine göre `RouteValidator` veya `.filters(f -> ...)` düzenlenmelidir.

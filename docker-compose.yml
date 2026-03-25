@@ -35,23 +35,25 @@ services:
       - SPRING_RABBITMQ_PORT=5672
       - SPRING_RABBITMQ_USERNAME=admin
       - SPRING_RABBITMQ_PASSWORD=123456
+      - EUREKA_URL=http://discovery-server:8761/eureka/
     ports:
       - "8080:8080"
     networks:
       - bank-network-micro
 
-  # 🌟 3. YENİ SINIR KAPISI: API GATEWAY 🌟
+# 🌟 3. YENİ SINIR KAPISI: API GATEWAY 🌟
   api-gateway:
     build:
-      context: ./api-gateway # Yeni Gateway klasörünün adı
+      context: ./api-gateway 
       dockerfile: Dockerfile
     container_name: bank_api_gateway_micro
     restart: on-failure
     depends_on:
-      - backend # Backend ayağa kalkmadan kapıyı açmasın
+      - backend 
       - discovery-server
+      - bill-service 
     ports:
-      - "8081:8081" # Trafik Polisi 8081 portunda nöbette!
+      - "8081:8081" 
     networks:
       - bank-network-micro
 
@@ -86,6 +88,26 @@ services:
       - discovery-server
     networks:
       - bank-network-micro # 🚀 DÜZELTİLDİ: Sistemin gerçek ağ adı
+
+# 🧾  YENİ BİRLİĞİMİZ: FATURA SERVİSİ
+  bill-service:
+    build:
+      context: ./bill-service # ✅ DÜZELTİLDİ: Senin oluşturduğun gerçek klasör adı!
+      dockerfile: Dockerfile
+    container_name: bank_bill_micro
+    restart: on-failure
+    depends_on:
+      - postgres
+      - rabbitmq
+      - discovery-server
+    environment:
+      - DB_URL=jdbc:postgresql://bank_postgres_micro:5432/bank_bill_db
+      - SPRING_RABBITMQ_HOST=rabbitmq
+      - EUREKA_URL=http://discovery-server:8761/eureka/
+    ports:
+      - "8084:8084"
+    networks:
+      - bank-network-micro
 
   # 5. VİTRİN (Next.js Frontend)
   frontend:
