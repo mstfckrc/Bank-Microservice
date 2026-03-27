@@ -1,0 +1,44 @@
+# 🏢 SEC-DEMO CORPORATE (KURUMSAL) SERVİSİ HAFIZA KARTI (V5.0 - EXTREME DETAYLI)
+
+Sistemin kurumsal firmalarla (şirket çalışanları, toplu maaş ödemeleri ve otomatik maaş ayarları) ilgili tüm süreçlerini Monolith'ten koparılarak bağımsızlaştırılmış yeni mikroservisidir.
+
+---
+
+## 🗄️ 1. VERİ TABANI (ENTITY) & KOLON HARİTASI
+Kendine özgü `bank_corporate_db` veritabanını kullanır. Ana backend veritabanından tamamen izoledir.
+### 1.1. Company (Kurumsal Müşteri)
+*   **Alanlar (Fields):** `Long id`, `String companyIdentityNumber` (Backend'deki vergi no ile eşleşen kimlik), `String companyName`, `String taxOffice`, `String contactEmail`, `Boolean autoSalaryPaymentEnabled = false`, `Integer salaryPaymentDay`, `String defaultSalaryIban`.
+
+### 1.2. CompanyEmployee (Şirket Çalışanı)
+*   **Alanlar (Fields):** `Long id`, `Company company` (ManyToOne referans), `String employeeIdentityNumber` (Çalışanın TC Nosu), `String firstName`, `String lastName`, `BigDecimal salaryAmount`, `String salaryIban`. (Eski sistemde doğrudan RetailCustomer nesnesi tutulurken, servislerin ayrılmasıyla sadece TC No tutar).
+
+---
+
+## 📦 2. VERİ TRANSFER OBJELERİ (DTO)
+Bütün Controller ve Feign aktarımlarında kullanılan exact DTO nesneleri:
+
+### 2.1. Request (İstek) DTO'ları
+*   **`CompanySyncRequest`:** `companyIdentityNumber`, `companyName`, `contactEmail`, `taxOffice` (Backend'de şirket onaylandığında buraya senkron olması için atılır).
+*   **`HireEmployeeRequest`:** `identityNumber` (Çalışan TC), `salaryIban`, `salaryAmount`.
+*   **`UpdateEmployeeRequest`:** `salaryIban`, `salaryAmount`.
+*   **`AutoPaymentSettingsRequest`:** `autoPaymentEnabled`, `paymentDay`, `defaultSalaryIban`.
+*   **`SalaryPaymentItem`:** `receiverIban`, `amount`. (Toplu maaş ödeme listesi için iç obje).
+*   **`SalaryPaymentRequest`:** `senderIban`. (Tek seferlik işlem isteği).
+*   **`BulkSalaryRequest`:** `senderIban`, `companyName`, `List<SalaryPaymentItem> salaryItems`. (Backend'e maaş ödeme emri olarak Feign üzerinden giden toplu paket).
+
+### 2.2. Response (Yanıt) DTO'ları
+*   **`CompanyEmployeeResponse`:** `id`, `identityNumber`, `firstName`, `lastName`, `salaryIban`, `salaryAmount`.
+*   **`CustomerProfileResponse`:** `identityNumber`, `firstName`, `lastName`, `email`. (Backend'den Feign ile kimlik doğrulamada döner).
+*   **`AccountValidationResponse`:** `ownerIdentityNumber`, `isActive`. (IBAN Backend'de gerçekten bu TC'ye mi ait diye sorgulandığında döner).
+*   **`AutoPaymentSettingsResponse`:** `autoPaymentEnabled`, `paymentDay`, `defaultSalaryIban`, `message`.
+*   **`TransactionResponse`:** `referenceNo`, `amount`, `transactionType`, `status`, `description`, `transactionDate`, `senderAccountId`, `receiverAccountId`, `convertedAmount`.
+*   **`NotificationMessage`:** (Bildirim servisine atılan) `identityNumber`, `destination`, `subject`, `content`, `notificationType`.
+
+---
+
+## ⚙️ 3. SERVİS VE İŞ MANTIĞI EKSENİ (API & MİKROSERVİS İLETİŞİMİ)
+*   **Ağ Ayarları:** Port: 8085. Eureka'ya `bank-corporate-micro` adıyla kaydolur.
+*   **Güvenlik:** Tıpkı Bill-Service gibi JWT Header'ından API Gateway tarafından çözülmüş `@RequestHeader("X-Identity-Number")` string'ini Security Context olmadan okur ve işlem sahibini belirler.
+*   **Backend Entegrasyonu (FeignClients):**
+    *   Bu servis dış dünyaya kapalı olan veya açık olan backend uç noktalarına vurarak veri doğrulaması yapmak zorundadır. Personel işe alırken IBAN kontrolü (`AccountValidationResponse`) ve kimlik eşleştirme (`CustomerProfileResponse`) için Backend'i sorgular.
+    *   Maaş ödeme günü geldiğinde veya şirket kendisi maaş ödeye bastığında, toplu transfer işlemini kendi veri tabanında (Hesap/Bakiye) yapamayacağı için `BulkSalaryRequest` hazırlayıp Backend'in `/api/v1/internal/transactions/bulk-salary` uç noktasına zıplatır.

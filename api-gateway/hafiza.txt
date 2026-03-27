@@ -38,4 +38,5 @@ Gelen header içindeki token'ı `Jwts.parserBuilder()` kullanarak çözer. `404E
 RouteLocatorBuilder objesi üzerinden kod vasıtasıyla dinamik yollar inşaa edilmiştir. Uygulanan öncelik sıralaması ve rotalar şöyledir:
 1.  **Döviz (`currency-service-route`):** `/api/v1/currencies/**` hedefini yakalar, `http://currency-service:8083` servis adresine zıplatır. (Polis filtresi yok, dış API niteliğinde).
 2.  **Fatura (`bill-service-route`):** `/api/v1/bills/**` hedefini yakalar, `http://bill-service:8084` sunucusuna zıplatır. (AuthenticationFilter - Polis var).
-3.  **Diğer Tüm Yollar (`java-monolith-route`):** `/api/v1/**` (kalan her şey: auth, transactions, accounts vs.) `http://backend:8080` adresine vurur. (AuthenticationFilter - Polis var).
+3.  **Kurumsal Yönetim (`corporate-service-route`):** `/api/v1/companies/employees/**` rotasını yakalar, `http://corporate-service:8085` sunucusuna zıplatır. (AuthenticationFilter - Polis var).
+4.  **Diğer Tüm Yollar (`java-monolith-route`):** `/api/v1/**` (kalan her şey: auth, transactions, accounts vs.) `http://backend:8080` adresine vurur. (AuthenticationFilter - Polis var).

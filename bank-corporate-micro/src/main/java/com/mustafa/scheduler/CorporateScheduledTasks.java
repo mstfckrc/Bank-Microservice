@@ -8,6 +8,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+// 🚀 EKLENEN IMPORTLAR (Güvenlik Kalkanı İçin)
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
+
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -21,7 +26,8 @@ public class CorporateScheduledTasks {
     private final ICompanyRepository companyRepository;
     private final ICompanyEmployeeService companyEmployeeService;
 
-    @Scheduled(cron = "0 0 0 * * *") // Gece yarısı çalışır
+    // Test etmek istersen geçici olarak bunu kullan: @Scheduled(cron = "0 * * * * *") // Her dakika başı
+    @Scheduled(cron = "0 0 0 * * *")
     public void processDailySalaryOperations() {
         int today = LocalDate.now().getDayOfMonth();
 
@@ -40,10 +46,24 @@ public class CorporateScheduledTasks {
 
         for (Company company : companiesToPay) {
             try {
+                // 🚀 BÜYÜK MİMARİ DOKUNUŞ: Robot, o anki şirketin yöneticisinin kimliğine (TC) bürünüyor!
+                // Böylece Feign Telsizi bu TC'yi alıp Karargaha yollayabilecek ve güvenlikten geçecek.
+                UsernamePasswordAuthenticationToken mockAuth = new UsernamePasswordAuthenticationToken(
+                        company.getCompanyIdentityNumber(),
+                        null,
+                        List.of(new SimpleGrantedAuthority("ROLE_CORPORATE_MANAGER"))
+                );
+                SecurityContextHolder.getContext().setAuthentication(mockAuth);
+
+                // Emri Ver!
                 companyEmployeeService.paySalariesAutomatically(company.getId(), company.getDefaultSalaryIban());
                 log.info("  ✅ BAŞARILI: {} şirketinin personellerine maaşları aktarıldı.", company.getCompanyName());
+
             } catch (Exception e) {
                 log.error("  ❌ HATA: {} şirketinin otomatik maaş ödemesi BAŞARISIZ! Sebep: {}", company.getCompanyName(), e.getMessage());
+            } finally {
+                // 🧹 TEMİZLİK: Diğer şirketin işlemine veya hafızaya sızmasın diye kılığı (kimliği) çıkarıp atıyoruz!
+                SecurityContextHolder.clearContext();
             }
         }
 

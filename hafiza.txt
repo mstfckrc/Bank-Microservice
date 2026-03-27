@@ -33,17 +33,22 @@ Yapay zeka asistanı veya yeni bir geliştirici, sisteme dair her şeyi anlamak 
 *   **Ne Yapar?:** Ayrı bir `bank_bill_db` veritabanı kullanır. API Gateway'den auth filtrelerini aşarak gelen istekleri (`X-Identity-Number` header'ı ile) kaydeder. Fatura kesim vakti geldiğinde Backend servisine FeignClient ile bağlanıp hesabından para tahsil ettirir.
 *   **Detay:** `bill-service/hafiza.txt` dosyasına bakınız.
 
-### 6. 🔍 Discovery Server (Eureka Registry)
+### 6. 🏢 Corporate Service (Kurumsal İK & Maaş Servisi)
+*   **Özet:** Kurumsal şirketlerin veri senkronizasyonu, personel yönetimi ve toplu maaş ödemelerini yöneten yeni koparılmış mikroservis. Port: 8085.
+*   **Ne Yapar?:** Kendisine ait `bank_corporate_db` veritabanı vardır. API Gateway'den `X-Identity-Number` başlığı ile gelen kurumsal istekleri devralır. Toplu maaş ödenmesi gerektiğinde parçalı listeyi `BulkSalaryRequest` olarak merkez Banka Backend'ine gönderir.
+*   **Detay:** `bank-corporate-micro/hafiza.txt` dosyasına bakınız.
+
+### 7. 🔍 Discovery Server (Eureka Registry)
 *   **Özet:** Mikroservislerin birbirlerini donanım numaralarıyla (IP) değil, şirket hatlarıyla (İsim) bulmasını sağlayan Santral/Rehber servisidir. Port: 8761.
 *   **Ne Yapar?:** Gateway, Backend ve Notification servisi uyanır uyanmaz bu rehbere kaydedilir.
 *   **Detay:** `discovery-server/hafiza.txt` dosyasına bakınız.
 
-### 7. 📯 Notification Service (RabbitMQ Consumer)
+### 8. 📯 Notification Service (RabbitMQ Consumer)
 *   **Özet:** Postane işlevi gören asenkron bildirim servisidir. Port: 8082.
 *   **Ne Yapar?:** RabbitMQ'daki `notification_queue` kuyruğunda nöbet tutar. Backend'in fırlattığı JSON mesajları dinleyip müşterilere yollanacak olan EMAIL, SMS, PUSH ve SİSTEM ALARMI gibi bildirimleri kullanıcıyı bekletmeden arka planda dağıtır.
 *   **Detay:** `notification-service/hafiza.txt` dosyasına bakınız.
 
-### 8. 📊 Logstash (Merkezi Loglama Sistemi)
+### 9. 📊 Logstash (Merkezi Loglama Sistemi)
 *   **Özet:** Mikroservislerin yapılandırılmış log (günlük) verilerini merkezi bir noktada toplayan veri iletim hattıdır.
 *   **Ne Yapar?:** Tekil bir Java uygulaması ("Spring Boot") gibi çalışmaktan ziyade, Elasticsearch-Logstash-Kibana (ELK) yığınının bir ayağıdır. Sistem geneli logları (veya metrikleri) yakalayıp analiz motorlarına işlemek üzere iletir. Klasör içeriğinde `hafiza.txt` yoktur, sadece `.conf` dosyalarıyla ayarlanır.
 
