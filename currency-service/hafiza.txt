@@ -1,22 +1,23 @@
-# 💶 SEC-DEMO CURRENCY (DÖVİZ) SERVİSİ HAFIZA KARTI (V2.1 - DETAYLI)
+# 💶 SEC-DEMO CURRENCY (DÖVİZ) SERVİSİ HAFIZA KARTI (V4.0 - EXTREME DETAYLI)
 
-Sistemin bağımsız döviz kurları sağlayıcısıdır. Dış dünyadaki döviz API'lerine giden istekleri kendi üzerinde toplayan, hafif ve hızlı bir mikroservistir.
+Sistemin döviz kurlarını güncelleyen mini servisidir. Hedef: Tüm kurları internetten alıp `ExchangeRateResponse` DTO'suna basmak. Veri tabanı (Entity) barındırmaz.
 
 ---
 
-## 🏗️ 1. MİMARİ VE BAĞLANTILAR
-*   **Çekirdek:** Spring Boot (Port: 8083). `bank-currency-micro` adıyla çalışır.
-*   **Keşif (Eureka):** Kendini Discovery Server'a kaydeder (`http://localhost:8761/eureka/`). IP adresi ile tanınmayı tercih eder (`prefer-ip-address: true`).
-*   **İletişim Şekli:** Bu servis banka sisteminin asıl veri tabanına veya RabbitMQ'ya bağlanmaz. Yalnızca HTTP GET isteklerine yanıt verir. Diğer servisler (Örn: Bank-Demo-Backend) bu servise **OpenFeign** üzerinden bağlanır.
+## 🏗️ 1. MİMARİ VE YAPI
+*   **Çekirdek:** Spring Boot (Port: 8083).
+*   **Ağ Ayarı:** `prefer-ip-address: true` ile Eureka'ya (`http://localhost:8761/eureka/`) bağlanır.
 
-## 💱 2. DIŞ API MOTORU VE KONTROLLER (CONTROLLER)
-*   **`CurrencyControllerImpl` & `ICurrencyController`:** 
-    *   `GET /api/v1/currency/rates/{baseCurrency}` endpointi bulunur.
-*   **`CurrencyServiceImpl`:**
-    *   **RestTemplate İzolesi:** Eskiden Monolith'in içinde olan RestTemplate ile dış API bağlantısı (Örn: `https://open.er-api.com/v6/latest/...`) artık tamamen buradadır.
-    *   **İş Mantığı:** Verilen baz kura (Örn: TRY) göre dış internetten JSON kurlarını çeker, bunu kendi `ExchangeRateResponse` objesine (Base, Date, Rates Map) Maple'yerek bankaya döner.
-    *   **Çevirim Matematikleri:** Miktarı verilen iki kur arasında çapraz kur hesabı yaparak çeviren `convertAmount` metodu da bu servistedir.
+## 📦 2. VERİ TRANSFER OBJELERİ (DTO)
+Servisin içerisinde veri taşıyan tek bir Response objesi vardır.
+### 2.1. `ExchangeRateResponse` (Yanıt)
+*   **Alanlar (Fields):**
+    *   `String base_code` (Gelen kur bazı, Örn: "TRY").
+    *   `Map<String, Double> rates` (Karşılık kurları, Örn: `{"USD": 0.03, "EUR": 0.028, "TRY": 1.0}`).
 
-## 🚨 3. YAPAY ZEKA GELİŞTİRİCİ NOTLARI
-*   **Ayrışma (Decoupling):** Dış API çökerse sadece bu servis hata (`BankOperationException`) fırlatır/loglar, ana banka sistemi ayakta kalır ancak sadece dövizli işlemler hata alır.
-*   **Gelecek Eklenti:** İleride Redis gibi bir önbellek (Cache) mekanizması eklenecekse buradaki `getLiveRates` fonksiyonu `@Cacheable` ile desteklenmelidir, böylece dış API'ye atılan saniyelik limitler aşılmaz.
+## ⚙️ 3. SERVİS İŞ MANTIĞI VE API
+*   **Controller:** `CurrencyControllerImpl` (`/api/v1/currencies`).
+    *   **Endpoint:** `GET /rates?base={baseCurrency}` -> Parametre alır (`base`). İstekleri doğrudan `Gateway` üzerinden `PermitAll` olarak herkese açık bir şekilde karşılar.
+*   **Servis:** `CurrencyServiceImpl` (`ICurrencyService`).
+    *   **Metot 1 - `getLiveRates(String baseCurrency)`:** İçerisindeki `RestTemplate` nesnesini kullanarak `https://open.er-api.com/v6/latest/{base}` API'sine GET isteği atar. Dış ağ çökerse `BankOperationException` fırlatır.
+    *   **Metot 2 - `convertAmount(Double amount, String fromCurrency, String toCurrency)`:** Para aynıysa (`from == to`) döviz motorunu yormayıp doğrudan `amount` u döndürür (`return amount;`). Farklıysa `getLiveRates`'i çağırır, dönen `rates` map'inden `toCurrency` değerini çeker (`rate`). `amount * rate` işlemini yaparak `Double result` döner. Eğer istenen para birimi API'de yoksa Exception atar.

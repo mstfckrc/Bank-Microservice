@@ -109,6 +109,26 @@ services:
     networks:
       - bank-network-micro
 
+  # 🏢 YENİ BİRLİĞİMİZ: KURUMSAL İK VE MAAŞ SERVİSİ
+  corporate-service:
+    build:
+      context: ./bank-corporate-micro 
+      dockerfile: Dockerfile
+    container_name: bank_corporate_micro
+    restart: on-failure
+    depends_on:
+      - postgres
+      - rabbitmq
+      - discovery-server
+    environment:
+      - DB_URL=jdbc:postgresql://bank_postgres_micro:5432/bank_corporate_db
+      - SPRING_RABBITMQ_HOST=rabbitmq
+      - EUREKA_URL=http://discovery-server:8761/eureka/
+    ports:
+      - "8085:8085"
+    networks:
+      - bank-network-micro
+
   # 5. VİTRİN (Next.js Frontend)
   frontend:
     build:
@@ -136,7 +156,6 @@ services:
       - "8761:8761" # Nüfus dairesinin kapısı
     networks:
       - bank-network-micro
-
 
   # ==========================================
   # 🕵️‍♂️ ELK İSTİHBARAT AĞI (LOGLAMA SİSTEMİ)

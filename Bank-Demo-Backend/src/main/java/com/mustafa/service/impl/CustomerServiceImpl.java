@@ -6,11 +6,9 @@ import com.mustafa.dto.request.ChangePasswordRequest;
 import com.mustafa.dto.request.UpdateProfileRequest;
 import com.mustafa.dto.response.UserProfileResponse;
 import com.mustafa.entity.AppUser;
-import com.mustafa.entity.Company;
 import com.mustafa.entity.RetailCustomer;
 import com.mustafa.exception.BankOperationException;
 import com.mustafa.repository.IAppUserRepository;
-import com.mustafa.repository.ICompanyRepository;
 import com.mustafa.repository.IRetailCustomerRepository;
 import com.mustafa.service.ICustomerService;
 import lombok.RequiredArgsConstructor;
@@ -20,18 +18,19 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-@Slf4j // 🚀 LOGGER AKTİF
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class CustomerServiceImpl implements ICustomerService {
 
     private final IAppUserRepository appUserRepository;
     private final IRetailCustomerRepository retailCustomerRepository;
-    private final ICompanyRepository companyRepository;
+
+    // 🚀 SİLİNDİ: private final ICompanyRepository companyRepository;
+
     private final PasswordEncoder passwordEncoder;
     private final RabbitMQPublisher rabbitPublisher;
 
-    // 🚀 KVKK Maskeleme Kalkanı
     private String maskIdentity(String identity) {
         if (identity == null || identity.length() <= 4) return "****";
         return "*******" + identity.substring(identity.length() - 4);
@@ -81,25 +80,15 @@ public class CustomerServiceImpl implements ICustomerService {
             email = retail.getEmail();
 
         } else if (appUser.getRole() == AppUser.Role.CORPORATE_MANAGER) {
-            Company company = companyRepository.findByAppUser_IdentityNumber(appUser.getIdentityNumber()).get();
-
-            if (request.getEmail() != null && !request.getEmail().isBlank()) {
-                company.setContactEmail(request.getEmail());
-            }
-
-            if (request.getProfileName() != null && request.getProfileName().trim().length() >= 3) {
-                company.setCompanyName(request.getProfileName().trim());
-            }
-            companyRepository.save(company);
-
-            profileName = company.getCompanyName();
-            email = company.getContactEmail();
+            // 🚀 BÜYÜK DEĞİŞİM: Kurumsal bilgilerin Karargahtan güncellenmesi ENGELLENDİ.
+            log.warn("Profil güncelleme reddedildi: Kurumsal müşteri ({}) bilgileri Karargahtan güncellenemez.", maskedId);
+            throw new BankOperationException("Kurumsal profil bilgileri (Şirket Adı, E-posta) sadece Kurumsal Yönetim modülünden (Mikroservisten) güncellenebilir!");
         }
 
         log.info("Profil başarıyla güncellendi. Kullanıcı: {}", maskedId);
 
         NotificationMessage profileMessage = NotificationMessage.builder()
-                .destination(email) // Müşterinin yeni e-posta adresi
+                .destination(email)
                 .subject("Profil Bilgileriniz Güncellendi")
                 .content("Müşteri profil bilgileriniz başarıyla güncellenmiştir. Yeni iletişim adresiniz: " + email)
                 .identityNumber(maskedId)
@@ -107,6 +96,7 @@ public class CustomerServiceImpl implements ICustomerService {
                 .build();
 
         rabbitPublisher.sendNotification(profileMessage);
+
         return UserProfileResponse.builder()
                 .identityNumber(appUser.getIdentityNumber())
                 .profileName(profileName)
@@ -135,13 +125,12 @@ public class CustomerServiceImpl implements ICustomerService {
         appUser.setPassword(passwordEncoder.encode(request.getNewPassword()));
         appUserRepository.save(appUser);
 
-        // YENİ HALİ: Siber Güvenlik Alarm DTO'su
         NotificationMessage securityMessage = NotificationMessage.builder()
-                .destination(appUser.getIdentityNumber()) // SMS atılacağı için hedef olarak kimlik no veya telefon verilebilir
+                .destination(appUser.getIdentityNumber())
                 .subject("🚨 Güvenlik Uyarısı: Şifreniz Değiştirildi")
                 .content("Dijital bankacılık şifreniz az önce değiştirildi. Bu işlemi siz gerçekleştirmediyseniz lütfen acilen müşteri hizmetlerimizle iletişime geçiniz!")
                 .identityNumber(maskedId)
-                .notificationType(NotificationMessage.NotificationType.SMS) // Acil durum olduğu için SMS!
+                .notificationType(NotificationMessage.NotificationType.SMS)
                 .build();
 
         rabbitPublisher.sendNotification(securityMessage);
@@ -161,9 +150,10 @@ public class CustomerServiceImpl implements ICustomerService {
             profileName = retail.getFirstName() + " " + retail.getLastName();
             email = retail.getEmail();
         } else if (appUser.getRole() == AppUser.Role.CORPORATE_MANAGER) {
-            Company company = companyRepository.findByAppUser_IdentityNumber(appUser.getIdentityNumber()).get();
-            profileName = company.getCompanyName();
-            email = company.getContactEmail();
+            // 🚀 DEĞİŞİKLİK: Kurumsal Müşteri Karargahta profil detaylarını çektiğinde genel bir isim ve e-posta görür
+            // İleride bu detayı Feign Client ile Kurumsal Servisten çekebiliriz. Şimdilik sistemin çökmesini engelliyoruz.
+            profileName = "Kurumsal Müşteri (" + appUser.getIdentityNumber() + ")";
+            email = "kurumsal@sistem.com";
         } else {
             profileName = "Sistem Yöneticisi";
             email = "admin@bank.com";
@@ -193,13 +183,13 @@ public class CustomerServiceImpl implements ICustomerService {
         appUser.setStatus(AppUser.ApprovalStatus.PENDING);
         appUserRepository.save(appUser);
         log.info("Yeniden değerlendirme talebi başarıyla işleme alındı. Durum PENDING yapıldı. Kullanıcı: {}", maskedId);
-        // YENİ HALİ: Admin İtiraz (Appeal) DTO'su
+
         NotificationMessage appealMessage = NotificationMessage.builder()
-                .destination("admin@bank.com") // Doğrudan admin yetkilisine gidiyor
+                .destination("admin@bank.com")
                 .subject("Yeni Hesap Onay İtirazı (Appeal)")
                 .content(String.format("Dikkat: %s kimlik numaralı müşteri, reddedilen hesabı için yeniden değerlendirme talep etmektedir. Lütfen paneli kontrol edin.", maskedId))
                 .identityNumber(maskedId)
-                .notificationType(NotificationMessage.NotificationType.SYSTEM_ALERT) // Sistem Alarmı
+                .notificationType(NotificationMessage.NotificationType.SYSTEM_ALERT)
                 .build();
 
         rabbitPublisher.sendNotification(appealMessage);

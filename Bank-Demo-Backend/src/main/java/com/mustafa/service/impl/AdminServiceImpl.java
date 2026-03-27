@@ -9,13 +9,11 @@ import com.mustafa.dto.response.TransactionResponse;
 import com.mustafa.dto.response.UserProfileResponse;
 import com.mustafa.entity.Account;
 import com.mustafa.entity.AppUser;
-import com.mustafa.entity.Company;
 import com.mustafa.entity.RetailCustomer;
 import com.mustafa.entity.Transaction;
 import com.mustafa.exception.BankOperationException;
 import com.mustafa.repository.IAccountRepository;
 import com.mustafa.repository.IAppUserRepository;
-import com.mustafa.repository.ICompanyRepository;
 import com.mustafa.repository.IRetailCustomerRepository;
 import com.mustafa.repository.ITransactionRepository;
 import com.mustafa.service.IAdminService;
@@ -27,45 +25,43 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.stream.Collectors;
 
-@Slf4j // 🚀 LOGGER AKTİF
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AdminServiceImpl implements IAdminService {
 
     private final IAppUserRepository appUserRepository;
     private final IRetailCustomerRepository retailCustomerRepository;
-    private final ICompanyRepository companyRepository;
     private final IAccountRepository accountRepository;
     private final ITransactionRepository transactionRepository;
 
+    // 🚀 SİLİNDİ: private final ICompanyRepository companyRepository;
+
     private final RabbitMQPublisher rabbitPublisher;
 
-    // 🚀 KVKK Maskeleme Kalkanı
     private String maskIdentity(String identity) {
         if (identity == null || identity.length() <= 4) return "****";
         return "*******" + identity.substring(identity.length() - 4);
     }
 
-    // Ortak Yardımcı Metot: Şirket veya Bireyin ismini bulur
+    // 🚀 DÜZELTİLDİ: Kurumsal şirket detayları Karargahta olmadığı için genel bir isim dönüyoruz
     private String getOwnerName(AppUser appUser) {
         if (appUser.getRole() == AppUser.Role.RETAIL_CUSTOMER) {
             return retailCustomerRepository.findByAppUser_IdentityNumber(appUser.getIdentityNumber())
                     .map(r -> r.getFirstName() + " " + r.getLastName()).orElse("Bilinmeyen Birey");
         } else if (appUser.getRole() == AppUser.Role.CORPORATE_MANAGER) {
-            return companyRepository.findByAppUser_IdentityNumber(appUser.getIdentityNumber())
-                    .map(Company::getCompanyName).orElse("Bilinmeyen Şirket");
+            return "Kurumsal Müşteri (" + appUser.getIdentityNumber() + ")";
         }
         return "Sistem Yöneticisi";
     }
 
-    // Ortak Yardımcı Metot: Email adresini bulur
+    // 🚀 DÜZELTİLDİ: Kurumsal şirket e-postası Karargahta yok, genel veya boş dönebiliriz.
     private String getOwnerEmail(AppUser appUser) {
         if (appUser.getRole() == AppUser.Role.RETAIL_CUSTOMER) {
             return retailCustomerRepository.findByAppUser_IdentityNumber(appUser.getIdentityNumber())
                     .map(RetailCustomer::getEmail).orElse("");
         } else if (appUser.getRole() == AppUser.Role.CORPORATE_MANAGER) {
-            return companyRepository.findByAppUser_IdentityNumber(appUser.getIdentityNumber())
-                    .map(Company::getContactEmail).orElse("");
+            return "kurumsal@sistem.com"; // İleride bu bilgiyi Feign ile Kurumsal Servisten de çekebiliriz.
         }
         return "admin@bank.com";
     }
@@ -142,11 +138,10 @@ public class AdminServiceImpl implements IAdminService {
         appUserRepository.delete(appUser);
         log.info("Admin İşlemi Başarılı: Müşteri ({}) ve bağlı tüm hesapları sistemden tamamen (Cascade) silindi.", maskedId);
 
-        // YENİ HALİ: Müşteri Silinme DTO'su
         NotificationMessage deleteMessage = NotificationMessage.builder()
-                .destination("admin@bank.com") // Sistem yöneticisi e-postası veya log kanalı
+                .destination("admin@bank.com")
                 .subject("ADMİN İŞLEMİ: Müşteri Kaydı Silindi")
-                .content(String.format("Sistem yöneticisi tarafından %s kimlik numaralı müşterinin kaydı ve bağlı tüm hesapları (Cascade) tamamen silinmiştir.", maskedId))
+                .content(String.format("Sistem yöneticisi tarafından %s kimlik numaralı müşterinin kaydı ve bağlı tüm hesapları tamamen silinmiştir.", maskedId))
                 .identityNumber(maskedId)
                 .notificationType(NotificationMessage.NotificationType.SYSTEM_ALERT)
                 .build();
@@ -187,30 +182,23 @@ public class AdminServiceImpl implements IAdminService {
             retailCustomerRepository.save(retail);
 
         } else if (appUser.getRole() == AppUser.Role.CORPORATE_MANAGER) {
-            Company company = companyRepository.findByAppUser_IdentityNumber(identityNumber).get();
-
-            if (request.getEmail() != null && !request.getEmail().isBlank()) {
-                company.setContactEmail(request.getEmail());
-            }
-
-            if (request.getProfileName() != null && !request.getProfileName().isBlank()) {
-                company.setCompanyName(request.getProfileName().trim());
-            }
-            companyRepository.save(company);
+            // 🚀 DÜZELTİLDİ: Kurumsal bilgileri (Şirket adı, maili) Karargahta (Monolith) bulunmadığı için güncelleyemeyiz!
+            log.warn("Admin İşlemi Reddedildi: Kurumsal müşteri bilgileri Karargahtan güncellenemez.");
+            throw new BankOperationException("Kurumsal şirket bilgileri (isim, e-posta) bu sistemden güncellenemez. Kurumsal mikroservis arayüzünü kullanmalısınız!");
         }
 
         log.info("Admin İşlemi Başarılı: Müşteri ({}) profil bilgileri güncellendi.", maskedId);
 
-// YENİ HALİ: Profil Güncelleme DTO'su
         NotificationMessage updateMessage = NotificationMessage.builder()
-                .destination(getOwnerEmail(appUser)) // Müşterinin güncel e-postası
+                .destination(getOwnerEmail(appUser))
                 .subject("Profil Bilgileriniz Güncellendi (Sistem Yöneticisi)")
-                .content("Müşteri profil bilgileriniz sistem yöneticisi tarafından güncellenmiştir. Herhangi bir sorunuz varsa lütfen müşteri hizmetleri ile iletişime geçiniz.")
+                .content("Müşteri profil bilgileriniz sistem yöneticisi tarafından güncellenmiştir.")
                 .identityNumber(maskedId)
                 .notificationType(NotificationMessage.NotificationType.EMAIL)
                 .build();
 
         rabbitPublisher.sendNotification(updateMessage);
+
         return UserProfileResponse.builder()
                 .identityNumber(appUser.getIdentityNumber())
                 .profileName(getOwnerName(appUser))
@@ -281,7 +269,6 @@ public class AdminServiceImpl implements IAdminService {
         Account savedAccount = accountRepository.save(newAccount);
         log.info("Admin İşlemi Başarılı: Müşteriye ({}) yeni hesap (No: {}, Döviz: {}) açıldı.", maskedId, generatedAccountNumber, accountCurrency);
 
-// YENİ HALİ: Yeni Kasa Açılış DTO'su
         NotificationMessage accountMessage = NotificationMessage.builder()
                 .destination(getOwnerEmail(appUser))
                 .subject("Yeni Banka Hesabınız Açıldı")
@@ -292,6 +279,7 @@ public class AdminServiceImpl implements IAdminService {
                 .build();
 
         rabbitPublisher.sendNotification(accountMessage);
+
         return AccountResponse.builder()
                 .id(savedAccount.getId())
                 .accountNumber(savedAccount.getAccountNumber())
@@ -320,7 +308,6 @@ public class AdminServiceImpl implements IAdminService {
 
         log.info("Admin İşlemi Başarılı: Müşterinin ({}) sistem durumu [{}] olarak güncellendi.", maskedId, status.toUpperCase());
 
-// YENİ HALİ: Onay/Ret Durumu DTO'su
         NotificationMessage statusMessage = NotificationMessage.builder()
                 .destination(getOwnerEmail(appUser))
                 .subject("Hesap Durumunuz Güncellendi")
@@ -330,5 +317,6 @@ public class AdminServiceImpl implements IAdminService {
                 .notificationType(NotificationMessage.NotificationType.EMAIL)
                 .build();
 
-        rabbitPublisher.sendNotification(statusMessage);    }
+        rabbitPublisher.sendNotification(statusMessage);
+    }
 }

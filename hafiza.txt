@@ -49,4 +49,4 @@ Yapay zeka asistanı veya yeni bir geliştirici, sisteme dair her şeyi anlamak 
 
 ---
 
-> 💡 **NOT:** Sisteme eklenen her yeni modül veya uç nokta sonrasında, ilgili klasöründeki alt `hafiza.txt` dosyası kesinlikle güncellenmelidir. En ince teknik detayı (Class isimleri, DTO bağlamları ve JPA kuralları) alt klasörlerde bulabilirsiniz.
+> 💡 **KRİTİK NOT:** Klasörlerin içindeki `hafiza.txt` dosyaları artık sadece iş mantığını değil; **sistemdeki tüm DTO'ları, Entity veritabanı kolonlarını, Enum tiplerini ve güvenlik middleware'lerini (Zustand, Proxy) kod seviyesinde tırnağı tırnağına içerir.** Yapay zekaya kod yazdırmadan önce, o servisin hafıza dosyasını okutursanız class ve property isimlerini %100 kusursuz tahmin edecektir.

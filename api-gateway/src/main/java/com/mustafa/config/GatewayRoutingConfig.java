@@ -15,7 +15,7 @@ public class GatewayRoutingConfig {
         this.authenticationFilter = authenticationFilter;
     }
 
-    // 🗺️ KUSURSUZ HARİTA MERKEZİ (CORS işini CorsConfig.java'ya bıraktık)
+    // 🗺️ KUSURSUZ HARİTA MERKEZİ
     @Bean
     public RouteLocator customRouteLocator(RouteLocatorBuilder builder) {
         AuthenticationFilter.Config filterConfig = new AuthenticationFilter.Config();
@@ -30,7 +30,15 @@ public class GatewayRoutingConfig {
                         .filters(f -> f.filter(authenticationFilter.apply(filterConfig)))
                         .uri("http://bill-service:8084"))
 
-                // 3. KARARGAH: Geri kalan her şey (Auth, Login vs.)
+                // 🚀 3. YENİ ÖNCELİK: Kurumsal Yönetim (İK ve Maaş Servisi)
+                .route("corporate-service-route", r -> r.path("/api/v1/companies/employees/**")
+                        // Güvenlik filtresinden geçir, token'ı doğrula ve TC'yi (Identity) Header'a koy!
+                        .filters(f -> f.filter(authenticationFilter.apply(filterConfig)))
+                        // Docker-Compose dosyasındaki servis adın neyse onu yazıyoruz (Örn: bank-corporate-micro)
+                        .uri("http://corporate-service:8085"))
+
+                // 4. KARARGAH: Geri kalan her şey (Auth, Bireysel Müşteriler, Admin vs.)
+                // (DİKKAT: Bu her zaman en altta kalmalı ki üsttekilerle eşleşmeyen her şey buraya düşsün)
                 .route("java-monolith-route", r -> r.path("/api/v1/**")
                         .filters(f -> f.filter(authenticationFilter.apply(filterConfig)))
                         .uri("http://backend:8080"))

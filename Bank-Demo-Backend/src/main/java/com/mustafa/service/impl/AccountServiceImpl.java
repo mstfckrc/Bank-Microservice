@@ -6,11 +6,9 @@ import com.mustafa.dto.request.CreateAccountRequest;
 import com.mustafa.dto.response.AccountResponse;
 import com.mustafa.entity.Account;
 import com.mustafa.entity.AppUser;
-import com.mustafa.entity.Company;
 import com.mustafa.exception.BankOperationException;
 import com.mustafa.repository.IAccountRepository;
 import com.mustafa.repository.IAppUserRepository;
-import com.mustafa.repository.ICompanyRepository;
 import com.mustafa.repository.IRetailCustomerRepository;
 import com.mustafa.service.IAccountService;
 import com.mustafa.util.AccountUtils;
@@ -25,7 +23,7 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.stream.Collectors;
 
-@Slf4j // 🚀 LOGGER AKTİF
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AccountServiceImpl implements IAccountService {
@@ -33,11 +31,11 @@ public class AccountServiceImpl implements IAccountService {
     private final IAccountRepository accountRepository;
     private final IAppUserRepository appUserRepository;
     private final IRetailCustomerRepository retailCustomerRepository;
-    private final ICompanyRepository companyRepository;
+
+    // 🚀 SİLİNDİ: private final ICompanyRepository companyRepository; (Artık Karargahta Şirket Yok!)
 
     private final RabbitMQPublisher rabbitPublisher;
 
-    // 🚀 KVKK Maskeleme
     private String maskIdentity(String identity) {
         if (identity == null || identity.length() <= 4) return "****";
         return "*******" + identity.substring(identity.length() - 4);
@@ -49,13 +47,13 @@ public class AccountServiceImpl implements IAccountService {
                 .orElseThrow(() -> new RuntimeException("Yetkili kullanıcı bulunamadı!"));
     }
 
+    // 🚀 DÜZELTİLDİ: Kurumsal müşterinin adını artık Karargah bilmediği için VKN/TC ile dönüyoruz.
     private String getOwnerName(AppUser appUser) {
         if (appUser.getRole() == AppUser.Role.RETAIL_CUSTOMER) {
             return retailCustomerRepository.findByAppUser_IdentityNumber(appUser.getIdentityNumber())
                     .map(r -> r.getFirstName() + " " + r.getLastName()).orElse("Bilinmeyen Birey");
         } else if (appUser.getRole() == AppUser.Role.CORPORATE_MANAGER) {
-            return companyRepository.findByAppUser_IdentityNumber(appUser.getIdentityNumber())
-                    .map(Company::getCompanyName).orElse("Bilinmeyen Şirket");
+            return "Kurumsal Müşteri (" + appUser.getIdentityNumber() + ")";
         }
         return "Sistem Yöneticisi";
     }
@@ -92,10 +90,8 @@ public class AccountServiceImpl implements IAccountService {
         Account savedAccount = accountRepository.save(newAccount);
         log.info("Hesap başarıyla oluşturuldu. Hesap No: {}, IBAN: {}, Sahibi: {}", accountNumber, iban, maskedId);
 
-        // Müşteriye "Hesabınız açıldı" maili/SMS'i atılması için arka plana iş bırakıyoruz.
-// YENİ HALİ: Yeni Kasa Açılış DTO'su
         NotificationMessage openAccountMessage = NotificationMessage.builder()
-                .destination(currentUser.getIdentityNumber()) // İleride e-posta servisine bağlanabilir
+                .destination(currentUser.getIdentityNumber())
                 .subject("🎉 Yeni Banka Hesabınız Açıldı")
                 .content(String.format("Sayın kullanıcımız, bankamız nezdinde %s döviz cinsinden %s numaralı (IBAN: %s) yeni hesabınız başarıyla açılmıştır. İyi günlerde kullanın.",
                         request.getCurrency(), accountNumber, iban))
@@ -176,17 +172,17 @@ public class AccountServiceImpl implements IAccountService {
         accountRepository.save(account);
         log.info("Hesap başarıyla pasife alındı (Kapatıldı). Hesap No: {}", accountNumber);
 
-        // YENİ HALİ: Hesap Kapatma DTO'su
         NotificationMessage closeAccountMessage = NotificationMessage.builder()
                 .destination(currentUser.getIdentityNumber())
                 .subject("Hesap Kapatma İşlemi Başarılı")
                 .content(String.format("Bankamızdaki %s numaralı %s hesabınız isteğiniz üzerine / güvenlik kuralları gereği başarıyla kapatılmış (pasife alınmış) durumdadır.",
                         accountNumber, account.getCurrency()))
                 .identityNumber(maskedId)
-                .notificationType(NotificationMessage.NotificationType.EMAIL) // veya SMS
+                .notificationType(NotificationMessage.NotificationType.EMAIL)
                 .build();
 
-        rabbitPublisher.sendNotification(closeAccountMessage);}
+        rabbitPublisher.sendNotification(closeAccountMessage);
+    }
 
     private AccountResponse mapToResponse(Account account) {
         return AccountResponse.builder()

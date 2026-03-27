@@ -1,26 +1,34 @@
-# 📯 SEC-DEMO NOTIFICATION (BİLDİRİM) SERVİSİ HAFIZA KARTI (V2.1 - DETAYLI)
+# 📯 SEC-DEMO NOTIFICATION (BİLDİRİM) SERVİSİ HAFIZA KARTI (V4.0 - EXTREME DETAYLI)
 
-Sistemin olay güdümlü (Event-Driven) iletişiminden sorumlu, diğer tüm servislerden tamamen izole olarak çalışan asenkron işçisidir.
+Sistemin olay güdümlü asenkron bildiricisidir. Sadece RabbitMQ kuyruğundan mesaj çekip loglar ve simüle eder. REST API (Controller) ve DB barındırmaz.
 
 ---
 
-## 🏗️ 1. MİMARİ VE BAĞLANTILAR
-*   **Çekirdek:** Spring Boot (Port: 8082).
-*   **Keşif (Eureka):** Kendini `notification-service` adıyla Discovery Server'a kaydeder.
-*   **Altyapı (RabbitMQ):** Banka sistemindeki `bank_exchange` dağıtıcısından gelen mesajları bekler.
+## 🏗️ 1. MİMARİ
+*   **Çekirdek:** Spring Boot. Port: 8082. `notification-service` adıyla Eureka'ya bağlı.
+*   **MQ Bağlantısı:** `localhost:5672` (RabbitMQ).
 
-## 🎧 2. DİNLEME MANTIĞI VE kuyruk (LISTENER KONSOLU)
-*   **Merkez:** `NotificationListener.java` sınıfı, RabbitMQ'nun `notification_queue` adlı gişesinde (Kuyruk) nöbet tutar.
-*   **Veri Formatı:** Backend tarafından fırlatılan nesneler, RabbitMQ'da `Jackson2JsonMessageConverter` sayesinde **JSON Zarfı (`NotificationMessage`)** olarak gelir ve bu servis onu direkt JSON'dan Obje formatına döndürür.
-*   **NotificationMessage Yapısı:**
-    *   `notificationType`: (Tip: `SMS`, `EMAIL`, `PUSH_NOTIFICATION`, `SYSTEM_ALERT`)
-    *   `destination`: (Hedef Örn: `iletisim@mustafa.com` veya `5551234567`)
-    *   `subject`: Konu başlığı (Örn: `Hesap Açılışı` veya `Dekont Bilgisi`)
-    *   `content`: Uzun mesaj içeriği.
+## 📦 2. VERİ TRANSFER BİLEŞENLERİ (DTO MAPPINGS)
+Gelen JSON mesajı `@RabbitListener` üzerinde `Jackson2JsonMessageConverter` sayesinde doğrudan Java objesine çevrilmektedir.
 
-## 🛠️ 3. İŞ KURALI VE GÖNDERİM
-*   Listener uyandığı an bir `switch-case` yapısına girer. Gelen tipe göre log bastırır ve o tipin özel gönderici koduna (Email ise STMP Server, SMS ise Netgsm vb.) bağlanır.
-*   Mevcut durumda log bastıktan sonra `Thread.sleep(2000)` ile 2 saniye ağ gecikmesi simüle ederek (Senkronizasyonu test etmek için) mesaj gönderildi onayı verir.
+### 2.1. `NotificationMessage` (Gelen DTO)
+Bu DTO, ana backend projesindeki yapıyla %100 birebir olmalıdır.
+*   **Alanlar (Fields):**
+    *   `String identityNumber` (Müşteri TC No)
+    *   `String destination` (Email/Tel vs)
+    *   `String subject` (Mail konusu vs)
+    *   `String content` (Gönderilecek uzun yazı)
+    *   `NotificationType notificationType` (Enum Tipi).
 
-## 🚨 4. YAPAY ZEKA GELİŞTİRİCİ NOTLARI
-*   Sistem eklemelerinde (Örn: Webhook fırlatma) model tarafındaki Enum `NotificationType` güncellenmeli ve bu servisteki Switch-Case'e case `WEBHOOK:` eklenmelidir.
+### 2.2. `NotificationType` (Enum)
+*   **Değerler:** `EMAIL`, `SMS`, `PUSH_NOTIFICATION`, `SYSTEM_ALERT`.
+
+## ⚙️ 3. DİNLEYİCİ MANTIĞI (LISTENER)
+*   **Sınıf:** `NotificationListener`
+*   **Kuyruk Nöbeti:** `@RabbitListener(queues = RabbitMQConfig.NOTIFICATION_QUEUE)` ("notification_queue") kuyruğunu tutar.
+*   **Çalışma Ritmi:**
+    1.  Mesaj gelir gelmez Terminale `[POSTANE NÖBETÇİSİ UYANDI]` logunu atar.
+    2.  `switch (notification.getNotificationType())` ile Enum tipine göre farklı log bloklarına (`Email gönderiliyor...` vb) girer.
+    3.  `Thread.sleep(2000)` ile işlemi 2 tam saniye bekleterek asenkron çalışmayı ağrılı gösterir (Test amaçlı yapay yük).
+    4.  `[✅ GÖREV TAMAM: Bildirim iletildi.]` logunu üretir ve işlemi bitirir. Hata olursa `InterruptedException` yakalayıp `error` loguna basar.
+    5.  Mesaj kuyruktan silinir.

@@ -1,23 +1,42 @@
-# 🧾 SEC-DEMO BILL (FATURA) SERVİSİ HAFIZA KARTI (V3.0 - DETAYLI)
+# 🧾 SEC-DEMO BILL (FATURA) SERVİSİ HAFIZA KARTI (V4.0 - EXTREME DETAYLI)
 
-Sistemin otomatik fatura ödeme işlemlerini, bağımsız bir mikroservis yapısıyla ele alan zamanlanmış (Scheduled) motorudur.
+Sistemin otomatik fatura ödeme işlemlerini, bağımsız bir mikroservis yapısıyla ele alan motorudur. Yapay zekanın tahminsiz kod yazabilmesi için tüm sınıflar tırnağına kadar aşağıdadır.
 
 ---
 
-## 🏗️ 1. MİMARİ VE BAĞLANTILAR
-*   **Çekirdek:** Spring Boot (Port: 8084). `bank-bill-micro` adıyla çalışır.
-*   **Veri Tabanı:** Kendine ait ayrı bir Veri Tabanı (`bank_bill_db`) kullanır. Ana bankacılık db'sinden (`bank_db`) izoledir.
-*   **RabbitMQ:** İşlemler bittiğinde mesaj gönderebilmek için `bank_exchange` santraline doğrudan bağlıdır.
-*   **İletişim:** Ana backend'e `BackendServiceClient` (OpenFeign) vasıtasıyla HTTP üzerinden konuşur.
+## 🗄️ 1. VERİ TABANI (ENTITY) & KOLON HARİTASI
+Veritabanı (`bank_bill_db`) işlemleri JPA ile yönetilir. Sadece 1 adet tablosu vardır:
 
-## 🛡️ 2. GÜVENLİK VE GATEWAY İLİŞKİSİ
-*   **X-Identity-Number Başlığı:** Bu servis artık gelen HTTP isteklerinde `Principal` (oturum) aramaz. Tüm güvenlik API Gateway'de halledilmiştir. Gateway token'ı açar ve kişinin TC'sini `X-Identity-Number` header'ı olarak bu servise gönderir (`BillPaymentControllerImpl`). Servis, gelen isteğin sahibini sadece bu header'dan yakalar.
+### 1.1. BillPaymentInstruction (Fatura Talimatı)
+*   **Alanlar (Fields):** `Long id`, `String identityNumber` (Müşterinin kimliği), `Long accountId` (Ana Karargahtaki kasanın sadece ID'si), `String iban` (Ön yüzde göstermek için sakladığımız IBAN), `BillType billType` (Enum: ELECTRICITY, WATER, INTERNET, GAS), `String subscriberNo`, `Integer paymentDay`, `LocalDate lastPaymentDate`, `boolean isActive` (Default true).
 
-## ⚙️ 3. SERVİS VE İŞ MANTIĞI EKSENİ
-*   **`BillPaymentControllerImpl`:** Fatura talimatı verme (`createInstruction`), listeleme veya silme isteklerini dış dünyadan (Gateway üzerinden) karşılar.
-*   **`ExternalBillMockServiceImpl`:** Gerçek hayattaki elektrik/su kurumu gibi davranarak abonenin sözde borcunu simüle eder.
-*   **`BillScheduledTasks` (Motor):** Her gece saat tam 00:00'da (`cron = "0 0 0 * * *"`) uyanır. O gün ödenmesi gereken faturaları DB'den çeker ve `payBillAutomatically` fonksiyonunu tetikler.
-*   **`BackendServiceClient` (Tahsilat):** Fatura tahsil edilecekse, para kesme işlemi için bu servis `bank-demo-backend` içerisindeki gizli ve kapalı olan `/api/v1/internal/transactions/bill-payment` uç noktasına emir gönderir. 
+---
 
-## 🚨 4. YAPAY ZEKA GELİŞTİRİCİ NOTLARI
-*   Bu servisteki herhangi bir Controller'a yeni bir Endpoint açıldığında, kimlik tespiti kesinlikle `@RequestHeader("X-Identity-Number") String identityNumber` parametresiyle yapılmalıdır. Security Context veya JWT sınıfları bu mikroservisin içinde yer almaz, gereksiz kütüphane eklemeyin.
+## 📦 2. VERİ TRANSFER OBJELERİ (DTO)
+Tüm request/response aktarım paketleri tam olarak aşağıdadır. Hiçbir eksik veya fazla alan yoktur.
+
+### 2.1. Request (İstek) DTO'ları
+*   **`BillInstructionRequest`:** `Long accountId`, `String billType`, `String subscriberNo`, `Integer paymentDay`.
+*   **`InternalPaymentRequest`:** `Long accountId`, `BigDecimal amount`, `String description`. (Backend'den para çekmek için Feign üzerinden gönderilen obje).
+
+### 2.2. Response (Yanıt) DTO'ları
+*   **`BillInstructionResponse`:** `Long id`, `String identityNumber`, `Long accountId`, `String iban`, `String billType`, `String subscriberNo`, `Integer paymentDay`, `LocalDate lastPaymentDate`, `boolean isActive`.
+*   **`NotificationMessage`:** `String identityNumber`, `String destination`, `String subject`, `String content`, `NotificationType notificationType`. (RabbitMQ'ya fırlatılan asenkron e-posta/sms objesi).
+
+---
+
+## ⚙️ 3. SERVİS VE İŞ MANTIĞI EKSENİ (API & SCHEDULER)
+
+### 3.1. Controller (`/api/v1/bills/instructions`)
+*   **Güvenlik:** `@RequestHeader("X-Identity-Number") String identityNumber` ile kimlik yakalanır. SecurityContext yoktur.
+*   **`POST /`:** `BillInstructionRequest` alır. Validasyon yapar. Identity ile birlikte yeni talimat (`BillPaymentInstruction`) kaydeder.
+*   **`GET /`:** Gönderen `X-Identity-Number`'a ait sadece `isActive=true` olan talimatları listeler.
+*   **`DELETE /{id}`:** İlgili talimatı Soft Delete yapar (`isActive = false`).
+
+### 3.2. Zamanlanmış Görev (Cron Job Motoru)
+*   **`BillScheduledTasks`:** İçerisinde `@Scheduled(cron = "0 0 0 * * *")` anotasyonu bulunur. Her gece 00:00'da uyanır. `LocalDate.now().getDayOfMonth()` ile o günki faturası olan aktif kayıtları bulur.
+*   **Ödeme Adımları:**
+    1.  `ExternalBillMockServiceImpl.getDebt()` ile (abone no ve tipe göre) fake bir borç tutarı oluşturulur.
+    2.  `BackendServiceClient.deductBillPayment(identityNumber, InternalPaymentRequest)` FeignClient metoduyla ana backend'e (`POST /api/v1/internal/transactions/bill-payment`) vurulur, müşterinin hesabından o miktar düşülür.
+    3.  Tarih güncellenir (`lastPaymentDate = LocalDate.now()`).
+    4.  `bank_exchange` (RabbitMQ) kuyruğuna EMAIL bildirim paketi atılır.

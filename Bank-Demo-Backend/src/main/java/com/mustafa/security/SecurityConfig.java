@@ -19,35 +19,40 @@ public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthFilter;
     private final AuthenticationProvider authenticationProvider;
 
+    // 🚀 YENİ MİMARİ: İç hat (Internal) telsizlerini dinleyecek filtremizi ekledik
+    private final InternalHeaderFilter internalHeaderFilter;
+
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(AbstractHttpConfigurer::disable)
-                // ... diğer kodlar aynı
                 .authorizeHttpRequests(auth -> auth
+                        // Herkese açık dış kapılar
                         .requestMatchers("/api/v1/auth/**").permitAll()
                         .requestMatchers("/v3/api-docs/**").permitAll()
                         .requestMatchers("/swagger-ui/**").permitAll()
                         .requestMatchers("/swagger-ui.html").permitAll()
                         .requestMatchers("/api/v1/currencies/rates").permitAll()
 
-                        // 🚀 V2 YAMASI: Kurumsal Yöneticiler için güvenli bölge
-                        .requestMatchers("/api/v1/companies/employees/**").hasRole("CORPORATE_MANAGER")
-
-                        // Admin yetkileri
+                        // Admin yetkileri gerektiren kapılar
                         .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
 
-                        // 🚀 YENİ: İç hatlar telsiz kapısında kimlik/JWT sorma, direkt içeri al!
+                        // 🚀 İÇ KAPILAR: Dışarıdan JWT istenmez, ama içeride bizim InternalHeaderFilter'ımız TC'yi yakalayıp Context'e koyar!
                         .requestMatchers("/api/v1/internal/**").permitAll()
 
+                        // Geri kalan tüm istekler için JWT token zorunlu
                         .anyRequest().authenticated()
                 )
-// ...
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
                 .authenticationProvider(authenticationProvider)
+
+                // 🛡️ ZIRHLARI GİYİYORUZ (Sıralama Önemlidir)
+                // 1. Önce iç hattan gelen mikroservis telsizlerini (Header) kontrol et
+                .addFilterBefore(internalHeaderFilter, UsernamePasswordAuthenticationFilter.class)
+                // 2. Sonra dışarıdan gelen normal kullanıcıların JWT'lerini kontrol et
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();

@@ -1,16 +1,16 @@
 package com.mustafa.service.impl;
 
+import com.mustafa.client.CompanyServiceClient;
 import com.mustafa.dto.message.NotificationMessage;
 import com.mustafa.messaging.publisher.RabbitMQPublisher;
+import com.mustafa.dto.request.CompanySyncRequest;
 import com.mustafa.dto.request.LoginRequest;
 import com.mustafa.dto.request.RegisterRequest;
 import com.mustafa.dto.response.AuthResponse;
 import com.mustafa.entity.AppUser;
-import com.mustafa.entity.Company;
 import com.mustafa.entity.RetailCustomer;
 import com.mustafa.exception.BankOperationException;
 import com.mustafa.repository.IAppUserRepository;
-import com.mustafa.repository.ICompanyRepository;
 import com.mustafa.repository.IRetailCustomerRepository;
 import com.mustafa.security.JwtService;
 import com.mustafa.service.IAuthService;
@@ -22,21 +22,22 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-@Slf4j // 🚀 LOGGER AKTİF
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AuthServiceImpl implements IAuthService {
 
     private final IAppUserRepository appUserRepository;
     private final IRetailCustomerRepository retailCustomerRepository;
-    private final ICompanyRepository companyRepository;
+
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
-
     private final RabbitMQPublisher rabbitPublisher;
 
-    // 🚀 KVKK Uyumlu Loglama İçin Maskeleme Metodu (Örn: 12345678901 -> *******8901)
+    // 🚀 YENİ EKLENEN TELSİZ BAĞLANTISI
+    private final CompanyServiceClient companyServiceClient;
+
     private String maskIdentity(String identity) {
         if (identity == null || identity.length() <= 4) return "****";
         return "*******" + identity.substring(identity.length() - 4);
@@ -54,7 +55,7 @@ public class AuthServiceImpl implements IAuthService {
             throw new BankOperationException("Bu Kimlik/Vergi Numarası sistemde zaten kayıtlı!");
         }
 
-        // 2. Merkezi Kimliği Oluştur
+        // 2. Merkezi Kimliği (Giriş İznini) Oluştur
         AppUser appUser = AppUser.builder()
                 .identityNumber(request.getIdentityNumber())
                 .password(passwordEncoder.encode(request.getPassword()))
@@ -80,18 +81,26 @@ public class AuthServiceImpl implements IAuthService {
             log.info("Bireysel Müşteri (RetailCustomer) profili oluşturuldu.");
 
         } else if (appUser.getRole() == AppUser.Role.CORPORATE_MANAGER) {
-            if (companyRepository.existsByContactEmail(request.getEmail())) {
-                log.warn("Kayıt Reddedildi: {} e-posta adresi kurumsal hesaplar için kullanımda!", request.getEmail());
-                throw new BankOperationException("Bu Email adresi zaten kullanımda!");
+            log.info("Kurumsal Yönetici kimliği oluşturuldu. Şirket adı: {}. Kurumsal Servise telsiz atılıyor...", request.getCompanyName());
+
+            // 🚀 BÜYÜK DEĞİŞİM: Karargah şirketi kendi veritabanına yazmak yerine Yeni Üsse (Kurumsal Servise) fırlatıyor!
+            try {
+                CompanySyncRequest syncRequest = CompanySyncRequest.builder()
+                        .companyIdentityNumber(request.getIdentityNumber())
+                        .companyName(request.getCompanyName())
+                        .contactEmail(request.getEmail())
+                        .taxOffice(request.getTaxOffice())
+                        .build();
+
+                companyServiceClient.syncNewCompany(syncRequest);
+                log.info("✅ Kurumsal Servis ile senkronizasyon başarılı!");
+            } catch (Exception e) {
+                log.error("❌ Kurumsal Servise telsiz atılamadı! Sebep: {}", e.getMessage());
+                // Burada istersen throw new BankOperationException(...) diyerek kaydı iptal de edebilirsin,
+                // ama mikroservislerde hata olsa bile loglayıp devam etmek (Eventual Consistency) daha yaygındır.
+                // Şimdilik hatayı fırlatıyoruz ki işlem yarıda kalmasın, UI anlasın.
+                throw new BankOperationException("Kurumsal servis ile bağlantı kurulamadı, kayıt işlemi iptal edildi!");
             }
-            Company company = Company.builder()
-                    .appUser(appUser)
-                    .companyName(request.getCompanyName())
-                    .taxOffice(request.getTaxOffice())
-                    .contactEmail(request.getEmail())
-                    .build();
-            companyRepository.save(company);
-            log.info("Kurumsal Yönetici (Company) profili oluşturuldu. Şirket: {}", request.getCompanyName());
 
         } else {
             log.error("Kayıt sırasında geçersiz rol tespiti: {}", request.getRole());
@@ -101,11 +110,10 @@ public class AuthServiceImpl implements IAuthService {
         String jwtToken = jwtService.generateToken(appUser);
         log.info("Kayıt tamamlandı. {} için JWT Token üretildi.", maskedId);
 
-        // YENİ HALİ: Hoş Geldin DTO'su
         NotificationMessage welcomeMessage = NotificationMessage.builder()
                 .destination(request.getEmail())
                 .subject("Bankamıza Hoş Geldiniz")
-                .content(String.format("Sayın kullanıcımız, %s rolü ile sisteme kayıt başvurunuz alınmıştır. Hesabınız yönetici tarafından onaylandığında tüm bankacılık işlemlerinizi gerçekleştirebileceksiniz.", request.getRole()))
+                .content(String.format("Sayın kullanıcımız, %s rolü ile sisteme kayıt başvurunuz alınmıştır. Hesabınız yönetici tarafından onaylandığında işlemlerinize başlayabilirsiniz.", request.getRole()))
                 .identityNumber(maskedId)
                 .notificationType(NotificationMessage.NotificationType.EMAIL)
                 .build();
@@ -117,28 +125,26 @@ public class AuthServiceImpl implements IAuthService {
 
     @Override
     public AuthResponse login(LoginRequest request) {
+        // ... (Login metodu senin attığın ile birebir aynı kalıyor, değişiklik yok) ...
         String maskedId = maskIdentity(request.getIdentityNumber());
         log.info("Giriş (Login) denemesi başlatıldı. Kimlik: {}", maskedId);
 
         try {
-            // Spring Security kapısı
             authenticationManager.authenticate(
                     new UsernamePasswordAuthenticationToken(request.getIdentityNumber(), request.getPassword())
             );
         } catch (org.springframework.security.core.AuthenticationException e) {
             log.warn("🚨 Başarısız giriş denemesi! Hatalı şifre. Kimlik: {}", maskedId);
 
-            // YENİ HALİ: Başarısız Giriş Güvenlik Alarmı DTO'su
             NotificationMessage failedLoginAlert = NotificationMessage.builder()
-                    .destination(request.getIdentityNumber()) // SMS için kimlik veya tel no
+                    .destination(request.getIdentityNumber())
                     .subject("🚨 Güvenlik Alarmı: Başarısız Giriş Denemesi")
                     .content("Hesabınıza az önce hatalı şifre ile giriş yapılmaya çalışıldı. Eğer bu işlemi siz yapmadıysanız acilen müşteri hizmetlerini arayınız!")
                     .identityNumber(maskedId)
-                    .notificationType(NotificationMessage.NotificationType.SMS) // Acil durum!
+                    .notificationType(NotificationMessage.NotificationType.SMS)
                     .build();
 
             rabbitPublisher.sendNotification(failedLoginAlert);
-
             throw new BankOperationException("Kimlik numarası veya şifre hatalı!");
         }
 
@@ -151,13 +157,12 @@ public class AuthServiceImpl implements IAuthService {
         String jwtToken = jwtService.generateToken(appUser);
         log.info("Giriş başarılı. {} kimlikli kullanıcı sisteme giriş yaptı.", maskedId);
 
-// YENİ HALİ: Başarılı Giriş Bildirimi DTO'su
         NotificationMessage loginMessage = NotificationMessage.builder()
                 .destination(request.getIdentityNumber())
                 .subject("Hesabınıza Giriş Yapıldı")
                 .content("Bankacılık sistemine an itibariyle başarılı bir giriş yaptınız. İşlemi siz yapmadıysanız hemen şifrenizi değiştirin.")
                 .identityNumber(maskedId)
-                .notificationType(NotificationMessage.NotificationType.PUSH_NOTIFICATION) // Mobil bildirim
+                .notificationType(NotificationMessage.NotificationType.PUSH_NOTIFICATION)
                 .build();
 
         rabbitPublisher.sendNotification(loginMessage);
