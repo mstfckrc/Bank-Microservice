@@ -1,7 +1,7 @@
 package com.mustafa.service.impl;
 
+import com.mustafa.client.BackendServiceClient;
 import com.mustafa.client.CompanyServiceClient;
-import com.mustafa.dto.message.NotificationMessage;
 import com.mustafa.dto.request.CompanySyncRequest;
 import com.mustafa.dto.request.UpdateProfileRequest;
 import com.mustafa.dto.response.UserProfileResponse;
@@ -29,6 +29,9 @@ public class AdminUserServiceImpl implements IAdminUserService {
     private final IRetailCustomerRepository retailCustomerRepository;
     private final CompanyServiceClient companyServiceClient;
     private final RabbitMQPublisher rabbitPublisher;
+
+    // 🚀 YENİ EKLENDİ: Karargaha giden doğrudan telsiz hattı
+    private final BackendServiceClient backendServiceClient;
 
     @Override
     public List<UserProfileResponse> getAllCustomers() {
@@ -106,6 +109,7 @@ public class AdminUserServiceImpl implements IAdminUserService {
         AppUser appUser = appUserRepository.findByIdentityNumber(identityNumber)
                 .orElseThrow(() -> new BankOperationException("Kullanıcı bulunamadı!"));
 
+        // 1. ADIM: İlgili servisteki (Corporate/Retail) profil verisini sil
         if (appUser.getRole() == AppUser.Role.RETAIL_CUSTOMER) {
             retailCustomerRepository.findByAppUser_IdentityNumber(identityNumber)
                     .ifPresent(retailCustomer -> {
@@ -122,15 +126,17 @@ public class AdminUserServiceImpl implements IAdminUserService {
             }
         }
 
-        NotificationMessage deleteSignal = NotificationMessage.builder()
-                .destination("admin@bank.com")
-                .subject("USER_DELETED_CLEANUP")
-                .identityNumber(identityNumber)
-                .content(identityNumber)
-                .notificationType(NotificationMessage.NotificationType.SYSTEM_ALERT)
-                .build();
-        rabbitPublisher.sendNotification(deleteSignal);
+        // 🚀 2. ADIM: KARARGAHA TELSİZ ÇEK VE KASALARI YOK ET
+        try {
+            backendServiceClient.deleteCustomerAccounts(identityNumber);
+            log.info("Admin İşlemi: {} numaralı müşterinin Karargah (Backend) üzerindeki tüm kasaları imha edildi.", identityNumber);
+        } catch (Exception e) {
+            log.error("Backend hesapları silinirken hata fırlattı: {}", e.getMessage());
+            // Eğer hesabı varsa veya ağ koptuysa işlem burada durur ve rollback atar!
+            throw new BankOperationException("Müşterinin Karargahta içi dolu kasası var veya ağa ulaşılamadı. Silme işlemi İPTAL EDİLDİ!");
+        }
 
+        // 3. ADIM: Her şey yolundaysa en son Kimliği (AppUser) yok et
         appUserRepository.delete(appUser);
         log.info("Admin İşlemi: {} sistemden (Giriş Yetkisi) tamamen temizlendi.", identityNumber);
     }

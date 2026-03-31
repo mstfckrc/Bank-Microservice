@@ -38,9 +38,6 @@ public class TransactionServiceImpl implements ITransactionService {
     private final ICurrencyService currencyService;
     private final RabbitMQPublisher rabbitPublisher;
 
-    // 🚀 YENİ MİMARİ: Statüyü Header'dan okumak için Request nesnesini içeri alıyoruz
-    private final HttpServletRequest httpRequest;
-
     private static final BigDecimal TRANSACTION_LIMIT = new BigDecimal("50000");
 
     private String maskIdentity(String identity) {
@@ -48,22 +45,11 @@ public class TransactionServiceImpl implements ITransactionService {
         return "*******" + identity.substring(identity.length() - 4);
     }
 
-    // 🚀 YENİ MİMARİ: Gateway'in getirdiği X-User-Status başlığını okuyan metot
-    private void checkUserApprovalStatus() {
-        String status = httpRequest.getHeader("X-User-Status");
-        if (status == null || !status.equals("APPROVED")) {
-            throw new BankOperationException("Hesabınız yönetici tarafından onaylanmadığı (PENDING) için işlem yapamazsınız!");
-        }
-    }
-
     @Override
     @Transactional
     public TransactionResponse deposit(DepositRequest request) {
         String currentIdentity = SecurityContextHolder.getContext().getAuthentication().getName();
         String maskedId = maskIdentity(currentIdentity);
-
-        // 1. STATÜ KONTROLÜ (Artık DB'den değil, Gateway'den gelen Token Header'ından soruluyor)
-        checkUserApprovalStatus();
 
         Account account = accountRepository.findByIban(request.getIban())
                 .orElseThrow(() -> new BankOperationException("Hesap bulunamadı!"));
@@ -105,9 +91,6 @@ public class TransactionServiceImpl implements ITransactionService {
     public TransactionResponse transfer(TransferRequest request) {
         String currentIdentity = SecurityContextHolder.getContext().getAuthentication().getName();
         String maskedId = maskIdentity(currentIdentity);
-
-        // 1. STATÜ KONTROLÜ
-        checkUserApprovalStatus();
 
         Account senderAccount = accountRepository.findByIban(request.getSenderIban())
                 .orElseThrow(() -> new BankOperationException("Gönderen hesap bulunamadı!"));

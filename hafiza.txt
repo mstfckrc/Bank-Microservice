@@ -1,57 +1,65 @@
-# 🌐 SEC-DEMO BANKA MİKROSERVİS EKOSİSTEMİ HAFIZA KARTI (V2.1 - ÖZET)
+# 🚀 SEC-DEMO (V6.0) MİKROSERVİS MİMARİSİ ANA HAFIZA (MASTER KÖK DOSYA)
 
-Bu dosya, projenin en dış (Root) dizininde yer alır ve sisteme kuşbakışı bakmanızı sağlar. Sistemdeki her bir mikroservisin **çok detaylı iç yapısı, çalışma mantığı ve kural seti, kendi klasörlerinin içindeki `hafiza.txt` dosyalarında gizlidir.**
+Bu proje, tek bir `bank-demo-backend` monolitinden yola çıkılıp modern **Multi-Microservice (Spring Cloud)** mimarisine geçiş yapmış devasa bir bankacılık sistemidir.
 
-Yapay zeka asistanı veya yeni bir geliştirici, sisteme dair her şeyi anlamak istediğinde sırasıyla klasör içlerindeki `hafiza.txt` dosyalarını okumalıdır.
-
----
-
-## 🏛️ SİSTEMİN MİKROSERVİSLERİ VE KISACA ÖZETLERİ
-
-### 1. 🖥️ Bank-Demo-Frontend (Next.js 14 App Router)
-*   **Özet:** Kullanıcıların (Bireysel, Kurumsal, Admin) etkileşime girdiği arayüzdür. 
-*   **Ne Yapar?:** Hesap açma, para transferi, maaş ödeme, fatura talimatı ve döviz (Ticker) işlemlerini API Gateway üzerinden Backend'e iletir. Bütün istekler `proxy.ts` JWT filtrelemesi ile güvenlik çemberinden geçer. Özel Modallar (UI) ile desteklenmiştir.
-*   **Detay:** `Bank-Demo-Frontend/hafiza.txt` dosyasına bakınız.
-
-### 2. ⚙️ Bank-Demo-Backend (Spring Boot 3 - Monolith Core)
-*   **Özet:** Bankanın kalbidir. Bütün iş mantığı, veri tabanı kuralları ve Transaction dengelemeleri bu serviste döner.
-*   **Ne Yapar?:** JWT ile Auth işlemi, hesap açılışları, bakiye değişimleri, kurumsal maaş aktarımı (toplu ödeme motoru), döviz çevirimi (Kur servisi) gibi işlemleri yönetir. Tamamen RabbitMQ üreten (Producer) asenkron bir yapıya sahiptir.
-*   **Detay:** `Bank-Demo-Backend/hafiza.txt` dosyasına bakınız.
-
-### 3. 🚪 API Gateway (Spring Cloud Gateway)
-*   **Özet:** Sistemin dış dünyaya sızdırmaz sınır kapısıdır. Port: 8081.
-*   **Ne Yapar?:** Frontend'den gelen (`http://localhost:3000`) CORS isteklerini havada tutar. Bütün isteklerin Token (JWT) kısmını denetler, yetkisizleri kovar, onayladıklarını Eureka üzerinden dinamik olarak Monolith Backend'e uçurur.
-*   **Detay:** `api-gateway/hafiza.txt` dosyasına bakınız.
-
-### 4. 💶 Currency Service (Döviz Kuru Mikroservisi)
-*   **Özet:** Canlı döviz kurlarını çeken dışa bağımlı, bağımsız mikroservistir. Port: 8083.
-*   **Ne Yapar?:** Dış dünyadaki açık API'lere bağlanıp güncel kurları çeker. Backend, OpenFeign üzerinden dövizli işlemlerde buraya başvurur. 
-*   **Detay:** `currency-service/hafiza.txt` dosyasına bakınız.
-
-### 5. 🧾 Bill Service (Fatura Mikroservisi)
-*   **Özet:** Otomatik fatura talimatlarının yönetimi ve gece yarısı cron job ile tetiklenmesinden sorumlu mikroservis. Port: 8084.
-*   **Ne Yapar?:** Ayrı bir `bank_bill_db` veritabanı kullanır. API Gateway'den auth filtrelerini aşarak gelen istekleri (`X-Identity-Number` header'ı ile) kaydeder. Fatura kesim vakti geldiğinde Backend servisine FeignClient ile bağlanıp hesabından para tahsil ettirir.
-*   **Detay:** `bill-service/hafiza.txt` dosyasına bakınız.
-
-### 6. 🏢 Corporate Service (Kurumsal İK & Maaş Servisi)
-*   **Özet:** Kurumsal şirketlerin veri senkronizasyonu, personel yönetimi ve toplu maaş ödemelerini yöneten yeni koparılmış mikroservis. Port: 8085.
-*   **Ne Yapar?:** Kendisine ait `bank_corporate_db` veritabanı vardır. API Gateway'den `X-Identity-Number` başlığı ile gelen kurumsal istekleri devralır. Toplu maaş ödenmesi gerektiğinde parçalı listeyi `BulkSalaryRequest` olarak merkez Banka Backend'ine gönderir.
-*   **Detay:** `bank-corporate-micro/hafiza.txt` dosyasına bakınız.
-
-### 7. 🔍 Discovery Server (Eureka Registry)
-*   **Özet:** Mikroservislerin birbirlerini donanım numaralarıyla (IP) değil, şirket hatlarıyla (İsim) bulmasını sağlayan Santral/Rehber servisidir. Port: 8761.
-*   **Ne Yapar?:** Gateway, Backend ve Notification servisi uyanır uyanmaz bu rehbere kaydedilir.
-*   **Detay:** `discovery-server/hafiza.txt` dosyasına bakınız.
-
-### 8. 📯 Notification Service (RabbitMQ Consumer)
-*   **Özet:** Postane işlevi gören asenkron bildirim servisidir. Port: 8082.
-*   **Ne Yapar?:** RabbitMQ'daki `notification_queue` kuyruğunda nöbet tutar. Backend'in fırlattığı JSON mesajları dinleyip müşterilere yollanacak olan EMAIL, SMS, PUSH ve SİSTEM ALARMI gibi bildirimleri kullanıcıyı bekletmeden arka planda dağıtır.
-*   **Detay:** `notification-service/hafiza.txt` dosyasına bakınız.
-
-### 9. 📊 Logstash (Merkezi Loglama Sistemi)
-*   **Özet:** Mikroservislerin yapılandırılmış log (günlük) verilerini merkezi bir noktada toplayan veri iletim hattıdır.
-*   **Ne Yapar?:** Tekil bir Java uygulaması ("Spring Boot") gibi çalışmaktan ziyade, Elasticsearch-Logstash-Kibana (ELK) yığınının bir ayağıdır. Sistem geneli logları (veya metrikleri) yakalayıp analiz motorlarına işlemek üzere iletir. Klasör içeriğinde `hafiza.txt` yoktur, sadece `.conf` dosyalarıyla ayarlanır.
+Yapay zeka asistanı olarak kodu analiz edeceğiniz veya ekleme yapacağınız zaman; **önce bu master dosyayı okuyun, ardından hangi servise dokunacaksanız doğrudan onun içindeki (`ilgili-klasor/hafiza.txt`) aşırı kod-merkezli detay dosyasına müracaat edin.**
 
 ---
 
-> 💡 **KRİTİK NOT:** Klasörlerin içindeki `hafiza.txt` dosyaları artık sadece iş mantığını değil; **sistemdeki tüm DTO'ları, Entity veritabanı kolonlarını, Enum tiplerini ve güvenlik middleware'lerini (Zustand, Proxy) kod seviyesinde tırnağı tırnağına içerir.** Yapay zekaya kod yazdırmadan önce, o servisin hafıza dosyasını okutursanız class ve property isimlerini %100 kusursuz tahmin edecektir.
+## 🏗️ 1. MİMARİ İLETİŞİM PRENSİPLERİ (YAPAY ZEKA İÇİN ÇOK ÖNEMLİ)
+
+*   **REST ve FEIGN Sınırları:** Microservisler birbirleriyle asla direkt veritabanı üzerinden (`AppUser`, `Account` vb.) haberleşmez. Tüm iç haberleşmeler `XServiceClient` adlı **FeignClient** interfaceleri üzerinden olur (Örn: `Auth` -> `Corporate` eşleşmesinde `CompanySyncRequest` json fırlatılır).
+*   **Security (Güvenlik) Duvarı:** JWT token sadece **API Gateway** tarafından karşılanır, çözülür, doğrulanır ve içindeki TC Kimlik (`identityNumber`) çıkarılarak HTTP Header formatıyla (`X-Identity-Number`) alt servislere paslanır. **Alt servisler (Auth hariç) JWT umursamaz, gelen header'a güvenirler!**
+*   **Asenkron Bildirimler:** Hiçbir servis "mail atma" işlemini kendi yapmaz. RabbitMQ `bank_exchange` kuyruğuna `NotificationMessage` JSON'ı fırlatır, çeker gider.
+
+---
+
+## 🗂️ 2. MİKROSERVİSLER VE SORUMLULUKLARI (8 ADET)
+
+Sistemdeki 8 Java mikroservisi ve 1 Frontend uygulaması aşağıdaki gibi konumlanmıştır:
+
+### 1. 🚪 API Gateway (`api-gateway` / Port: 8081)
+*   **Uç Nokta Trafik Polisi:** React Frontend'den gelen bütün istekler istisnasız buraya (`/api/v1/**`) girer.
+*   **Yetki Kontrolü:** `AuthenticationFilter.java` ile JWT okur, sahteyse Exception Atar, geçerliyse Header'a `X-Identity-Number` ekleyip trafiği hedef Route'a zıplatır (Örn: `/api/v1/auth/**` -> `auth-service`'e, `/api/v1/bills/**` -> `bill-service`'e).
+*   **Detay:** `api-gateway/hafiza.txt`
+
+### 2. 🔐 Auth Service (`bank-auth-micro` / Port: 8086) [YENİ AYRILDI]
+*   **Kimlik ve Profil Yönetimi:** Kullanıcıların (Bireysel ve Admin) kayıt olması (`Register`), sisteme girmesi (`Login`) ve profil düzenlemelerini tek başına ele alır. API Gateway'in de kullandığı 512-bit gizli anahtar (Secret) ile JWT üretir. AppUser kaydını `bank_db` içinde tutar. Admin bir Corporate kullanıcıyı onayladığında `CompanyServiceClient` vasıtasıyla Corporate Servise tetik fırlatır.
+*   **Detay:** `bank-auth-micro/hafiza.txt`
+
+### 3. 🏦 Core Bank Backend (`Bank-Demo-Backend` / Port: 8080) [SAF ÇEKİRDEK]
+*   **Kasa ve Dekont:** Kullanıcı, Auth v.b. tüm mantıklardan temizlenmiştir. SADECE müşteri cüzdanları (IBAN) ve bakiye (Balance) değişiklikleri ile ilgilenir. Her hesaptan düşen ve yatan para için `Transaction` dekontu basar. Tüm internal servislerin para isteği (`BulkSalary`, `BillPayment`) nihai olarak bu karargaha düşer.
+*   **Detay:** `Bank-Demo-Backend/hafiza.txt`
+
+### 4. 🏢 Corporate Service (`bank-corporate-micro` / Port: 8085)
+*   **İK ve Maaş Otomasyonu:** Bireysel olmayan kurumsal/şirket müşterilerinin iç işlerini yürütür. Personel (`CompanyEmployee`) ekleme/çıkarma, şirket kasası (`Company`) ayarları burada tutulur. `bank_corporate_db` adında kendi izolasyonunda yaşar. Gece vuran CronJob ile toplu maaş ödeme kararı alınca `BulkSalaryRequest` (devasa payload) hazırlayıp Karargah servisine fırlatır.
+*   **Detay:** `bank-corporate-micro/hafiza.txt`
+
+### 5. 🧾 Bill Service (`bill-service` / Port: 8084)
+*   **Fatura Robotu:** Elektrik, Su, Doğalgaz talimatlarının kaydedilmesi ve gece yarısı Job'larıyla kesilmesinden sorumludur. Bağımsız `bank_bill_db` kullanır. Fatura tutarını alabilmek için Karargah (`Bank`) servisine iç istek (Feign) atar.
+*   **Detay:** `bill-service/hafiza.txt`
+
+### 6. 💶 Currency Service (`currency-service` / Port: 8083)
+*   **Dış Entegrasyon:** DB barındırmaz. Kimlik istemez (PermitAll). İnternet üzerinden canlı çapraz döviz kurunu çekip JSON olarak sunar. Core Backend havale atarken dövizler çakışırsa buna gelir.
+*   **Detay:** `currency-service/hafiza.txt`
+
+### 7. 📯 Notification Service (`notification-service` / Port: 8082)
+*   **Postane Olay İşleyicisi:** Pasif bekler. RabbitMQ (`notification_queue`) üzerinden dinlediği DTO zarflarını (`NotificationMessage`) alır almaz e-posta/sms gönderim motorlarını ateşler.
+*   **Detay:** `notification-service/hafiza.txt`
+
+### 8. 🔍 Discovery Server (`discovery-server` / Port: 8761)
+*   **Servis Santrali (Eureka):** Yukarıdaki tüm 7 servisin "Biz hayattayız, IP'miz şu" diye ayağa kalkarken kayıt olduğu iletişim rehberidir.
+
+---
+
+## 🎨 3. FRONTEND KATMANI (Next.js 14)
+
+### 🖥️ Bank-Demo-Frontend (Next.js 14 & Zustand)
+Sistemin vitrini. Kullanıcının Browser'da gördüğü her şey.
+*   `proxy.ts`: Sunucu tarafında (SSR) Gelen kişinin elindeki Token (Cookie) çözülür (JWT base64 ile parçalanarak). Kullanıcı Auth ekranı, Bireysel Ekran veya Kurumsal Ekran (Dashboard) olarak doğru klasörlere şutlanır. 
+*   Bütün Axios istekleri sadece ve sadece `http://localhost:8081/api/v1/` adresine (Gateway) yapılır. Gateway görünmez bir huni gibi içeride yukarıda anlatılan ilgili servise yükü dağıtır. Front-end geliştiricisi backend yapısından tamamen habersiz kalır.
+*   **Detay:** `Bank-Demo-Frontend/hafiza.txt`
+
+---
+
+> 💡 **KRİTİK UYARI:** Klasörlerin içindeki `hafiza.txt` dosyaları tam anlamıyla "Sıfır Tahmin" ve "Kusursuz Tanımlama" politikasıyla (Extreme Detail) yazılmıştır. Kod üretimi veya bug tespiti yapılmadan önce hedef servisin `hafiza.txt` belgesi mutlak ve kesin olarak okunmalıdır. O belgeleri okuyan bir yapay zeka değişken (var, property, dto alan adı) hatası yapmaz.

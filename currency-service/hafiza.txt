@@ -1,6 +1,6 @@
-# 💶 SEC-DEMO CURRENCY (DÖVİZ) SERVİSİ HAFIZA KARTI (V4.0 - EXTREME DETAYLI)
+# 💶 SEC-DEMO CURRENCY (DÖVİZ) SERVİSİ HAFIZA KARTI (V6.0 - EXTREME DETAYLI)
 
-Sistemin döviz kurlarını güncelleyen mini servisidir. Hedef: Tüm kurları internetten alıp `ExchangeRateResponse` DTO'suna basmak. Veri tabanı (Entity) barındırmaz.
+Sistemin döviz kurlarını güncelleyen mini servisidir. Hedef: Tüm kurları internetten alıp `ExchangeRateResponse` DTO'suna basmak. Veri tabanı, Auth veya kimlik katmanı barındırmaz.
 
 ---
 

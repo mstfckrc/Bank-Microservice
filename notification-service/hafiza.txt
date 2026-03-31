@@ -1,34 +1,21 @@
-# 📯 SEC-DEMO NOTIFICATION (BİLDİRİM) SERVİSİ HAFIZA KARTI (V4.0 - EXTREME DETAYLI)
+# 📯 SEC-DEMO NOTIFICATION (BİLDİRİM) SERVİSİ HAFIZA KARTI (V6.0 - EXTREME DETAYLI)
 
-Sistemin olay güdümlü asenkron bildiricisidir. Sadece RabbitMQ kuyruğundan mesaj çekip loglar ve simüle eder. REST API (Controller) ve DB barındırmaz.
+Sistem üzerindeki servislerin (Auth, Bill, Bank-Demo-Backend vs.) RabbitMQ üzerinden fırlattığı tüm bildirim paketlerini (NotificationMessage) anında yakalayıp e-posta veya sistem alarmı olarak asenkron şekilde dağıtan postane motorudur.
 
 ---
 
-## 🏗️ 1. MİMARİ
-*   **Çekirdek:** Spring Boot. Port: 8082. `notification-service` adıyla Eureka'ya bağlı.
-*   **MQ Bağlantısı:** `localhost:5672` (RabbitMQ).
+## 📦 1. VERİ TRANSFER OBJESİ (DTO)
+Gelen haberleşmeyi yakalamak için tek bir DTO içerir.
 
-## 📦 2. VERİ TRANSFER BİLEŞENLERİ (DTO MAPPINGS)
-Gelen JSON mesajı `@RabbitListener` üzerinde `Jackson2JsonMessageConverter` sayesinde doğrudan Java objesine çevrilmektedir.
+### 1.1 `NotificationMessage`
+*   `String identityNumber`: Kullanıcının kimlik no'su
+*   `String destination`: Gidilecek adres (Email vb.)
+*   `String subject`: Konu
+*   `String content`: İçerik (E.g. Para transferi, hoşgeldin emaili)
+*   `NotificationType notificationType`: Enum (EMAIL, SMS, PUSH, IN_APP)
 
-### 2.1. `NotificationMessage` (Gelen DTO)
-Bu DTO, ana backend projesindeki yapıyla %100 birebir olmalıdır.
-*   **Alanlar (Fields):**
-    *   `String identityNumber` (Müşteri TC No)
-    *   `String destination` (Email/Tel vs)
-    *   `String subject` (Mail konusu vs)
-    *   `String content` (Gönderilecek uzun yazı)
-    *   `NotificationType notificationType` (Enum Tipi).
-
-### 2.2. `NotificationType` (Enum)
-*   **Değerler:** `EMAIL`, `SMS`, `PUSH_NOTIFICATION`, `SYSTEM_ALERT`.
-
-## ⚙️ 3. DİNLEYİCİ MANTIĞI (LISTENER)
-*   **Sınıf:** `NotificationListener`
-*   **Kuyruk Nöbeti:** `@RabbitListener(queues = RabbitMQConfig.NOTIFICATION_QUEUE)` ("notification_queue") kuyruğunu tutar.
-*   **Çalışma Ritmi:**
-    1.  Mesaj gelir gelmez Terminale `[POSTANE NÖBETÇİSİ UYANDI]` logunu atar.
-    2.  `switch (notification.getNotificationType())` ile Enum tipine göre farklı log bloklarına (`Email gönderiliyor...` vb) girer.
-    3.  `Thread.sleep(2000)` ile işlemi 2 tam saniye bekleterek asenkron çalışmayı ağrılı gösterir (Test amaçlı yapay yük).
-    4.  `[✅ GÖREV TAMAM: Bildirim iletildi.]` logunu üretir ve işlemi bitirir. Hata olursa `InterruptedException` yakalayıp `error` loguna basar.
-    5.  Mesaj kuyruktan silinir.
+## ⚙️ 2. MİMARİ VE İŞ MANTIĞI
+*   **Çekirdek:** Spring Boot AMQP (RabbitMQ Consumer) - Port: 8082
+*   **Mesaj Dinleyici:** `NotificationListener` sınıfı. İçerisinde `@RabbitListener(queues = "notification_queue")` bulunur.
+*   Herhangi bir dış API uçu (Controller) sunmaz. Tamamen arkada yaşar ve dinler.
+*   Veri tabanı ile işi yoktur, gelen pakette email bilgisi varsa JavaMailSender ile atar ve mesajı bırakır.

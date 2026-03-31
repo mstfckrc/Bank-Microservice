@@ -40,9 +40,6 @@ public class InternalBankServiceImpl implements IInternalBankService {
                 .build();
     }
 
-    // 🚀 BÜYÜK DEĞİŞİM: getCustomerProfile METODU SİLİNDİ!
-    // Karargah müşteri tanımadığı için bu bilgi artık buradan verilemez.
-
     @Override
     @Transactional
     public List<TransactionResponse> payBulkSalaries(BulkSalaryRequest request) {
@@ -97,5 +94,29 @@ public class InternalBankServiceImpl implements IInternalBankService {
         }
 
         return transactionResults;
+    }
+
+    // 🚀 YENİ EKLENDİ: İçinde bakiye olan kasaları koruyan iptal/silme mekanizması
+    @Override
+    @Transactional
+    public void deleteCustomerAccounts(String identityNumber) {
+        // 1. Kullanıcının tüm hesaplarını bul
+        // (Not: Repository'nde findByOwnerIdentityNumber veya findByIdentityNumber hangisi varsa o eşleşmeli. Entity'den yola çıkarak Owner kullandım)
+        List<Account> accounts = accountRepository.findByOwnerIdentityNumber(identityNumber);
+
+        // 2. İçinde bakiye olan hesap var mı kontrol et (Kritik İş Kuralı!)
+        boolean hasBalance = accounts.stream()
+                .anyMatch(acc -> acc.getBalance().compareTo(BigDecimal.ZERO) > 0);
+
+        if (hasBalance) {
+            log.error("HATA: {} numaralı müşterinin içinde bakiye olan hesabı var, silinemez!", identityNumber);
+            throw new BankOperationException("Müşterinin bakiyesi olan hesapları var. Önce bakiyeler sıfırlanmalıdır!");
+        }
+
+        // 🚀 3. Bakiye yoksa hesapları pasife çek (Soft Delete)
+        // Geçmiş dekontları olduğu için SQL Hard Delete yapmamıza izin vermez!
+        accounts.forEach(acc -> acc.setActive(false));
+        accountRepository.saveAll(accounts);
+        log.info("SERVICE: {} numaralı müşterinin tüm kasaları başarıyla PASİFE alındı.", identityNumber);
     }
 }

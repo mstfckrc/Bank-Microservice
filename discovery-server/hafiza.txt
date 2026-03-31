@@ -1,21 +1,14 @@
-# 🔍 SEC-DEMO DISCOVERY (EUREKA) SERVER HAFIZA KARTI (V2.1)
+# 🔍 SEC-DEMO DISCOVERY SERVER HAFIZA KARTI (V6.0 - EXTREME DETAYLI)
 
-Tüm mikroservislerin birbirlerini donanım IP'leri (örn: `192.168.1.5` veya `localhost`) kullanmadan sadece ismen bulabilmelerini sağlayan **Sistem Rehberi ve Kayıt Defteridir**.
+Ağ üzerinde ayağa kalkan tüm 7 mikroservisin donanımsal IP adreslerini ve portlarını tespit ederek mikroservislerin birbirlerini Gateway arkasında sadece "isimle" bulmalarını sağlayan merkezi santral (Eureka) sunucusudur.
 
 ---
 
-## 🏗️ 1. MİMARİ VE YAPILANDIRMA
-*   **Çekirdek:** Spring Cloud Netflix Eureka Server.
-*   **Ağ Adresi:** Uygulama `8761` portu üzerinden ayağa kalkar.
-*   **Özellikleri (`application.yml`):**
-    *   `register-with-eureka: false` (Bu sunucu bizzat patron olduğu için kendini rehbere çalışan olarak eklememesi söylenir).
-    *   `fetch-registry: false` (Başka bir Eureka Server'dan rehber senkronizasyonu yapmaz, çünkü tekil/standalone çalışıyor).
+## 🏗️ 1. MİMARİ VE YAPI
+*   **Çekirdek:** Spring Cloud Netflix Eureka Server (Port: 8761).
+*   **Bağlı Olanlar:** `api-gateway`, `auth-service`, `bank-demo-backend`, `corporate-service`, `bill-service`, `currency-service`, `notification-service`.
 
-## 🏢 2. SİSTEMDEKİ ROLÜ
-*   `api-gateway`, `bank-demo-backend`, `notification-service` gibi tüm alt servisler açıldıkları an `http://discovery-server:8761/eureka/` adresine "Ben açıldım, şu porttayım" diyerek kayıt (Register) olurlar.
-*   Uygulama çöker veya kapanırsa, belirli süre sinyal (Heartbeat/Ping) alamayan Discovery Server, o servisi rehberden siler (Deregister).
-*   **Docker Ağı:** Docker içindeyken uygulamalar DNS çözümünde "discovery-server" hostname'i üzerinden doğrudan container IP'sine ulaşırlar.
-
-## 🚨 3. YAPAY ZEKA GELİŞTİRİCİ NOTLARI
-*   Bu servis tamamen stabil ve altyapısaldır. Yeni bir iş mantığı (API / Endpoint) kodlanmaz!
-*   Sisteme sonradan dâhil olan her yeni mikroservis, `application.yml` dosyasına `eureka.client.service-url.defaultZone=http://discovery-server:8761/eureka/` satırını ekleyerek bu deftere bağlanmalıdır.
+## ⚙️ 2. İŞ MANTIĞI VE SUNUCU DAVRANIŞI
+*   Bu bir sunucu (`@EnableEurekaServer`) olduğu için Entity, Controller veya DTO barındırmaz.
+*   Bütün alt servisler ayağa kalktığında `eureka.client.service-url.defaultZone=http://localhost:8761/eureka/` adresi vasıtasıyla kendilerini buraya kaydettirirler.
+*   Örneğin Gateway, `/api/v1/auth/**` route'unu `http://auth-service` adresine atarken, arka planda buraya ("Santral, auth-service'in IP'si kaç?") diye sorar.

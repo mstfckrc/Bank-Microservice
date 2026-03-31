@@ -34,9 +34,13 @@ Gelen header içindeki token'ı `Jwts.parserBuilder()` kullanarak çözer. `404E
     5.  Hata yoksa, request'i mutasyona uğratarak **içerisine yepyeni bir header (`X-Identity-Number`) ekler.** Bu numarayı token içinden alır (Backend JWT üretirken subject kısmına atmıştı).
     6.  Monolith arka servislerine veya bill-service'e bu ID, Header ile sızdırılır. Böylelikle mikroservisler bir daha JWT çözmek zorunda kalmaz.
 
-## 🔀 3. ROUTING REHBERİ (`GatewayRoutingConfig.java`)
-RouteLocatorBuilder objesi üzerinden kod vasıtasıyla dinamik yollar inşaa edilmiştir. Uygulanan öncelik sıralaması ve rotalar şöyledir:
-1.  **Döviz (`currency-service-route`):** `/api/v1/currencies/**` hedefini yakalar, `http://currency-service:8083` servis adresine zıplatır. (Polis filtresi yok, dış API niteliğinde).
-2.  **Fatura (`bill-service-route`):** `/api/v1/bills/**` hedefini yakalar, `http://bill-service:8084` sunucusuna zıplatır. (AuthenticationFilter - Polis var).
-3.  **Kurumsal Yönetim (`corporate-service-route`):** `/api/v1/companies/employees/**` rotasını yakalar, `http://corporate-service:8085` sunucusuna zıplatır. (AuthenticationFilter - Polis var).
-4.  **Diğer Tüm Yollar (`java-monolith-route`):** `/api/v1/**` (kalan her şey: auth, transactions, accounts vs.) `http://backend:8080` adresine vurur. (AuthenticationFilter - Polis var).
+## 🔀 3. ROUTING REHBERİ (`GatewayRoutingConfig.java` V5.2 STANDARDI)
+Prensip: Yukarıdaki kurallar eşleşmezse en alttaki Monolith Karargaha düşer.
+
+1.  **Döviz (`currency-service-route`):** `/api/v1/currencies/**` hedefini yakalar, `http://currency-service:8083` servis adresine zıplatır. (Polis filtresi yok, PermitAll).
+2.  **Fatura (`bill-service-route`):** `/api/v1/bills/**` hedefini yakalar, `http://bill-service:8084` sunucusuna zıplatır. (Auth Filter Aktif).
+3.  **Kurumsal Yönetim (`corporate-service-route`):** `/api/v1/companies/employees/**` rotasını yakalar, `http://corporate-service:8085` sunucusuna zıplatır. (Auth Filter Aktif).
+4.  **Admin Müşteri Hesapları (`backend-admin-customer-accounts-route`):** `/api/v1/admin/customers/*/accounts` hedefine gidiyorsa, hesap işlemlerini Monolith yapacağı için istisnai olarak `http://backend:8080`'a zıplatılır.
+5.  **Admin Kullanıcı İşlemleri (`auth-admin-route`):** `/api/v1/admin/customers/**` (Kullanıcı listeleme, onaylama) işlemleri `http://auth-service:8086` hedefine zıplatılır.
+6.  **Kimlik Üssü (Auth & Profile):** `/api/v1/auth/**` ve `/api/v1/customers/**` çağrıları login ve profil işlemleri için `http://auth-service:8086` sunucusuna aktarılır.
+7.  **Karargah (Monolith):** `/api/v1/**` (Tüm Accounts, Transactions ve Internal mantıklar) `http://backend:8080` adresine vurur. (Auth Filter var).

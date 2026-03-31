@@ -1,6 +1,6 @@
-# 🧾 SEC-DEMO BILL (FATURA) SERVİSİ HAFIZA KARTI (V4.0 - EXTREME DETAYLI)
+# 🧾 SEC-DEMO BILL (FATURA) SERVİSİ HAFIZA KARTI (V6.0 - EXTREME DETAYLI)
 
-Sistemin otomatik fatura ödeme işlemlerini, bağımsız bir mikroservis yapısıyla ele alan motorudur. Yapay zekanın tahminsiz kod yazabilmesi için tüm sınıflar tırnağına kadar aşağıdadır.
+Sistemin otomatik fatura ödeme işlemlerini, tamamen izole edilmiş V6 mikroservis yapısıyla (Kimlik mekanizmasından tamamen arındırılmış, salt header identity okuyarak) ele alan motorudur.
 
 ---
 

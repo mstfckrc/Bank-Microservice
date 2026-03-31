@@ -1,0 +1,53 @@
+# 🔐 SEC-DEMO AUTH (KİMLİK) SERVİSİ HAFIZA KARTI (V6.0 - TAM İZOLASYON)
+
+Sistemin kimlik yönetimi (Login, Register, Profil, Şifre Değiştirme) operasyonlarını Monolith projeden ayırarak üstlenen yeni güvenlik ve kimlik duvarı mikroservisidir.
+
+---
+
+## 🗄️ 1. VERİ TABANI (ENTITY) & KOLON HARİTASI
+Kendine özgü bağımsız bir DB yerine, güvenlik verileri tuttuğu için geçici olarak `bank_db` (Ana veritabanı) ile bağlantı kurar ancak Monolith ile tabloları bölüşmüştür. (Mikroservis kuralları gereği idealde kendi DB'si olmalıdır).
+
+### 1.1. AppUser (Sistemin Kalbi)
+*   **Alanlar (Fields):** `Long id`, `String identityNumber` (Unique TC/Vergi No), `String password` (Bcrypt), `Role role` (Enum: ADMIN, RETAIL_CUSTOMER, CORPORATE_MANAGER), `ApprovalStatus status` (Enum: PENDING, APPROVED, REJECTED).
+*   *(Dikkat: Account tablosuyla olan OneToMany ilişkisi koparılmıştır, çünkü hesaplar Backend'dedir!)*
+
+### 1.2. RetailCustomer (Bireysel Müşteri Profili)
+*   **Alanlar (Fields):** `Long id`, `AppUser appUser` (OneToOne), `String firstName`, `String lastName`, `String email`.
+*   *(Kurumsal müşteriler (Company) artık tamamen Corporate-Service'te tutulur)*
+
+---
+
+## 📦 2. VERİ TRANSFER OBJELERİ (DTO)
+Bütün kimlik doğrulama aktarımlarında kullanılan exact DTO nesneleri:
+
+### 2.1. Request (İstek) DTO'ları
+*   **`RegisterRequest`:** `identityNumber`, `password`, `role`, `email`, (Bireyse: `firstName`, `lastName`), (Kurumsalsa: `companyName`, `taxOffice`).
+*   **`LoginRequest`:** `identityNumber`, `password`.
+*   **`UpdateProfileRequest`:** `email`, `profileName`.
+*   **`ChangePasswordRequest`:** `oldPassword`, `newPassword`.
+*   **`CompanySyncRequest`:** `companyIdentityNumber`, `companyName`, `contactEmail`, `taxOffice` (Admin kayıt onayladığında Corporate servise senkron atmak için kullanılır).
+
+### 2.2. Response (Yanıt) DTO'ları
+*   **`AuthResponse`:** `token`, `message`.
+*   **`UserProfileResponse`:** `identityNumber`, `profileName` (Ad soyad veya şirket adı birleşiktir), `email`, `role`, `status`.
+*   **`CustomerResponse`:** `tcNo` (Eski sistem uyumu için TC no string'i), `fullName`, `email`, `role`, `status`.
+*   **`ErrorResponse`:** `timestamp`, `message`, `details`.
+*   **`NotificationMessage`:** (Kayıt olan kullanıcıya Hoşgeldin emaili atmak için MQ asenkron mesaj payload'u).
+
+---
+
+## ⚙️ 3. SERVİS VE İŞ MANTIĞI EKSENİ (API & MİKROSERVİS İLETİŞİMİ)
+*   **Ağ Ayarları:** Port: 8086. Eureka'ya `auth-service` adıyla kaydolur. API Gateway'den `/api/v1/auth`, `/api/v1/customers` ve `/api/v1/admin/customers` rotalarından gelen trafik buraya akar.
+*   **Güvenlik Üretimi:** Gateway'in de kullandığı ortak 512-bit JWT secret anahtarı (`404E63...`) burada saklıdır. Login başarılı olunca `Jwts.builder()` ile token üretip döndürür.
+
+### 3.1. Controller (Uç Noktalar)
+*   **`AuthControllerImpl` (`/api/v1/auth`):**
+    *   `POST /register`: Sisteme yeni kayıt oluşturur. Kayıt sonrasında RabbitMQ aracılığıyla (`NotificationMessage`) Hoşgeldin e-postası fırlatır. Başlangıçta kullanıcı `PENDING` statüsündedir.
+    *   `POST /login`: Kimlik ve şifreyle giriş yapar. Jwt üretir. Kullanıcı `APPROVED` değilse giriş reddedilir.
+*   **`CustomerControllerImpl` (`/api/v1/customers`):**
+    *   `GET /profile`: Oturum açmış kullanıcının (Gateway'den gelen header'daki TC ile) bilgilerini döner.
+    *   `PUT /profile`: Profil güncelleme.
+    *   `POST /appeal`: Kurumsalların tekrar incelenme talebi.
+    *   `PUT /password`: Şifre değiştirme.
+*   **`AdminUserControllerImpl` (`/api/v1/admin/customers`):**
+    *   Admin'in kullanıcıları listelemesi, `APPROVED`/`REJECTED` statüsüne çekmesi. **KRİTİK:** Admin bir CORPORATE_MANAGER rolündeki kullanıcıyı onayladığında, `auth-service` Feign Client (`CompanyServiceClient`) kullanarak `http://corporate-service:8085` adresine `CompanySyncRequest` atar ve şirketi o mikroserviste fiziksel olarak oluşturur.

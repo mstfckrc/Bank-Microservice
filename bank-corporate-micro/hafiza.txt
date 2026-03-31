@@ -1,6 +1,6 @@
-# 🏢 SEC-DEMO CORPORATE (KURUMSAL) SERVİSİ HAFIZA KARTI (V5.0 - EXTREME DETAYLI)
+# 🏢 SEC-DEMO CORPORATE (KURUMSAL) SERVİSİ HAFIZA KARTI (V6.0 - EXTREME DETAYLI)
 
-Sistemin kurumsal firmalarla (şirket çalışanları, toplu maaş ödemeleri ve otomatik maaş ayarları) ilgili tüm süreçlerini Monolith'ten koparılarak bağımsızlaştırılmış yeni mikroservisidir.
+Sistemin kurumsal firmalarla (şirket çalışanları, toplu maaş ödemeleri ve otomatik maaş ayarları) ilgili tüm süreçlerini yöneten, V6 mimarisinde Auth/Kimlik doğrulama katmanıyla (Auth Service) senkron çalışan izole mikroservistir.
 
 ---
 

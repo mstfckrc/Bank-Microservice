@@ -1,6 +1,6 @@
-# 🖥️ SEC-DEMO FRONTEND HAFIZA KARTI (V4.0 - EXTREME DETAYLI & EKSİKSİZ)
+# 🖥️ SEC-DEMO FRONTEND HAFIZA KARTI (V6.0 - EXTREME DETAYLI & EKSİKSİZ)
 
-Bu doküman, sistemin ön yüzünü (React/Next.js) inşa ederken kullanılacak tek geçerli kaynak rehberidir. Sıfır tahmin ile yazılmıştır.
+Bu doküman, sistemin ön yüzünü (React/Next.js) inşa ederken kullanılacak tek geçerli kaynak rehberidir. Sıfır tahmin ile yazılmıştır. Yeni mikroservislere bölünen backend ağacı Gateway sayesinde Frontend'den %100 soyutlanmıştır.
 
 ---
 
