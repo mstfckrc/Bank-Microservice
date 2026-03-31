@@ -11,11 +11,8 @@ public interface IAccountRepository extends JpaRepository<Account, Long> {
 
     Optional<Account> findByIban(String iban);
 
-    // Artık hesabı Customer ID'sine göre değil, AppUser ID'sine göre arıyoruz
-    List<Account> findByAppUserId(Long appUserId);
-
-    // Veya direkt kimlik numarasıyla bulmak için (Servislerde çok işimize yarayacak)
-    List<Account> findByAppUser_IdentityNumber(String identityNumber);
+    // 🚀 YENİ MİMARİ: Kasaları sahibinin TC kimlik numarasına göre bul!
+    List<Account> findByOwnerIdentityNumber(String ownerIdentityNumber);
 
     boolean existsByAccountNumber(String accountNumber);
 

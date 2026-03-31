@@ -16,9 +16,6 @@ public interface IInternalBankController {
     @GetMapping("/accounts/validate")
     ResponseEntity<AccountValidationResponse> validateAccount(@RequestParam("iban") String iban);
 
-    @GetMapping("/customers/profile/{identityNumber}")
-    ResponseEntity<CustomerProfileResponse> getCustomerProfile(@PathVariable("identityNumber") String identityNumber);
-
     @PostMapping("/transactions/bulk-salary")
     ResponseEntity<List<TransactionResponse>> payBulkSalaries(@RequestBody BulkSalaryRequest request);
 }

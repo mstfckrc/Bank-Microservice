@@ -52,6 +52,7 @@ services:
       - backend 
       - discovery-server
       - bill-service 
+      - auth-service
     ports:
       - "8081:8081" 
     networks:
@@ -126,6 +127,30 @@ services:
       - EUREKA_URL=http://discovery-server:8761/eureka/
     ports:
       - "8085:8085"
+    networks:
+      - bank-network-micro
+
+  # 🔐 YENİ BİRLİĞİMİZ: KİMLİK VE YETKİLENDİRME ÜSSÜ (Auth Service)
+  auth-service:
+    build:
+      context: ./bank-auth-micro # Klasör adının bu olduğundan emin ol
+      dockerfile: Dockerfile
+    container_name: bank_auth_micro
+    restart: on-failure
+    depends_on:
+      - postgres
+      - rabbitmq
+      - discovery-server
+    environment:
+      # Şimdilik Karargahla aynı DB'yi okuyor (bank_db)
+      - DB_URL=jdbc:postgresql://bank_postgres_micro:5432/bank_db
+      - SPRING_RABBITMQ_HOST=rabbitmq
+      - SPRING_RABBITMQ_PORT=5672
+      - SPRING_RABBITMQ_USERNAME=admin
+      - SPRING_RABBITMQ_PASSWORD=123456
+      - EUREKA_URL=http://discovery-server:8761/eureka/
+    ports:
+      - "8086:8086"
     networks:
       - bank-network-micro
 

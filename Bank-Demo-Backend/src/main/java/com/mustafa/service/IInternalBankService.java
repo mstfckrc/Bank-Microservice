@@ -9,6 +9,5 @@ import java.util.List;
 
 public interface IInternalBankService {
     AccountValidationResponse validateAccount(String iban);
-    CustomerProfileResponse getCustomerProfile(String identityNumber);
     List<TransactionResponse> payBulkSalaries(BulkSalaryRequest request);
 }

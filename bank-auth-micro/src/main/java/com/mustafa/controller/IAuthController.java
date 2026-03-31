@@ -3,10 +3,9 @@ package com.mustafa.controller;
 import com.mustafa.dto.request.LoginRequest;
 import com.mustafa.dto.request.RegisterRequest;
 import com.mustafa.dto.response.AuthResponse;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RequestBody;
-
-import jakarta.validation.Valid;
 
 public interface IAuthController {
 

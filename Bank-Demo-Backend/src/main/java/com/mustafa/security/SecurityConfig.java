@@ -17,7 +17,6 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthFilter;
-    private final AuthenticationProvider authenticationProvider;
 
     // 🚀 YENİ MİMARİ: İç hat (Internal) telsizlerini dinleyecek filtremizi ekledik
     private final InternalHeaderFilter internalHeaderFilter;
@@ -47,7 +46,6 @@ public class SecurityConfig {
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
-                .authenticationProvider(authenticationProvider)
 
                 // 🛡️ ZIRHLARI GİYİYORUZ (Sıralama Önemlidir)
                 // 1. Önce iç hattan gelen mikroservis telsizlerini (Header) kontrol et

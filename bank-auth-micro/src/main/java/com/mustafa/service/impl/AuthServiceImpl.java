@@ -2,7 +2,6 @@ package com.mustafa.service.impl;
 
 import com.mustafa.client.CompanyServiceClient;
 import com.mustafa.dto.message.NotificationMessage;
-import com.mustafa.messaging.publisher.RabbitMQPublisher;
 import com.mustafa.dto.request.CompanySyncRequest;
 import com.mustafa.dto.request.LoginRequest;
 import com.mustafa.dto.request.RegisterRequest;
@@ -10,6 +9,7 @@ import com.mustafa.dto.response.AuthResponse;
 import com.mustafa.entity.AppUser;
 import com.mustafa.entity.RetailCustomer;
 import com.mustafa.exception.BankOperationException;
+import com.mustafa.messaging.publisher.RabbitMQPublisher;
 import com.mustafa.repository.IAppUserRepository;
 import com.mustafa.repository.IRetailCustomerRepository;
 import com.mustafa.security.JwtService;

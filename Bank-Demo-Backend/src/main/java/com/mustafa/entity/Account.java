@@ -33,11 +33,8 @@ public class Account {
     @Column(nullable = false, length = 3)
     private Currency currency; // TRY, USD, EUR
 
-    // İLİŞKİ: Her hesabın mutlak bir sahibi (Müşterisi) olmak zorundadır
-    // Performans için veritabanından hesap çekilirken müşteriyi hemen getirme (LAZY)
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "app_user_id", nullable = false)
-    private AppUser appUser;
+    @Column(name = "owner_identity_number", nullable = false, length = 11)
+    private String ownerIdentityNumber;
 
     // Bu hesaptan çıkan paralar (Gönderilenler)
     @OneToMany(mappedBy = "senderAccount")

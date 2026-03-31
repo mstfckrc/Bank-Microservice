@@ -38,10 +38,6 @@ public class AppUser implements UserDetails {
     @Column(nullable = false, length = 20, columnDefinition = "varchar(20) default 'PENDING'")
     private ApprovalStatus status = ApprovalStatus.PENDING;
 
-    // Hesaplar artık doğrudan kimliğe bağlı
-    @OneToMany(mappedBy = "appUser", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<Account> accounts;
-
     // --- SPRING SECURITY USERDETAILS METOTLARI ---
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {

@@ -14,18 +14,10 @@ import java.util.List;
 import java.util.Map;
 
 public interface IAdminController {
-    ResponseEntity<List<UserProfileResponse>> getAllCustomers();
-    ResponseEntity<Map<String, String>> deleteCustomer(@PathVariable String tcNo);
-    ResponseEntity<UserProfileResponse> updateCustomer(@PathVariable String tcNo, @RequestBody UpdateProfileRequest request);
-
     ResponseEntity<List<AccountResponse>> getAllAccounts();
     ResponseEntity<List<AccountResponse>> getCustomerAccounts(@PathVariable String tcNo);
     ResponseEntity<List<TransactionResponse>> getAccountTransactions(String accountNumber);
     ResponseEntity<AccountResponse> openAccountForCustomer(String tcNo, OpenAccountRequest request);
-
-    ResponseEntity<Map<String, String>> updateCustomerStatus(
-            @PathVariable String tcNo,
-            @RequestParam String status);
 
     // --- 🚀 YENİ: MERKEZİ İŞLEM İZLEME VE ONAY (GOD MODE) ---
 

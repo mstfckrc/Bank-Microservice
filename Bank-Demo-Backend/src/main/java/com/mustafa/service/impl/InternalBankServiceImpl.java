@@ -4,13 +4,10 @@ import com.mustafa.dto.request.BulkSalaryRequest;
 import com.mustafa.dto.request.SalaryPaymentItem;
 import com.mustafa.dto.request.TransferRequest;
 import com.mustafa.dto.response.AccountValidationResponse;
-import com.mustafa.dto.response.CustomerProfileResponse;
 import com.mustafa.dto.response.TransactionResponse;
 import com.mustafa.entity.Account;
-import com.mustafa.entity.RetailCustomer;
 import com.mustafa.exception.BankOperationException;
 import com.mustafa.repository.IAccountRepository;
-import com.mustafa.repository.IRetailCustomerRepository;
 import com.mustafa.service.ICurrencyService;
 import com.mustafa.service.IInternalBankService;
 import com.mustafa.service.ITransactionService;
@@ -29,7 +26,6 @@ import java.util.List;
 public class InternalBankServiceImpl implements IInternalBankService {
 
     private final IAccountRepository accountRepository;
-    private final IRetailCustomerRepository retailCustomerRepository;
     private final ITransactionService transactionService;
     private final ICurrencyService currencyService;
 
@@ -39,24 +35,13 @@ public class InternalBankServiceImpl implements IInternalBankService {
                 .orElseThrow(() -> new BankOperationException("Kasa bulunamadı!"));
 
         return AccountValidationResponse.builder()
-                .ownerIdentityNumber(account.getAppUser().getIdentityNumber())
+                .ownerIdentityNumber(account.getOwnerIdentityNumber()) // Sadece TC dönüyor!
                 .isActive(account.isActive())
                 .build();
     }
 
-    @Override
-    public CustomerProfileResponse getCustomerProfile(String identityNumber) {
-        RetailCustomer customer = retailCustomerRepository.findByAppUser_IdentityNumber(identityNumber)
-                .orElseThrow(() -> new BankOperationException("Müşteri bulunamadı!"));
-
-        return CustomerProfileResponse.builder()
-                .identityNumber(identityNumber)
-                .firstName(customer.getFirstName())
-                .lastName(customer.getLastName())
-                // 🚀 DÜZELTİLDİ: Senin Entity'ndeki tam adıyla (email) çağırıyoruz!
-                .email(customer.getEmail())
-                .build();
-    }
+    // 🚀 BÜYÜK DEĞİŞİM: getCustomerProfile METODU SİLİNDİ!
+    // Karargah müşteri tanımadığı için bu bilgi artık buradan verilemez.
 
     @Override
     @Transactional
@@ -68,7 +53,6 @@ public class InternalBankServiceImpl implements IInternalBankService {
             throw new BankOperationException("Çıkış kasası pasif durumdadır!");
         }
 
-        // 1. Toplam TRY yükünü hesapla (Maaşlar TRY bazında listelendiği için)
         BigDecimal totalSalaryInTry = request.getSalaryItems().stream()
                 .map(SalaryPaymentItem::getAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -76,7 +60,6 @@ public class InternalBankServiceImpl implements IInternalBankService {
         BigDecimal totalRequiredInSenderCurrency = totalSalaryInTry;
         boolean isSenderCurrencyForeign = !senderAccount.getCurrency().name().equalsIgnoreCase("TRY");
 
-        // 2. Döviz Koruması (Çıkış Kasası TRY değilse kur dönüşümü yap)
         if (isSenderCurrencyForeign) {
             Double convertedTotal = currencyService.convertAmount(
                     totalSalaryInTry.doubleValue(), "TRY", senderAccount.getCurrency().name()
@@ -86,21 +69,17 @@ public class InternalBankServiceImpl implements IInternalBankService {
                     totalSalaryInTry, String.format("%.2f", totalRequiredInSenderCurrency), senderAccount.getCurrency().name());
         }
 
-        // 3. Bakiye Kontrolü (Tek seferde tüm liste için)
         if (senderAccount.getBalance().compareTo(totalRequiredInSenderCurrency) < 0) {
             throw new BankOperationException("Kasada yeterli bakiye yok! Gereken: " + totalRequiredInSenderCurrency + " " + senderAccount.getCurrency().name());
         }
 
         List<TransactionResponse> transactionResults = new ArrayList<>();
 
-        // 4. Transfer Motorunu Tetikle
         for (SalaryPaymentItem item : request.getSalaryItems()) {
-
             TransferRequest transferReq = new TransferRequest();
             transferReq.setSenderIban(senderAccount.getIban());
             transferReq.setReceiverIban(item.getReceiverIban());
 
-            // 🚀 BÜYÜK DÜZELTME: Eğer çıkış kasası Döviz ise, Transfer motoruna 20.000 (TRY) değil, onun döviz karşılığını (Örn 449 USD) gönder!
             if (isSenderCurrencyForeign) {
                 Double itemConverted = currencyService.convertAmount(
                         item.getAmount().doubleValue(), "TRY", senderAccount.getCurrency().name()
@@ -112,9 +91,7 @@ public class InternalBankServiceImpl implements IInternalBankService {
                 transferReq.setDescription("Maaş Ödemesi - " + request.getCompanyName());
             }
 
-            // 🚀 EKSİK OLAN ONAY BAYRAĞI EKLENDİ!
-            transferReq.setSalaryPayment(true); // Bu sayede MASAK limitine (50.000) takılmayacak!
-
+            transferReq.setSalaryPayment(true);
             TransactionResponse response = transactionService.transfer(transferReq);
             transactionResults.add(response);
         }

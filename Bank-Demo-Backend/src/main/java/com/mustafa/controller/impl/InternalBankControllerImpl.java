@@ -31,13 +31,6 @@ public class InternalBankControllerImpl implements IInternalBankController {
         log.info("INTERNAL REST İsteği: Kasa (IBAN) doğrulama talebi geldi. IBAN: {}", iban);
         return ResponseEntity.ok(internalBankService.validateAccount(iban));
     }
-
-    @Override
-    public ResponseEntity<CustomerProfileResponse> getCustomerProfile(String identityNumber) {
-        log.info("INTERNAL REST İsteği: Müşteri profili sorgulanıyor. TC: {}", identityNumber);
-        return ResponseEntity.ok(internalBankService.getCustomerProfile(identityNumber));
-    }
-
     @Override
     public ResponseEntity<List<TransactionResponse>> payBulkSalaries(BulkSalaryRequest bulkRequest) {
 

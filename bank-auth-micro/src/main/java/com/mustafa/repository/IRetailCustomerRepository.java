@@ -2,6 +2,7 @@ package com.mustafa.repository;
 
 import com.mustafa.entity.RetailCustomer;
 import org.springframework.data.jpa.repository.JpaRepository;
+
 import java.util.Optional;
 
 public interface IRetailCustomerRepository extends JpaRepository<RetailCustomer, Long> {

@@ -41,30 +41,6 @@ public class AdminControllerImpl implements IAdminController {
     }
 
     @Override
-    @GetMapping("/customers")
-    public ResponseEntity<List<UserProfileResponse>> getAllCustomers() {
-        log.info("REST İsteği: Admin tarafından sistemdeki tüm müşteriler sorgulanıyor.");
-        return ResponseEntity.ok(adminService.getAllCustomers());
-    }
-
-    @Override
-    @DeleteMapping("/customers/{tcNo}")
-    public ResponseEntity<Map<String, String>> deleteCustomer(@PathVariable String tcNo) {
-        log.info("REST İsteği: Admin tarafından müşteri ({}) silme işlemi tetiklendi.", tcNo);
-        adminService.deleteCustomer(tcNo);
-        Map<String, String> response = new HashMap<>();
-        response.put("message", tcNo + " kimlik numaralı müşteri ve bağlı tüm hesapları başarıyla silinmiştir.");
-        return ResponseEntity.ok(response);
-    }
-
-    @Override
-    @PutMapping("/customers/{tcNo}")
-    public ResponseEntity<UserProfileResponse> updateCustomer(@PathVariable String tcNo, @RequestBody UpdateProfileRequest request) {
-        log.info("REST İsteği: Admin tarafından müşteri ({}) profil güncelleme işlemi tetiklendi.", tcNo);
-        return ResponseEntity.ok(adminService.updateCustomer(tcNo, request));
-    }
-
-    @Override
     @GetMapping("/accounts/{accountNumber}/transactions")
     public ResponseEntity<List<TransactionResponse>> getAccountTransactions(@PathVariable String accountNumber) {
         log.info("REST İsteği: Admin tarafından bir hesabın ({}) işlem geçmişi sorgulanıyor.", accountNumber);
@@ -78,19 +54,6 @@ public class AdminControllerImpl implements IAdminController {
             @RequestBody OpenAccountRequest request) {
         log.info("REST İsteği: Admin tarafından müşteriye ({}) yeni hesap açma işlemi başlatıldı. Döviz: {}", tcNo, request.getCurrency());
         return ResponseEntity.ok(adminService.openAccountForCustomer(tcNo, request));
-    }
-
-    @PutMapping("/customers/{tcNo}/status")
-    @Override
-    public ResponseEntity<Map<String, String>> updateCustomerStatus(
-            @PathVariable String tcNo,
-            @RequestParam String status) {
-        log.info("REST İsteği: Admin tarafından müşteri ({}) onay durumu değiştiriliyor. Yeni Durum: {}", tcNo, status);
-        adminService.updateCustomerStatus(tcNo, status);
-
-        Map<String, String> response = new HashMap<>();
-        response.put("message", "Müşteri durumu başarıyla güncellendi: " + status);
-        return ResponseEntity.ok(response);
     }
 
     @Override

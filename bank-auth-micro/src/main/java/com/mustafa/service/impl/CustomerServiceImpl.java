@@ -1,13 +1,13 @@
 package com.mustafa.service.impl;
 
 import com.mustafa.dto.message.NotificationMessage;
-import com.mustafa.messaging.publisher.RabbitMQPublisher;
 import com.mustafa.dto.request.ChangePasswordRequest;
 import com.mustafa.dto.request.UpdateProfileRequest;
 import com.mustafa.dto.response.UserProfileResponse;
 import com.mustafa.entity.AppUser;
 import com.mustafa.entity.RetailCustomer;
 import com.mustafa.exception.BankOperationException;
+import com.mustafa.messaging.publisher.RabbitMQPublisher;
 import com.mustafa.repository.IAppUserRepository;
 import com.mustafa.repository.IRetailCustomerRepository;
 import com.mustafa.service.ICustomerService;
