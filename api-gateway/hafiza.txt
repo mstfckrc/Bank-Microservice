@@ -17,6 +17,11 @@ Browser tabanlı Pre-Flight (`OPTIONS`) isteklerinin havada yakalanıp geçirilm
 *   `allowedHeaders`: `*`.
 *   `allowCredentials`: `true` (Bearer Token taşımak için zorunludur).
 
+### 1.1. Ağ Ayarları ve Bağımlılıklar
+*   Uygulama **8081** portunda ayağa kalkar. Dış dünyadan gelen ve Frontend'in gönderdiği tüm "fetch" veya "axios" istekleri direkt buraya çarpar.
+*   **Eureka Client (`discovery-server:8761`)**: Tüm mikroservislerin ismini IP'ye çevirmek üzere `discovery-server` DNS havuzuna bağlanır. `application.yml` dosyasında Eureka url'i explicitly "http://discovery-server:8761/eureka/" olarak güncellenmiştir (Docker tam uyumluluğu için).
+*   Ortak 512-bit gizli `jwt.secret` anahtarını application config içerisinde barındırır. Auth servisle aynı anahtara sahip olduğu için şifreyi çözebilir.
+
 ### 2.2. JWT Doğrulayıcı (`JwtUtil.java`)
 Gelen header içindeki token'ı `Jwts.parserBuilder()` kullanarak çözer. `404E6352...` ile başlayan 512-bit gizli `secret` key Backend ile birebir kopyalanmıştır. `validateToken` fonksiyonu ile JWT süresinin geçip geçmediğini (Expiry) inceler. Süresi dolmuş token içeriye kesinlikle giremez.
 

@@ -9,7 +9,8 @@ Yapay zeka asistanı olarak kodu analiz edeceğiniz veya ekleme yapacağınız z
 ## 🏗️ 1. MİMARİ İLETİŞİM PRENSİPLERİ (YAPAY ZEKA İÇİN ÇOK ÖNEMLİ)
 
 *   **REST ve FEIGN Sınırları:** Microservisler birbirleriyle asla direkt veritabanı üzerinden (`AppUser`, `Account` vb.) haberleşmez. Tüm iç haberleşmeler `XServiceClient` adlı **FeignClient** interfaceleri üzerinden olur (Örn: `Auth` -> `Corporate` eşleşmesinde `CompanySyncRequest` json fırlatılır).
-*   **Security (Güvenlik) Duvarı:** JWT token sadece **API Gateway** tarafından karşılanır, çözülür, doğrulanır ve içindeki TC Kimlik (`identityNumber`) çıkarılarak HTTP Header formatıyla (`X-Identity-Number`) alt servislere paslanır. **Alt servisler (Auth hariç) JWT umursamaz, gelen header'a güvenirler!**
+*   **Ağır Yıkım (Cascading Deletes) Orchestration:** Monolith parçalandığı için, örneğin Admin bir kullanıcıyı silerse; Auth servisi FeignClient ile hem Backend'e zıplayıp hesapları patlatır (`DELETE /api/v1/internal/accounts/customer/{id}`) hem de Corporate'e fırlayıp profil siler. İşlemlerde Transaction bütünlüğü için try-catch-rollback dinamiği uygulanır.
+*   **Security (Güvenlik) Duvarı:** JWT token sadece **API Gateway** tarafından karşılanır, çözülür, doğrulanır ve içindeki TC Kimlik (`identityNumber`) çıkarılarak HTTP Header formatıyla (`X-Identity-Number`) alt servislere paslanır. **Alt servisler (Auth hariç) JWT umursamaz, gelen header'a güvenirler! İç hat (Internal) çağrılarında ise sahte bir yetki kuşanmak için Feign içinde `X-Internal-Identity` aktarılır.**
 *   **Asenkron Bildirimler:** Hiçbir servis "mail atma" işlemini kendi yapmaz. RabbitMQ `bank_exchange` kuyruğuna `NotificationMessage` JSON'ı fırlatır, çeker gider.
 
 ---

@@ -50,4 +50,9 @@ Bütün kimlik doğrulama aktarımlarında kullanılan exact DTO nesneleri:
     *   `POST /appeal`: Kurumsalların tekrar incelenme talebi.
     *   `PUT /password`: Şifre değiştirme.
 *   **`AdminUserControllerImpl` (`/api/v1/admin/customers`):**
-    *   Admin'in kullanıcıları listelemesi, `APPROVED`/`REJECTED` statüsüne çekmesi. **KRİTİK:** Admin bir CORPORATE_MANAGER rolündeki kullanıcıyı onayladığında, `auth-service` Feign Client (`CompanyServiceClient`) kullanarak `http://corporate-service:8085` adresine `CompanySyncRequest` atar ve şirketi o mikroserviste fiziksel olarak oluşturur.
+    *   `GET /`: Admin'in tüm kullanıcıları listelemesi.
+    *   `PUT /{identityNumber}/status`: `APPROVED`/`REJECTED` statüsüne çekmesi. **KRİTİK:** Admin bir CORPORATE_MANAGER rolündeki kullanıcıyı onayladığında, `auth-service` Feign Client (`CompanyServiceClient`) kullanarak `http://corporate-service:8085` adresine `CompanySyncRequest` atar ve şirketi o mikroserviste fiziksel olarak oluşturur.
+    *   **`DELETE /{identityNumber}` [YENİ]:** Admin bir kullanıcıyı SİLDİĞİNDE "Distributed Transaction / Orchestration" başlar:
+        1. Bireyselse kendi DB'sindeki profili siler, kurumsalsa `CompanyServiceClient` ile (`Corporate-Service`) profilini patlatır.
+        2. `BackendServiceClient.deleteCustomerAccounts` çağrısıyla `Bank-Demo-Backend`'e vurup tüm IBAN kasalarını imha eder.
+        3. Son olarak kendi `AppUser` tablosundan siler. (Eğer backend hesabı silemezse tüm işlemi Rollback atar).

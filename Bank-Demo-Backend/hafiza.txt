@@ -46,8 +46,9 @@ Kimlik (Login/Register) DTO'ları tamamen Auth servise gitmiştir. Burada sadece
 ### 🛡️ 4. İÇ (INTERNAL) UÇ NOKTALAR (`/api/v1/internal`)
 Bu kapılar dış dünyadan (Gateway'den) erişilemez, sadece sistem mikroservisleri `FeignClient` ile vurabilir.
 *   **`POST /transactions/bill-payment`:** `bill-service` tahsilat emri gönderdiğinde müşteriden faturayı keser.
-*   **`POST /transactions/bulk-salary`:** `bank-corporate-micro` personellere maaş dağıtırken toplu bir `BulkSalaryRequest` yollar, Backend tek bir DB bloğunda şirketten toplu tutarı düşüp çalışanlara ekler, veritabanına SALARY_PAYMENT olaran dekonte eder.
-*   **`GET /accounts/{iban}/validate`:** Corporate servisi bir IBAN'ın ait olduğu kişinin TC kimlik numarasını ve hesabı aktifliğini kontrol etmek istediğinde bu servise vurur.
+*   **`POST /transactions/bulk-salary`:** `bank-corporate-micro` personellere maaş dağıtırken toplu bir `BulkSalaryRequest` yollar, Backend tek bir DB bloğunda şirketten toplu tutarı düşüp çalışanlara ekler, veritabanına SALARY_PAYMENT olaran dekonte eder. *(DİKKAT: Kurumsal sistemden `X-Internal-Identity` header'ı ile yetki gönderilir ve SecurityContext'e işlenerek işlem yapılır).*
+*   **`GET /accounts/validate`:** Corporate servisi bir IBAN'ın ait olduğu kişinin TC kimlik numarasını ve hesabı aktifliğini kontrol etmek istediğinde bu servise vurur.
+*   **`DELETE /accounts/customer/{identityNumber}` [YENİ]:** Auth servisi, Admin tarafından bir kullanıcı haritadan silindiğinde bu uca telsiz çeker ve kullanıcının Karargahtaki tüm kasalarını (Transaction'lar varsa patlatarak veya pasife alarak) yok eder.
 
 ## 📡 5. SİSTEM ENTEGRASYONLARI
 *   **Eureka Client:** `http://discovery-server:8761/eureka/`
