@@ -72,8 +72,8 @@ Proje `Docker Compose` üzerinde tam yapılandırılmıştır.
 
 ```bash
 # 1. Projeyi sisteminize indirin
-git clone https://github.com/organization/NexaBank.git
-cd NexaBank
+git clone https://github.com/mstfckrc/Bank-Microservice.git
+cd Bank-Microservice
 
 # 2. Arka plan servislerini, veritabanlarını ve mesaj kuyruğunu ayağa kaldırın
 docker-compose up -d
