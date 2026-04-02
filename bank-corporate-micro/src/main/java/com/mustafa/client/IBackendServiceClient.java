@@ -21,11 +21,7 @@ public interface IBackendServiceClient {
     @GetMapping("/accounts/validate")
     AccountValidationResponse validateAccount(@RequestParam("iban") String iban);
 
-    // 2. TC Kimlik No ile Bireysel Müşteri Profilini Getir (Ad/Soyad lazım olacak)
-    @GetMapping("/customers/profile/{identityNumber}")
-    CustomerProfileResponse getCustomerProfile(@PathVariable("identityNumber") String identityNumber);
-
-    // 3. Karargaha Devasa Maaş Listesini Fırlat ve Dekontları (Transaction) Geri Al!
+    // 2. Karargaha Devasa Maaş Listesini Fırlat ve Dekontları (Transaction) Geri Al!
     @PostMapping("/transactions/bulk-salary")
     List<TransactionResponse> payBulkSalaries(@RequestBody BulkSalaryRequest request);
 }

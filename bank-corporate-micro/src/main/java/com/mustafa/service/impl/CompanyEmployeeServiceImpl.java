@@ -1,5 +1,6 @@
 package com.mustafa.service.impl;
 
+import com.mustafa.client.IAuthServiceClient;
 import com.mustafa.client.IBackendServiceClient;
 import com.mustafa.dto.message.NotificationMessage;
 import com.mustafa.dto.request.*;
@@ -31,6 +32,7 @@ public class CompanyEmployeeServiceImpl implements ICompanyEmployeeService {
     // 🚀 BÜYÜK DEĞİŞİM: Eski repolar gitti, Karargah Telsizi (Feign) geldi!
     private final IBackendServiceClient backendServiceClient;
     private final RabbitMQPublisher rabbitPublisher;
+    private final IAuthServiceClient authServiceClient;
 
     private String maskIdentity(String identity) {
         if (identity == null || identity.length() <= 4) return "****";
@@ -50,12 +52,13 @@ public class CompanyEmployeeServiceImpl implements ICompanyEmployeeService {
             throw new BankOperationException("Bu personel zaten şirketinizde kayıtlı!");
         }
 
-        // 📡 FEIGN 1: Müşteri Karargahta (Sistemde) var mı? Profilini getir!
+        // 📡 FEIGN 1: Müşteri Kimlik Üssünde (Auth Service) var mı? Profilini getir!
         CustomerProfileResponse profile;
         try {
-            profile = backendServiceClient.getCustomerProfile(request.getIdentityNumber());
+            // ARTIK BACKEND'E DEĞİL, AUTH SERVİSE SORUYORUZ!
+            profile = authServiceClient.getCustomerProfile(request.getIdentityNumber());
         } catch (FeignException.NotFound e) {
-            log.warn("İşe alım reddedildi: Personel adayı Karargahta bulunamadı.");
+            log.warn("İşe alım reddedildi: Personel adayı sistemde bulunamadı.");
             throw new BankOperationException("Personel sisteme kayıtlı değil! Önce bireysel müşteri hesabı açmalıdır.");
         }
 
