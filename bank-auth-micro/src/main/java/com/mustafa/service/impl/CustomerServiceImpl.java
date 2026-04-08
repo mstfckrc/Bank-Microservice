@@ -1,7 +1,6 @@
 package com.mustafa.service.impl;
 
 import com.mustafa.dto.message.NotificationMessage;
-import com.mustafa.dto.request.ChangePasswordRequest;
 import com.mustafa.dto.request.UpdateProfileRequest;
 import com.mustafa.dto.response.UserProfileResponse;
 import com.mustafa.entity.AppUser;
@@ -11,10 +10,11 @@ import com.mustafa.messaging.publisher.RabbitMQPublisher;
 import com.mustafa.repository.IAppUserRepository;
 import com.mustafa.repository.IRetailCustomerRepository;
 import com.mustafa.service.ICustomerService;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,10 +25,6 @@ public class CustomerServiceImpl implements ICustomerService {
 
     private final IAppUserRepository appUserRepository;
     private final IRetailCustomerRepository retailCustomerRepository;
-
-    // 🚀 SİLİNDİ: private final ICompanyRepository companyRepository;
-
-    private final PasswordEncoder passwordEncoder;
     private final RabbitMQPublisher rabbitPublisher;
 
     private String maskIdentity(String identity) {
@@ -36,6 +32,7 @@ public class CustomerServiceImpl implements ICustomerService {
         return "*******" + identity.substring(identity.length() - 4);
     }
 
+    // 🚀 Gateway'in SecurityContext'e koyduğu TC Kimlik numarası ile kullanıcıyı bulur
     private AppUser getAuthenticatedAppUser() {
         String identityNumber = SecurityContextHolder.getContext().getAuthentication().getName();
         return appUserRepository.findByIdentityNumber(identityNumber)
@@ -80,9 +77,8 @@ public class CustomerServiceImpl implements ICustomerService {
             email = retail.getEmail();
 
         } else if (appUser.getRole() == AppUser.Role.CORPORATE_MANAGER) {
-            // 🚀 BÜYÜK DEĞİŞİM: Kurumsal bilgilerin Karargahtan güncellenmesi ENGELLENDİ.
             log.warn("Profil güncelleme reddedildi: Kurumsal müşteri ({}) bilgileri Karargahtan güncellenemez.", maskedId);
-            throw new BankOperationException("Kurumsal profil bilgileri (Şirket Adı, E-posta) sadece Kurumsal Yönetim modülünden (Mikroservisten) güncellenebilir!");
+            throw new BankOperationException("Kurumsal profil bilgileri (Şirket Adı, E-posta) sadece Kurumsal Yönetim modülünden güncellenebilir!");
         }
 
         log.info("Profil başarıyla güncellendi. Kullanıcı: {}", maskedId);
@@ -106,35 +102,7 @@ public class CustomerServiceImpl implements ICustomerService {
                 .build();
     }
 
-    @Override
-    @Transactional
-    public void changePassword(ChangePasswordRequest request) {
-        AppUser appUser = getAuthenticatedAppUser();
-        String maskedId = maskIdentity(appUser.getIdentityNumber());
-        log.info("Şifre değiştirme talebi alındı. Kullanıcı: {}", maskedId);
-
-        if (!passwordEncoder.matches(request.getOldPassword(), appUser.getPassword())) {
-            log.warn("Şifre değiştirme başarısız: Eski şifre hatalı! Kullanıcı: {}", maskedId);
-            throw new BankOperationException("Eski şifreniz hatalı!");
-        }
-        if (request.getNewPassword().length() < 6) {
-            log.warn("Şifre değiştirme başarısız: Yeni şifre kurallara uymuyor (Çok kısa). Kullanıcı: {}", maskedId);
-            throw new BankOperationException("Yeni şifreniz en az 6 karakter olmalıdır!");
-        }
-
-        appUser.setPassword(passwordEncoder.encode(request.getNewPassword()));
-        appUserRepository.save(appUser);
-
-        NotificationMessage securityMessage = NotificationMessage.builder()
-                .destination(appUser.getIdentityNumber())
-                .subject("🚨 Güvenlik Uyarısı: Şifreniz Değiştirildi")
-                .content("Dijital bankacılık şifreniz az önce değiştirildi. Bu işlemi siz gerçekleştirmediyseniz lütfen acilen müşteri hizmetlerimizle iletişime geçiniz!")
-                .identityNumber(maskedId)
-                .notificationType(NotificationMessage.NotificationType.SMS)
-                .build();
-
-        rabbitPublisher.sendNotification(securityMessage);
-    }
+    // 🚀 SİLİNDİ: changePassword metodu tamamen kaldırıldı! Şifre işlemleri Keycloak'tadır.
 
     @Override
     public UserProfileResponse getMyProfile() {
@@ -150,8 +118,6 @@ public class CustomerServiceImpl implements ICustomerService {
             profileName = retail.getFirstName() + " " + retail.getLastName();
             email = retail.getEmail();
         } else if (appUser.getRole() == AppUser.Role.CORPORATE_MANAGER) {
-            // 🚀 DEĞİŞİKLİK: Kurumsal Müşteri Karargahta profil detaylarını çektiğinde genel bir isim ve e-posta görür
-            // İleride bu detayı Feign Client ile Kurumsal Servisten çekebiliriz. Şimdilik sistemin çökmesini engelliyoruz.
             profileName = "Kurumsal Müşteri (" + appUser.getIdentityNumber() + ")";
             email = "kurumsal@sistem.com";
         } else {

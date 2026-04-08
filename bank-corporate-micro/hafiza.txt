@@ -39,6 +39,7 @@ Bütün Controller ve Feign aktarımlarında kullanılan exact DTO nesneleri:
 ## ⚙️ 3. SERVİS VE İŞ MANTIĞI EKSENİ (API & MİKROSERVİS İLETİŞİMİ)
 *   **Ağ Ayarları:** Port: 8085. Eureka'ya `bank-corporate-micro` adıyla kaydolur.
 *   **Güvenlik:** Tıpkı Bill-Service gibi JWT Header'ından API Gateway tarafından çözülmüş `@RequestHeader("X-Identity-Number")` string'ini Security Context olmadan okur ve işlem sahibini belirler.
-*   **Backend Entegrasyonu (FeignClients):**
-    *   Bu servis dış dünyaya kapalı olan veya açık olan backend uç noktalarına vurarak veri doğrulaması yapmak zorundadır. Personel işe alırken IBAN kontrolü (`AccountValidationResponse`) ve kimlik eşleştirme (`CustomerProfileResponse`) için Backend'i sorgular.
-    *   Maaş ödeme günü geldiğinde veya şirket kendisi maaş ödeye bastığında, toplu transfer işlemini kendi veri tabanında (Hesap/Bakiye) yapamayacağı için `BulkSalaryRequest` hazırlayıp Backend'in `/api/v1/internal/transactions/bulk-salary` uç noktasına zıplatır.
+*   **Mikroservis Entegrasyonları (FeignClients):**
+    *   Bu servis, dış dünyaya kapalı yeraltı uç noktalarına vurarak veri doğrulaması yapmak zorundadır.
+    *   **Auth Servisi Bağlantısı (`IAuthServiceClient`):** Personel işe alınırken TC kimlik numarasına karşılık gelen ad/soyad bilgisini öğrenmek için doğrudan Kimlik (Auth) servisine vurur (`/api/v1/internal/users/profile/{tc}`). 
+    *   **Karargah (Backend) Bağlantısı (`IBackendServiceClient`):** İşe alınacak personelin girdiği maaş IBAN'ı gerçekten o TC'ye mi ait diye sorgulamak (`AccountValidationResponse`) ve toplu maaş ödeme günü geldiğinde `BulkSalaryRequest` fırlatmak için doğrudan Backend'in `/api/v1/internal` yeraltı kapısına zıplar.

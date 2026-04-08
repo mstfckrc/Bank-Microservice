@@ -166,6 +166,12 @@ services:
     environment:
       # 🚀 KRİTİK DEĞİŞİKLİK: Hedef artık 8080 değil, 8081 (Gateway)
       - NEXT_PUBLIC_API_URL=http://localhost:8081/api/v1
+      # 🚀 KESİN ÇÖZÜM: Docker'ın şifreleri ve iç ağ (keycloak:8080) adresini bilmesi ŞART!
+      - NEXT_PUBLIC_KEYCLOAK_URL=http://localhost:9090
+      - KEYCLOAK_REALM=bank-realm
+      - KEYCLOAK_CLIENT_ID=bank-auth-client
+      - KEYCLOAK_CLIENT_SECRET=Gl0MBqM5kIECcXUVl3G4OyG2zKTiNEa4
+      - KEYCLOAK_INTERNAL_URL=http://keycloak:8080
     ports:
       - "3000:3000"
     networks:
@@ -180,6 +186,38 @@ services:
     restart: on-failure
     ports:
       - "8761:8761" # Nüfus dairesinin kapısı
+    networks:
+      - bank-network-micro
+
+  # 🛡️ KEYCLOAK İÇİN ÖZEL VERİTABANI (Sicil Kayıtları İçin)
+  keycloak-db:
+    image: postgres:15
+    container_name: bank_keycloak_db
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5433:5432" # Ana banka veritabanımız (5432) ile çakışmasın diye 5433'e aldık.
+    networks:
+      - bank-network-micro
+
+  # 🏰 KEYCLOAK SUNUCUSU (Ana Nüfus Müdürlüğü)
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0.4
+    container_name: bank_keycloak_server
+    command: start-dev # Geliştirme modu (Ayağa kalkması daha hızlı olur)
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://keycloak-db:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: password
+      KEYCLOAK_ADMIN: admin       # Panele giriş kullanıcı adı
+      KEYCLOAK_ADMIN_PASSWORD: admin # Panele giriş şifresi
+    ports:
+      - "9090:8080" # 🚀 DİKKAT: Senin Karargah (Backend) 8080'i kullanıyor olabilir diye Keycloak'u 9090 portuna aldım! Çakışma olmasın.
+    depends_on:
+      - keycloak-db
     networks:
       - bank-network-micro
 

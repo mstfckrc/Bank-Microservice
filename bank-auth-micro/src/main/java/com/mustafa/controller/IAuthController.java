@@ -11,6 +11,4 @@ public interface IAuthController {
 
     // @Valid koyduk ki kapıda DTO kurallarımız (11 hane vs) çalışsın
     ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterRequest request);
-
-    ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request);
 }

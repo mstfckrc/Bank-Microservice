@@ -1,0 +1,111 @@
+ M Bank-Demo-Backend/.gitattributes
+ M Bank-Demo-Backend/.gitignore
+ M Bank-Demo-Backend/.mvn/wrapper/maven-wrapper.properties
+ M Bank-Demo-Backend/Dockerfile
+ M Bank-Demo-Backend/pom.xml
+ M Bank-Demo-Backend/src/main/java/com/mustafa/client/CompanyServiceClient.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/client/CurrencyServiceClient.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/config/CorsConfig.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/config/OpenApiConfig.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/config/RabbitMQConfig.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/controller/IAccountController.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/controller/IAdminController.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/controller/IInternalBankController.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/controller/IInternalTransactionController.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/controller/ITransactionController.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/controller/impl/AccountControllerImpl.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/controller/impl/AdminControllerImpl.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/controller/impl/InternalBankControllerImpl.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/controller/impl/InternalTransactionControllerImpl.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/controller/impl/TransactionControllerImpl.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/dto/message/NotificationMessage.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/dto/request/BillInstructionRequest.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/dto/request/BulkSalaryRequest.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/dto/request/ChangePasswordRequest.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/dto/request/CompanySyncRequest.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/dto/request/CreateAccountRequest.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/dto/request/DepositRequest.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/dto/request/InternalPaymentRequest.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/dto/request/LoginRequest.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/dto/request/OpenAccountRequest.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/dto/request/RegisterRequest.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/dto/request/SalaryPaymentItem.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/dto/request/TransferRequest.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/dto/request/UpdateProfileRequest.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/dto/response/AccountResponse.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/dto/response/AccountValidationResponse.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/dto/response/AuthResponse.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/dto/response/BillInstructionResponse.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/dto/response/CustomerProfileResponse.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/dto/response/CustomerResponse.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/dto/response/ErrorResponse.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/dto/response/ExchangeRateResponse.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/dto/response/TransactionResponse.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/dto/response/UserProfileResponse.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/entity/Account.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/entity/Transaction.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/entity/enums/BillType.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/exception/BankOperationException.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/exception/CustomerAlreadyExistsException.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/exception/GlobalExceptionHandler.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/messaging/publisher/RabbitMQPublisher.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/repository/IAccountRepository.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/repository/ITransactionRepository.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/security/InternalHeaderFilter.java
+D  Bank-Demo-Backend/src/main/java/com/mustafa/security/JwtAuthenticationFilter.java
+D  Bank-Demo-Backend/src/main/java/com/mustafa/security/JwtService.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/security/SecurityConfig.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/service/IAccountService.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/service/IAdminService.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/service/ICurrencyService.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/service/IExternalBillService.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/service/IInternalBankService.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/service/ITransactionService.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/service/impl/AccountServiceImpl.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/service/impl/AdminServiceImpl.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/service/impl/CurrencyServiceImpl.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/service/impl/ExternalBillMockServiceImpl.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/service/impl/InternalBankServiceImpl.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/service/impl/TransactionServiceImpl.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/starter/BankDemoApplication.java
+ M Bank-Demo-Backend/src/main/java/com/mustafa/util/AccountUtils.java
+ M Bank-Demo-Backend/src/main/resources/logback-spring.xml
+ M Bank-Demo-Backend/src/test/java/com/mustafa/starter/BankDemoApplicationTests.java
+ M Bank-Demo-Frontend/app/(auth)/login/page.tsx
+ M Bank-Demo-Frontend/app/(dashboard)/layout.tsx
+ M Bank-Demo-Frontend/proxy.ts
+ M api-gateway/pom.xml
+ M api-gateway/src/main/java/com/mustafa/config/GatewayRoutingConfig.java
+D  api-gateway/src/main/java/com/mustafa/filter/AuthenticationFilter.java
+D  api-gateway/src/main/java/com/mustafa/filter/JwtUtil.java
+D  api-gateway/src/main/java/com/mustafa/filter/RouteValidator.java
+ M api-gateway/src/main/resources/application.yml
+ M bank-auth-micro/hafiza.txt
+ M bank-auth-micro/pom.xml
+D  bank-auth-micro/src/main/java/com/mustafa/config/ApplicationConfig.java
+ M bank-auth-micro/src/main/java/com/mustafa/controller/IAuthController.java
+ M bank-auth-micro/src/main/java/com/mustafa/controller/ICustomerController.java
+ M bank-auth-micro/src/main/java/com/mustafa/controller/impl/AuthControllerImpl.java
+ M bank-auth-micro/src/main/java/com/mustafa/controller/impl/CustomerControllerImpl.java
+ M bank-auth-micro/src/main/java/com/mustafa/entity/AppUser.java
+ M bank-auth-micro/src/main/java/com/mustafa/security/InternalHeaderFilter.java
+ M bank-auth-micro/src/main/java/com/mustafa/security/SecurityConfig.java
+ M bank-auth-micro/src/main/java/com/mustafa/service/IAuthService.java
+ M bank-auth-micro/src/main/java/com/mustafa/service/ICustomerService.java
+ M bank-auth-micro/src/main/java/com/mustafa/service/impl/AuthServiceImpl.java
+ M bank-auth-micro/src/main/java/com/mustafa/service/impl/CustomerServiceImpl.java
+ M bank-auth-micro/src/main/resources/application.yml
+ M bank-corporate-micro/hafiza.txt
+ M docker-compose.yml
+ M hafiza.txt
+?? "Bank System Chart Deatiled.svg"
+?? "Bank System Chart.svg"
+?? Bank-Demo-Backend/src/main/java/com/mustafa/security/JwtAuthenticationFilter.java
+?? Bank-Demo-Backend/src/main/java/com/mustafa/security/JwtService.java
+?? Bank-Demo-Frontend/app/api/
+?? Bank-Demo-Frontend/app/auth-sync/
+?? api-gateway/src/main/java/com/mustafa/config/SecurityConfig.java
+?? api-gateway/src/main/java/com/mustafa/filter/
+?? bank-auth-micro/src/main/java/com/mustafa/config/KeycloakConfig.java
+?? git_log.txt
+?? git_status.txt

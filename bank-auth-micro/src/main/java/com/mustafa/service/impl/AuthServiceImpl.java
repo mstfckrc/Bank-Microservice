@@ -3,7 +3,6 @@ package com.mustafa.service.impl;
 import com.mustafa.client.CompanyServiceClient;
 import com.mustafa.dto.message.NotificationMessage;
 import com.mustafa.dto.request.CompanySyncRequest;
-import com.mustafa.dto.request.LoginRequest;
 import com.mustafa.dto.request.RegisterRequest;
 import com.mustafa.dto.response.AuthResponse;
 import com.mustafa.entity.AppUser;
@@ -12,15 +11,20 @@ import com.mustafa.exception.BankOperationException;
 import com.mustafa.messaging.publisher.RabbitMQPublisher;
 import com.mustafa.repository.IAppUserRepository;
 import com.mustafa.repository.IRetailCustomerRepository;
-import com.mustafa.security.JwtService;
 import com.mustafa.service.IAuthService;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.crypto.password.PasswordEncoder;
+
+import org.keycloak.admin.client.Keycloak;
+import org.keycloak.representations.idm.CredentialRepresentation;
+import org.keycloak.representations.idm.UserRepresentation;
+import jakarta.ws.rs.core.Response;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Collections;
 
 @Slf4j
 @Service
@@ -29,14 +33,14 @@ public class AuthServiceImpl implements IAuthService {
 
     private final IAppUserRepository appUserRepository;
     private final IRetailCustomerRepository retailCustomerRepository;
-
-    private final PasswordEncoder passwordEncoder;
-    private final JwtService jwtService;
-    private final AuthenticationManager authenticationManager;
     private final RabbitMQPublisher rabbitPublisher;
-
-    // 🚀 YENİ EKLENEN TELSİZ BAĞLANTISI
     private final CompanyServiceClient companyServiceClient;
+
+    // 🚀 YENİ: Keycloak Telsizi
+    private final Keycloak keycloak;
+
+    @Value("${keycloak.realm}")
+    private String realm;
 
     private String maskIdentity(String identity) {
         if (identity == null || identity.length() <= 4) return "****";
@@ -49,23 +53,26 @@ public class AuthServiceImpl implements IAuthService {
         String maskedId = maskIdentity(request.getIdentityNumber());
         log.info("Kayıt işlemi başlatıldı. Kimlik/Vergi No: {}, Rol: {}", maskedId, request.getRole());
 
-        // 1. KONTROL
+        // 1. KONTROL (Kendi veritabanımızda var mı?)
         if (appUserRepository.existsByIdentityNumber(request.getIdentityNumber())) {
             log.warn("Kayıt Reddedildi: {} kimlik numarası sistemde zaten mevcut!", maskedId);
             throw new BankOperationException("Bu Kimlik/Vergi Numarası sistemde zaten kayıtlı!");
         }
 
-        // 2. Merkezi Kimliği (Giriş İznini) Oluştur
+        // 🚀 2. BÜYÜK DEĞİŞİM: Önce Keycloak'a adamı kaydet ve UUID'sini al!
+        String keycloakId = createKeycloakUser(request);
+
+        // 3. Merkezi Kimliği (AppUser) Kendi Veritabanımızda Oluştur
         AppUser appUser = AppUser.builder()
                 .identityNumber(request.getIdentityNumber())
-                .password(passwordEncoder.encode(request.getPassword()))
+                .keycloakId(keycloakId) // ARTIK ŞİFRE DEĞİL, KEYCLOAK ID TUTUYORUZ!
                 .role(AppUser.Role.valueOf(request.getRole()))
                 .status(AppUser.ApprovalStatus.PENDING)
                 .build();
         appUserRepository.save(appUser);
         log.info("Merkezi kullanıcı (AppUser) başarıyla oluşturuldu. ID: {}", appUser.getId());
 
-        // 3. Fabrika Mantığı
+        // 4. Bireysel / Kurumsal Fabrika Mantığı (Aynen Kalıyor)
         if (appUser.getRole() == AppUser.Role.RETAIL_CUSTOMER) {
             if (retailCustomerRepository.existsByEmail(request.getEmail())) {
                 log.warn("Kayıt Reddedildi: {} e-posta adresi bireysel hesaplar için kullanımda!", request.getEmail());
@@ -82,8 +89,6 @@ public class AuthServiceImpl implements IAuthService {
 
         } else if (appUser.getRole() == AppUser.Role.CORPORATE_MANAGER) {
             log.info("Kurumsal Yönetici kimliği oluşturuldu. Şirket adı: {}. Kurumsal Servise telsiz atılıyor...", request.getCompanyName());
-
-            // 🚀 BÜYÜK DEĞİŞİM: Karargah şirketi kendi veritabanına yazmak yerine Yeni Üsse (Kurumsal Servise) fırlatıyor!
             try {
                 CompanySyncRequest syncRequest = CompanySyncRequest.builder()
                         .companyIdentityNumber(request.getIdentityNumber())
@@ -96,20 +101,14 @@ public class AuthServiceImpl implements IAuthService {
                 log.info("✅ Kurumsal Servis ile senkronizasyon başarılı!");
             } catch (Exception e) {
                 log.error("❌ Kurumsal Servise telsiz atılamadı! Sebep: {}", e.getMessage());
-                // Burada istersen throw new BankOperationException(...) diyerek kaydı iptal de edebilirsin,
-                // ama mikroservislerde hata olsa bile loglayıp devam etmek (Eventual Consistency) daha yaygındır.
-                // Şimdilik hatayı fırlatıyoruz ki işlem yarıda kalmasın, UI anlasın.
                 throw new BankOperationException("Kurumsal servis ile bağlantı kurulamadı, kayıt işlemi iptal edildi!");
             }
-
         } else {
             log.error("Kayıt sırasında geçersiz rol tespiti: {}", request.getRole());
             throw new BankOperationException("Geçersiz veya yetkisiz rol seçimi!");
         }
 
-        String jwtToken = jwtService.generateToken(appUser);
-        log.info("Kayıt tamamlandı. {} için JWT Token üretildi.", maskedId);
-
+        // 5. Karşılama Mesajını Fırlat
         NotificationMessage welcomeMessage = NotificationMessage.builder()
                 .destination(request.getEmail())
                 .subject("Bankamıza Hoş Geldiniz")
@@ -117,55 +116,44 @@ public class AuthServiceImpl implements IAuthService {
                 .identityNumber(maskedId)
                 .notificationType(NotificationMessage.NotificationType.EMAIL)
                 .build();
-
         rabbitPublisher.sendNotification(welcomeMessage);
 
-        return AuthResponse.builder().token(jwtToken).message("Kayıt işlemi başarıyla gerçekleşti.").build();
+        // 🚀 6. SONUÇ: Artık token üretmiyoruz! Frontend'e sadece başarılı mesajı dönüyoruz.
+        return AuthResponse.builder()
+                .token("") // Token artık yok, boş bırakıyoruz. Müşteri gidip Keycloak'tan giriş yapacak.
+                .message("Kayıt işlemi başarıyla gerçekleşti. Güvenlik ekranından giriş yapabilirsiniz.")
+                .build();
     }
 
-    @Override
-    public AuthResponse login(LoginRequest request) {
-        // ... (Login metodu senin attığın ile birebir aynı kalıyor, değişiklik yok) ...
-        String maskedId = maskIdentity(request.getIdentityNumber());
-        log.info("Giriş (Login) denemesi başlatıldı. Kimlik: {}", maskedId);
+    // 🚀 KEYCLOAK YARDIMCI METODU (İmportları temizlenmiş hali)
+    private String createKeycloakUser(RegisterRequest request) {
 
-        try {
-            authenticationManager.authenticate(
-                    new UsernamePasswordAuthenticationToken(request.getIdentityNumber(), request.getPassword())
-            );
-        } catch (org.springframework.security.core.AuthenticationException e) {
-            log.warn("🚨 Başarısız giriş denemesi! Hatalı şifre. Kimlik: {}", maskedId);
+        UserRepresentation user = new UserRepresentation();
+        user.setUsername(request.getIdentityNumber());
+        user.setEmail(request.getEmail());
 
-            NotificationMessage failedLoginAlert = NotificationMessage.builder()
-                    .destination(request.getIdentityNumber())
-                    .subject("🚨 Güvenlik Alarmı: Başarısız Giriş Denemesi")
-                    .content("Hesabınıza az önce hatalı şifre ile giriş yapılmaya çalışıldı. Eğer bu işlemi siz yapmadıysanız acilen müşteri hizmetlerini arayınız!")
-                    .identityNumber(maskedId)
-                    .notificationType(NotificationMessage.NotificationType.SMS)
-                    .build();
+        if (request.getFirstName() != null) user.setFirstName(request.getFirstName());
+        if (request.getLastName() != null) user.setLastName(request.getLastName());
+        user.setEnabled(true);
 
-            rabbitPublisher.sendNotification(failedLoginAlert);
-            throw new BankOperationException("Kimlik numarası veya şifre hatalı!");
+        CredentialRepresentation credential = new CredentialRepresentation();
+        credential.setType(CredentialRepresentation.PASSWORD);
+        credential.setValue(request.getPassword());
+        credential.setTemporary(false);
+
+        user.setCredentials(Collections.singletonList(credential));
+
+        Response response = keycloak.realm(realm).users().create(user);
+
+        if (response.getStatus() != 201) {
+            log.error("Keycloak Kullanıcı Kaydı Başarısız! Status Code: {}", response.getStatus());
+            throw new BankOperationException("Güvenlik sunucusunda hesap oluşturulamadı! Status: " + response.getStatus());
         }
 
-        AppUser appUser = appUserRepository.findByIdentityNumber(request.getIdentityNumber())
-                .orElseThrow(() -> {
-                    log.error("Kimlik doğrulandı ancak veritabanında AppUser bulunamadı! Kimlik: {}", maskedId);
-                    return new RuntimeException("Kullanıcı bulunamadı");
-                });
+        String path = response.getLocation().getPath();
+        String keycloakUserId = path.substring(path.lastIndexOf('/') + 1);
 
-        String jwtToken = jwtService.generateToken(appUser);
-        log.info("Giriş başarılı. {} kimlikli kullanıcı sisteme giriş yaptı.", maskedId);
-
-        NotificationMessage loginMessage = NotificationMessage.builder()
-                .destination(request.getIdentityNumber())
-                .subject("Hesabınıza Giriş Yapıldı")
-                .content("Bankacılık sistemine an itibariyle başarılı bir giriş yaptınız. İşlemi siz yapmadıysanız hemen şifrenizi değiştirin.")
-                .identityNumber(maskedId)
-                .notificationType(NotificationMessage.NotificationType.PUSH_NOTIFICATION)
-                .build();
-
-        rabbitPublisher.sendNotification(loginMessage);
-        return AuthResponse.builder().token(jwtToken).message("Giriş başarılı.").build();
+        log.info("Keycloak kaydı başarılı. Üretilen Keycloak ID: {}", keycloakUserId);
+        return keycloakUserId;
     }
 }

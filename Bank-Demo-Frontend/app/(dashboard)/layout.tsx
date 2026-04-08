@@ -1,5 +1,6 @@
 "use client";
 
+import Cookies from "js-cookie";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/useAuthStore";
@@ -16,9 +17,31 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }, []);
 
   const handleLogout = () => {
-    logout(); // 1. Zustand ve Çerezler (path: "/" ile) temizlendi
-    router.push("/login"); // 2. Rota Login'e yönlendirildi
-    router.refresh(); // 🚀 3. SİHİRLİ DOKUNUŞ: Next.js önbelleğini patlat ve Proxy'yi uyanmaya zorla!
+    // 1. Çıkış biletini (id_token) çerezden al
+    const idToken = Cookies.get("id_token");
+    
+    // 2. Kendi içimizi temizle (Zustand ve "token" çerezi silinir)
+    logout(); 
+    
+    // 3. id_token çerezini de manuel sil
+    Cookies.remove("id_token", { path: "/" });
+
+    // 4. Keycloak'un Çıkış Kapısına Yönlendirme Hazırlığı
+    const keycloakUrl = process.env.NEXT_PUBLIC_KEYCLOAK_URL || "http://localhost:9090";
+    const realm = "bank-realm";
+    // Çıkış yapınca adamı tekrar bizim login sayfasına fırlatması için dönüş adresi:
+    const redirectUri = encodeURIComponent("http://localhost:3000/login");
+
+    // 5. Müşteriyi Keycloak'tan kovuyoruz!
+    let logoutUrl = `${keycloakUrl}/realms/${realm}/protocol/openid-connect/logout?post_logout_redirect_uri=${redirectUri}&client_id=bank-auth-client`;
+
+    // Eğer id_token varsa linke ekle (Keycloak 24 bunun sayesinde onay ekranı sormadan direkt dışarı atar)
+    if (idToken) {
+      logoutUrl += `&id_token_hint=${idToken}`;
+    }
+
+    // 🚀 SİHİRLİ DOKUNUŞ: Next.js'in router'ı yerine window.location.href ile adamı gerçekten siteden koparıp Keycloak'a atıyoruz!
+    window.location.href = logoutUrl; 
   };
 
   if (!isClient) return null; 

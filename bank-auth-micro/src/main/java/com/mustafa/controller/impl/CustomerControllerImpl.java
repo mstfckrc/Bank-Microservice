@@ -36,16 +36,6 @@ public class CustomerControllerImpl implements ICustomerController {
         return ResponseEntity.ok(customerService.updateProfile(request));
     }
 
-    @PutMapping("/password")
-    @Override
-    public ResponseEntity<Map<String, String>> changePassword(@Valid @RequestBody ChangePasswordRequest request) {
-        log.info("REST İsteği: Kullanıcı şifre değiştirme talebinde bulundu.");
-        customerService.changePassword(request);
-        Map<String, String> response = new HashMap<>();
-        response.put("message", "Şifreniz başarıyla güncellendi.");
-        return ResponseEntity.ok(response);
-    }
-
     @PostMapping("/appeal")
     @Override
     public ResponseEntity<Map<String, String>> appealRejection() {

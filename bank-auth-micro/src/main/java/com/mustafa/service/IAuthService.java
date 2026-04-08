@@ -6,5 +6,4 @@ import com.mustafa.dto.response.AuthResponse;
 
 public interface IAuthService {
     AuthResponse register(RegisterRequest request);
-    AuthResponse login(LoginRequest request);
 }

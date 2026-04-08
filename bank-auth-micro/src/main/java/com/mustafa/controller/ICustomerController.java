@@ -11,6 +11,5 @@ import java.util.Map;
 public interface ICustomerController {
     ResponseEntity<UserProfileResponse> getMyProfile();
     ResponseEntity<UserProfileResponse> updateProfile(@RequestBody UpdateProfileRequest request);
-    ResponseEntity<Map<String, String>> changePassword(@RequestBody ChangePasswordRequest request);
     ResponseEntity<Map<String, String>> appealRejection();
 }

@@ -27,11 +27,4 @@ public class AuthControllerImpl implements IAuthController {
         log.info("REST İsteği: Yeni kullanıcı kaydı başlatılıyor. İstenen Rol: {}", request.getRole());
         return ResponseEntity.ok(authService.register(request));
     }
-
-    @Override
-    @PostMapping("/login")
-    public ResponseEntity<AuthResponse> login(LoginRequest request) {
-        log.info("REST İsteği: Kullanıcı giriş (Login) talebi alındı.");
-        return ResponseEntity.ok(authService.login(request));
-    }
 }

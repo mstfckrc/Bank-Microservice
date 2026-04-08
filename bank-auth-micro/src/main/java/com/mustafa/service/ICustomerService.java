@@ -6,7 +6,6 @@ import com.mustafa.dto.response.UserProfileResponse;
 
 public interface ICustomerService {
     UserProfileResponse updateProfile(UpdateProfileRequest request);
-    void changePassword(ChangePasswordRequest request);
     UserProfileResponse getMyProfile();
     void appealRejection();
 }

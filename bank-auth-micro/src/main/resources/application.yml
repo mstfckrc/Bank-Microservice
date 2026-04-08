@@ -35,3 +35,9 @@ eureka:
 jwt:
   secret: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
   expiration: 86400000
+
+keycloak:
+  auth-server-url: http://keycloak:8080
+  realm: bank-realm
+  client-id: bank-auth-client
+  client-secret: Gl0MBqM5kIECcXUVl3G4OyG2zKTiNEa4

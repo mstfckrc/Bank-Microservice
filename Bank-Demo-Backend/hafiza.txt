@@ -18,11 +18,11 @@ Veritabanı işlemleri JPA/Hibernate ile yürütülür (`bank_db`). Kullanıcı 
 ## 📦 2. VERİ TRANSFER OBJELERİ (DTO)
 Kimlik (Login/Register) DTO'ları tamamen Auth servise gitmiştir. Burada sadece para trafiği DTO'ları kalmıştır.
 
-### 2.1. Request (İstek) DTO'ları
+### 2.1. Request (İstek) DTO'ları (Yetim Kalanlar Önceden Planlandı)
+*   **ÖNEMLİ NOT:** Kullanıcı (User/Auth) ile ilgili olan `LoginRequest`, `RegisterRequest`, `UpdateProfileRequest` gibi DTO'lar bu serviste artık ölü kod (Dead Code) durumundadır ve kullanılmamaktadır.
 *   **`CreateAccountRequest`:** `currency` (TRY, USD, EUR vb).
 *   **`OpenAccountRequest`:** Başkası adına admin tarafından hesap açılışları.
-*   **`DepositRequest`:** `iban`, `amount`.
-*   **`TransferRequest`:** `senderIban`, `receiverIban`, `amount`, `description`.
+*   **`DepositRequest`, `TransferRequest`:** Finansal para trafiği için kullanılır.
 *   **İÇ BAĞLANTI İSTEKLERİ (INTERNAL REQUESTS):** 
     *   **`InternalPaymentRequest`:** `accountId`, `amount`, `description` (Bill-service'den fatura kesmek için gelir).
     *   **`BulkSalaryRequest`:** `senderIban`, `companyName`, `List<SalaryPaymentItem> salaryItems` (Corporate servisin maaş dağıtımı için gönderdiği devasa paket).

@@ -10,7 +10,7 @@ Yapay zeka asistanı olarak kodu analiz edeceğiniz veya ekleme yapacağınız z
 
 *   **REST ve FEIGN Sınırları:** Microservisler birbirleriyle asla direkt veritabanı üzerinden (`AppUser`, `Account` vb.) haberleşmez. Tüm iç haberleşmeler `XServiceClient` adlı **FeignClient** interfaceleri üzerinden olur (Örn: `Auth` -> `Corporate` eşleşmesinde `CompanySyncRequest` json fırlatılır).
 *   **Ağır Yıkım (Cascading Deletes) Orchestration:** Monolith parçalandığı için, örneğin Admin bir kullanıcıyı silerse; Auth servisi FeignClient ile hem Backend'e zıplayıp hesapları patlatır (`DELETE /api/v1/internal/accounts/customer/{id}`) hem de Corporate'e fırlayıp profil siler. İşlemlerde Transaction bütünlüğü için try-catch-rollback dinamiği uygulanır.
-*   **Security (Güvenlik) Duvarı:** JWT token sadece **API Gateway** tarafından karşılanır, çözülür, doğrulanır ve içindeki TC Kimlik (`identityNumber`) çıkarılarak HTTP Header formatıyla (`X-Identity-Number`) alt servislere paslanır. **Alt servisler (Auth hariç) JWT umursamaz, gelen header'a güvenirler! İç hat (Internal) çağrılarında ise sahte bir yetki kuşanmak için Feign içinde `X-Internal-Identity` aktarılır.**
+*   **Security (Güvenlik) Duvarı:** Sistem tamamen "Keycloak OAuth2 Resource Server" mimarisine geçmiştir. Front-end'den gelen Keycloak Token'ı (JWT) sadece **API Gateway** tarafından karşılanır ve bizzat kırılıp doğrulanır. Gateway JWT içindeki `preferred_username` (TC Kimlik Numarası) ve Rolleri ayrıştırarak HTTP Header formatıyla (`X-Identity-Number` ve `X-User-Role`) arkaya basar. Asıl bombayı ise arkaya giden trafikteki `Authorization` token'ını BİZZAT SİLEREK yapar. **Alt servislerin tamamı hiçbir JWT kontrolü ile uğraşmaz (Zero Trust Bypass), doğrudan Gateway'in vurduğu Header'a güvenirler!** İç hat (Internal) çağrılarında ise sahte yetki kuşanmak için Feign içinde `X-Internal-Identity` aktarılır.
 *   **Asenkron Bildirimler:** Hiçbir servis "mail atma" işlemini kendi yapmaz. RabbitMQ `bank_exchange` kuyruğuna `NotificationMessage` JSON'ı fırlatır, çeker gider.
 
 ---
@@ -21,11 +21,11 @@ Sistemdeki 8 Java mikroservisi ve 1 Frontend uygulaması aşağıdaki gibi konum
 
 ### 1. 🚪 API Gateway (`api-gateway` / Port: 8081)
 *   **Uç Nokta Trafik Polisi:** React Frontend'den gelen bütün istekler istisnasız buraya (`/api/v1/**`) girer.
-*   **Yetki Kontrolü:** `AuthenticationFilter.java` ile JWT okur, sahteyse Exception Atar, geçerliyse Header'a `X-Identity-Number` ekleyip trafiği hedef Route'a zıplatır (Örn: `/api/v1/auth/**` -> `auth-service`'e, `/api/v1/bills/**` -> `bill-service`'e).
+*   **Yetki Kontrolü:** Keycloak entegreli bir sunucu olarak çalışır. `KeycloakHeaderFilter.java` sayesinde ağdan gelen tokenları çözer, rolleri Spring Security formatına dönüştürüp arıtarak arkaya saf `X-Identity-Number` ile fırlatır.
 *   **Detay:** `api-gateway/hafiza.txt`
 
 ### 2. 🔐 Auth Service (`bank-auth-micro` / Port: 8086) [YENİ AYRILDI]
-*   **Kimlik ve Profil Yönetimi:** Kullanıcıların (Bireysel ve Admin) kayıt olması (`Register`), sisteme girmesi (`Login`) ve profil düzenlemelerini tek başına ele alır. API Gateway'in de kullandığı 512-bit gizli anahtar (Secret) ile JWT üretir. AppUser kaydını `bank_db` içinde tutar. Admin bir Corporate kullanıcıyı onayladığında `CompanyServiceClient` vasıtasıyla Corporate Servise tetik fırlatır.
+*   **Kimlik ve Profil Yönetimi:** Kullanıcıların (Bireysel ve Admin) kayıt olması (`Register`), sisteme girmesi (`Login`) ve profil düzenlemelerini ele alır. Gelen kayıtları lokal şifreleme yerine direkt **Keycloak sunucusunda (`UserRepresentation`)** yaratır. `keycloakId` bilgisini kendi lokal `AppUser` tablosunda (`bank_db`) tutar. Admin bir Corporate kullanıcıyı onayladığında `CompanyServiceClient` vasıtasıyla Corporate Servise tetik fırlatır.
 *   **Detay:** `bank-auth-micro/hafiza.txt`
 
 ### 3. 🏦 Core Bank Backend (`Bank-Demo-Backend` / Port: 8080) [SAF ÇEKİRDEK]
@@ -33,7 +33,8 @@ Sistemdeki 8 Java mikroservisi ve 1 Frontend uygulaması aşağıdaki gibi konum
 *   **Detay:** `Bank-Demo-Backend/hafiza.txt`
 
 ### 4. 🏢 Corporate Service (`bank-corporate-micro` / Port: 8085)
-*   **İK ve Maaş Otomasyonu:** Bireysel olmayan kurumsal/şirket müşterilerinin iç işlerini yürütür. Personel (`CompanyEmployee`) ekleme/çıkarma, şirket kasası (`Company`) ayarları burada tutulur. `bank_corporate_db` adında kendi izolasyonunda yaşar. Gece vuran CronJob ile toplu maaş ödeme kararı alınca `BulkSalaryRequest` (devasa payload) hazırlayıp Karargah servisine fırlatır.
+*   **İK ve Maaş Otomasyonu:** Bireysel olmayan kurumsal/şirket müşterilerinin iç işlerini yürütür. Personel (`CompanyEmployee`) ekleme/çıkarma, şirket kasası (`Company`) ayarları burada tutulur. Gece vuran CronJob ile toplu maaş ödemesi gerektiğinde `BulkSalaryRequest` hazırlayıp Karargaha (Backend) fırlatır.
+*   **Feign Bağımlılığı**: Personel eklenirken IBAN doğrulamak için **Backend**'e, TC'den Ad-Soyad bulmak için **Auth** servisine vurur. 
 *   **Detay:** `bank-corporate-micro/hafiza.txt`
 
 ### 5. 🧾 Bill Service (`bill-service` / Port: 8084)

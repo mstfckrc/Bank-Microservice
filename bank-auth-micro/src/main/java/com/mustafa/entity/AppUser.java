@@ -16,7 +16,7 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class AppUser implements UserDetails {
+public class AppUser{
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -26,8 +26,9 @@ public class AppUser implements UserDetails {
     @Column(unique = true, nullable = false, length = 11)
     private String identityNumber;
 
-    @Column(nullable = false)
-    private String password;
+    // YENİ KİMLİK KÖPRÜMÜZ: Keycloak'taki müşterinin UUID'sini burada tutacağız.
+    @Column(name = "keycloak_id", unique = true)
+    private String keycloakId;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
@@ -37,26 +38,6 @@ public class AppUser implements UserDetails {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20, columnDefinition = "varchar(20) default 'PENDING'")
     private ApprovalStatus status = ApprovalStatus.PENDING;
-
-    // --- SPRING SECURITY USERDETAILS METOTLARI ---
-    @Override
-    public Collection<? extends GrantedAuthority> getAuthorities() {
-        return List.of(new SimpleGrantedAuthority("ROLE_" + role.name()));
-    }
-
-    @Override
-    public String getUsername() {
-        return identityNumber;
-    }
-
-    @Override
-    public boolean isAccountNonExpired() { return true; }
-    @Override
-    public boolean isAccountNonLocked() { return true; }
-    @Override
-    public boolean isCredentialsNonExpired() { return true; }
-    @Override
-    public boolean isEnabled() { return true; }
 
     // --- ENUMLAR ---
     public enum Role {

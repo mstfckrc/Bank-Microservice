@@ -27,9 +27,11 @@ export function proxy(request: NextRequest) {
     const decodedJson = atob(paddedBase64);
     const payload = JSON.parse(decodedJson);
     
-    const rawRole = String(payload.role || "");
-    const isAdmin = rawRole.includes("ADMIN");
-    const isCorporate = rawRole.includes("CORPORATE_MANAGER"); // 🚀 YENİ: Kurumsal rolü tanı
+    // 🚀 BÜYÜK DEĞİŞİM: Rolleri Keycloak'un derinliklerinden ("realm_access.roles") söküp alıyoruz!
+    const roles: string[] = payload.realm_access?.roles || [];
+    
+    const isAdmin = roles.includes("ADMIN");
+    const isCorporate = roles.includes("CORPORATE_MANAGER");
 
     // Giriş/Kayıt sayfalarındayken zaten giriş yapılmışsa, yetkisine göre doğru panele at
     if (isAuthRoute) {

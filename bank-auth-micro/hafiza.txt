@@ -36,23 +36,27 @@ Bütün kimlik doğrulama aktarımlarında kullanılan exact DTO nesneleri:
 
 ---
 
-## ⚙️ 3. SERVİS VE İŞ MANTIĞI EKSENİ (API & MİKROSERVİS İLETİŞİMİ)
-*   **Ağ Ayarları:** Port: 8086. Eureka'ya `auth-service` adıyla kaydolur. API Gateway'den `/api/v1/auth`, `/api/v1/customers` ve `/api/v1/admin/customers` rotalarından gelen trafik buraya akar.
-*   **Güvenlik Üretimi:** Gateway'in de kullandığı ortak 512-bit JWT secret anahtarı (`404E63...`) burada saklıdır. Login başarılı olunca `Jwts.builder()` ile token üretip döndürür.
+## ⚙️ 3. SERVİS VE İŞ MANTIĞI EKSENİ (KEYCLOAK DEVRİMİ V7.0)
+*   **Ağ Ayarları:** Port: 8086. Eureka'ya `auth-service` adıyla kaydolur. 
+*   **Keycloak Entegrasyonu:** Lokal şifre Hash'leme ve JWT Builder devri kapandı! Artık `KeycloakConfig` üzerinden bir Admin Rest Client ayağa kaldırılır ve Auth servisi, Keycloak Realm'inde tam yetkili sekreter gibi davranır. `AppUser` tablosundaki `password` alanı silinmiştir; onun yerine `keycloakId` tutulmaktadır.
 
 ### 3.1. Controller (Uç Noktalar)
 *   **`AuthControllerImpl` (`/api/v1/auth`):**
-    *   `POST /register`: Sisteme yeni kayıt oluşturur. Kayıt sonrasında RabbitMQ aracılığıyla (`NotificationMessage`) Hoşgeldin e-postası fırlatır. Başlangıçta kullanıcı `PENDING` statüsündedir.
-    *   `POST /login`: Kimlik ve şifreyle giriş yapar. Jwt üretir. Kullanıcı `APPROVED` değilse giriş reddedilir.
+    *   `POST /register`: Sisteme yeni kayıt oluşturur (`AuthServiceImpl`). İstek geldiğinde doğrudan **Keycloak API'sine (`UserRepresentation`)** vurur ve kullanıcıyı dış merkezi güvenlik sunucusunda yaratır. Oluşan `keycloakId`'yi alıp sistemin lokal veritabanındaki (`bank_db`) `AppUser`'a yazar. Bireysel/Kurumsal senkronizasyonu RabbitMQ fırlatması vs. aynen devam eder.
+    *   *(Dikkat: Token üretimi yoktur! Login uç noktası da Keycloak mimarisine geçilmiştir, `AuthResponse` içindeki `token` bilerek boş gönderilir.)*
 *   **`CustomerControllerImpl` (`/api/v1/customers`):**
-    *   `GET /profile`: Oturum açmış kullanıcının (Gateway'den gelen header'daki TC ile) bilgilerini döner.
+    *   `GET /profile`: Gateway'den `X-Identity-Number` header'ı ile gelen isteğe profil döner.
     *   `PUT /profile`: Profil güncelleme.
     *   `POST /appeal`: Kurumsalların tekrar incelenme talebi.
     *   `PUT /password`: Şifre değiştirme.
 *   **`AdminUserControllerImpl` (`/api/v1/admin/customers`):**
     *   `GET /`: Admin'in tüm kullanıcıları listelemesi.
     *   `PUT /{identityNumber}/status`: `APPROVED`/`REJECTED` statüsüne çekmesi. **KRİTİK:** Admin bir CORPORATE_MANAGER rolündeki kullanıcıyı onayladığında, `auth-service` Feign Client (`CompanyServiceClient`) kullanarak `http://corporate-service:8085` adresine `CompanySyncRequest` atar ve şirketi o mikroserviste fiziksel olarak oluşturur.
-    *   **`DELETE /{identityNumber}` [YENİ]:** Admin bir kullanıcıyı SİLDİĞİNDE "Distributed Transaction / Orchestration" başlar:
+    *   **`DELETE /{identityNumber}`:** Admin bir kullanıcıyı SİLDİĞİNDE "Distributed Transaction / Orchestration" başlar:
         1. Bireyselse kendi DB'sindeki profili siler, kurumsalsa `CompanyServiceClient` ile (`Corporate-Service`) profilini patlatır.
         2. `BackendServiceClient.deleteCustomerAccounts` çağrısıyla `Bank-Demo-Backend`'e vurup tüm IBAN kasalarını imha eder.
         3. Son olarak kendi `AppUser` tablosundan siler. (Eğer backend hesabı silemezse tüm işlemi Rollback atar).
+
+### 🛡️ 3.2. İÇ (INTERNAL) UÇ NOKTALAR (`/api/v1/internal`)
+Sadece diğer mikroservislerin arka kapıdan ulaştığı kapılardır. Gateway'den girilemez.
+*   **`GET /users/profile/{identityNumber}` [YENİ EKLENDİ]:** `bank-corporate-micro` (Corporate Servis), bir personeli işe alırken sadece TC numarasını girer. Personelin adını soyadını doğrulamak ve çekmek için telsizle (`IAuthServiceClient` üzerinden) Auth Servisine vurur ve bu uç noktadan `CustomerProfileResponse` nesnesini çeker.

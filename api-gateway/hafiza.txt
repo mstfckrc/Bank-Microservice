@@ -22,22 +22,17 @@ Browser tabanlı Pre-Flight (`OPTIONS`) isteklerinin havada yakalanıp geçirilm
 *   **Eureka Client (`discovery-server:8761`)**: Tüm mikroservislerin ismini IP'ye çevirmek üzere `discovery-server` DNS havuzuna bağlanır. `application.yml` dosyasında Eureka url'i explicitly "http://discovery-server:8761/eureka/" olarak güncellenmiştir (Docker tam uyumluluğu için).
 *   Ortak 512-bit gizli `jwt.secret` anahtarını application config içerisinde barındırır. Auth servisle aynı anahtara sahip olduğu için şifreyi çözebilir.
 
-### 2.2. JWT Doğrulayıcı (`JwtUtil.java`)
-Gelen header içindeki token'ı `Jwts.parserBuilder()` kullanarak çözer. `404E6352...` ile başlayan 512-bit gizli `secret` key Backend ile birebir kopyalanmıştır. `validateToken` fonksiyonu ile JWT süresinin geçip geçmediğini (Expiry) inceler. Süresi dolmuş token içeriye kesinlikle giremez.
+### 2.2. Oauth2 ve Keycloak Resource Server (`SecurityConfig.java`)
+Eksiden kullanılan lokal JWT doğrulama işi çöpe atıldı. Gateway artık Keycloak entegreli bir `oauth2ResourceServer` olarak çalışır:
+*   Açık rotalar haricindeki HER istek için `authenticated()` (Token ile korunmuş) kuralı vardır.
+*   **Keycloak Tercüman Motoru (`grantedAuthoritiesExtractor`):** Gateway kendisine Bearer olarak sunulan Keycloak JWT Biletinin (`realm_access.roles`) kasasını bizzat kırar ve içindeki rolleri okuyarak önüne "ROLE_" takısı koyar ve Spring'in anlayacağı yetki paketine döndürür.
 
-### 2.3. RouteValidator (`Passaport Kontrolü`)
-*   **`openApiEndpoints` (Açık Uç Noktalar):** `/api/v1/auth/register`, `/api/v1/auth/login`, `/eureka` ve son güncelleme olarak **`/api/v1/currencies/rates`** (Ziyaretçilerin güncel kurları hesapsız görüntülemesi için eklendi).
-*   **Mantık:** İstek eğer yukarıdaki List'den birine gelmiyorsa "Güvenlik İster" olarak işaretler (`Predicate<ServerHttpRequest> isSecured`).
-
-### 2.4. AuthenticationFilter (Kapı Polisi)
-*   **Sınıf Tipi:** `AbstractGatewayFilterFactory<AuthenticationFilter.Config>`'den extend edilir.
-*   **Senaryo:**
-    1.  `RouteValidator`'a göre korunuyorsa bakarız. Korunmuyorsa zincir devam eder (`chain.filter`).
-    2.  Korunan rotada `HttpHeaders.AUTHORIZATION` var mı? Yoksa `BankOperationException` fırlatır.
-    3.  `"Bearer "` (boşluklu) önekini ayıklar (`substring(7)`).
-    4.  `JwtUtil` ile sahtelik testi yapar, patlarsa Exception atar.
-    5.  Hata yoksa, request'i mutasyona uğratarak **içerisine yepyeni bir header (`X-Identity-Number`) ekler.** Bu numarayı token içinden alır (Backend JWT üretirken subject kısmına atmıştı).
-    6.  Monolith arka servislerine veya bill-service'e bu ID, Header ile sızdırılır. Böylelikle mikroservisler bir daha JWT çözmek zorunda kalmaz.
+### 2.3. Mimarinin Kalbi: Keycloak Başlık Filtresi (`KeycloakHeaderFilter.java`)
+Bütün mimarinin kaderini değiştiren Global Süzgeç!
+1. Gateway dış dünyadan gelen Keycloak biletini doğrular, içinden `preferred_username` claim'ini yani **TC Kimlik Numarasını** (`identityNumber`) çıkarır.
+2. Rolleri bir string halinde virgülle birleştirir.
+3. **KRİTİK HAMLE (MUTASYON):** Gelen isteği mutasyona uğratarak içine `X-Identity-Number` ve `X-User-Role` HTTP Header'larını çakar!
+4. **Zero Trust Bypass:** İsteğin üzerindeki orjinal Token'ı (`Authorization: Bearer...`) **SİLER**. Arkadaki Karargaha veya corporate servislere Token gitmez. O servisler jwt çözmekle uğraşmaz, Gateway'in sözüne (Header) güvenerek lokal filtreleriyle (`InternalHeaderFilter`) hayatına devam eder.
 
 ## 🔀 3. ROUTING REHBERİ (`GatewayRoutingConfig.java` V5.2 STANDARDI)
 Prensip: Yukarıdaki kurallar eşleşmezse en alttaki Monolith Karargaha düşer.
