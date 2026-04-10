@@ -1,67 +1,30 @@
-# 🚀 SEC-DEMO (V7.0) MİKROSERVİS MİMARİSİ ANA HAFIZA (MASTER KÖK DOSYA)
+# 🚀 V7.0 ABSOLUTE BLUEPRINT: MASTER ORCHESTRATION (KÖK HAFIZA)
 
-Bu proje, tek bir `bank-demo-backend` monolitinden yola çıkılıp modern **Multi-Microservice (Spring Cloud)** mimarisine geçiş yapmış ve V7.0 ile tamamen "Keycloak OAuth2" bağımsızlık savaşını kazanmış devasa bir bankacılık sistemidir.
+Bu sistem, sıradan bir uygulamanın çok ötesinde, tam teşekküllü ve devasa izolasyona sahip bir **Spring Cloud Mikroservis Ekosistemi'dir**. 
 
-Yapay zeka asistanı olarak kodu analiz edeceğiniz veya ekleme yapacağınız zaman; **önce bu master dosyayı okuyun, ardından hangi servise dokunacaksanız doğrudan onun içindeki (`ilgili-klasor/hafiza.txt`) aşırı kod-merkezli detay dosyasına müracaat edin.**
-
----
-
-## 🏗️ 1. MİMARİ İLETİŞİM PRENSİPLERİ (YAPAY ZEKA İÇİN ÇOK ÖNEMLİ)
-
-*   **REST ve FEIGN Sınırları:** Microservisler birbirleriyle asla direkt veritabanı üzerinden (`AppUser`, `Account` vb.) haberleşmez. Tüm iç haberleşmeler `XServiceClient` adlı **FeignClient** interfaceleri üzerinden olur (Örn: `Auth` -> `Corporate` eşleşmesinde `CompanySyncRequest` json fırlatılır).
-*   **Ağır Yıkım (Cascading Deletes) Orchestration:** Monolith parçalandığı için, örneğin Admin bir kullanıcıyı silerse; Auth servisi FeignClient ile hem Backend'e zıplayıp hesapları patlatır (`DELETE /api/v1/internal/accounts/customer/{id}`) hem de Corporate'e fırlayıp profil siler. İşlemlerde Transaction bütünlüğü için try-catch-rollback dinamiği uygulanır.
-*   **Security (Güvenlik) Duvarı:** Sistem tamamen "Keycloak OAuth2 Resource Server" mimarisine geçmiştir. Front-end'den gelen Keycloak Token'ı (JWT) sadece **API Gateway** tarafından karşılanır ve bizzat kırılıp doğrulanır. Gateway JWT içindeki `preferred_username` (TC Kimlik Numarası) ve Rolleri ayrıştırarak HTTP Header formatıyla (`X-Identity-Number` ve `X-User-Role`) arkaya basar. Asıl bombayı ise arkaya giden trafikteki `Authorization` token'ını BİZZAT SİLEREK yapar. **Alt servislerin tamamı hiçbir JWT kontrolü ile uğraşmaz (Zero Trust Bypass), doğrudan Gateway'in vurduğu Header'a güvenirler!** İç hat (Internal) çağrılarında ise sahte yetki kuşanmak için Feign içinde `X-Internal-Identity` aktarılır.
-*   **Asenkron Bildirimler:** Hiçbir servis "mail atma" işlemini kendi yapmaz. RabbitMQ `bank_exchange` kuyruğuna `NotificationMessage` JSON'ı fırlatır, çeker gider.
+Yapay zeka asistanı olarak projeyi geliştirirken kural şudur: **"Tahmin etme, Haritaya bak."**
+Hangi mikroservisin içine girip kod yazacaksan, **mutlaka o klasörün içindeki (Örn: `bank-auth-micro/hafiza.txt`) ABSOLUTE BLUEPRINT dosyasına git.** O dosyalar, ilgili servisin baştan uca tüö klasörlerini, entity değişkenlerini ve Controller uç noktalarının tam bir Dökümü'nü (Blueprint) içerir.
 
 ---
 
-## 🗂️ 2. MİKROSERVİSLER VE SORUMLULUKLARI (8 ADET)
+## 🏗️ 1. MİMARİNİN AĞ OMURGASI VE PRENSİPLER
 
-Sistemdeki 8 Java mikroservisi ve 1 Frontend uygulaması aşağıdaki gibi konumlanmıştır:
-
-### 1. 🚪 API Gateway (`api-gateway` / Port: 8081)
-*   **Uç Nokta Trafik Polisi:** React Frontend'den gelen bütün istekler istisnasız buraya (`/api/v1/**`) girer.
-*   **Yetki Kontrolü:** Keycloak entegreli bir sunucu olarak çalışır. `KeycloakHeaderFilter.java` sayesinde ağdan gelen tokenları çözer, rolleri Spring Security formatına dönüştürüp arıtarak arkaya saf `X-Identity-Number` ile fırlatır. Orijinal tokeni güvenlik nedeniyle uçurur.
-*   **Detay:** `api-gateway/hafiza.txt`
-
-### 2. 🔐 Auth Service (`bank-auth-micro` / Port: 8086) [YENİ AYRILDI]
-*   **Kimlik ve Profil Yönetimi:** Kullanıcıların (Bireysel ve Admin) kayıt olması (`Register`), sisteme girmesi (`Login`) ve profil düzenlemelerini ele alır. Gelen kayıtları lokal şifreleme yerine direkt **Keycloak sunucusunda (`UserRepresentation`)** yaratır. `keycloakId` bilgisini kendi lokal `AppUser` tablosunda (`bank_auth_db`) tutar. Admin bir Corporate kullanıcıyı onayladığında `CompanyServiceClient` vasıtasıyla Corporate Servise tetik fırlatır.
-*   **Detay:** `bank-auth-micro/hafiza.txt`
-
-### 3. 🏦 Core Bank Backend (`Bank-Demo-Backend` / Port: 8080) [SAF ÇEKİRDEK]
-*   **Kasa ve Dekont:** Kullanıcı, Auth v.b. tüm mantıklardan temizlenmiştir. SADECE müşteri cüzdanları (IBAN) ve bakiye (Balance) değişiklikleri ile ilgilenir. Her hesaptan düşen ve yatan para için `Transaction` dekontu basar. Tüm internal servislerin para isteği (`BulkSalary`, `BillPayment`) nihai olarak bu karargaha düşer.
-*   **Detay:** `Bank-Demo-Backend/hafiza.txt`
-
-### 4. 🏢 Corporate Service (`bank-corporate-micro` / Port: 8085)
-*   **İK ve Maaş Otomasyonu:** Bireysel olmayan kurumsal/şirket müşterilerinin iç işlerini yürütür. Personel (`CompanyEmployee`) ekleme/çıkarma, şirket kasası (`Company`) ayarları burada tutulur. Gece vuran CronJob ile toplu maaş ödemesi gerektiğinde `BulkSalaryRequest` hazırlayıp Karargaha (Backend) fırlatır.
-*   **Feign Bağımlılığı**: Personel eklenirken IBAN doğrulamak için **Backend**'e, TC'den Ad-Soyad bulmak için **Auth** servisine vurur. 
-*   **Detay:** `bank-corporate-micro/hafiza.txt`
-
-### 5. 🧾 Bill Service (`bill-service` / Port: 8084)
-*   **Fatura Robotu:** Elektrik, Su, Doğalgaz talimatlarının kaydedilmesi ve gece yarısı Job'larıyla kesilmesinden sorumludur. Bağımsız `bank_bill_db` kullanır. Fatura tutarını alabilmek için Karargah (`Bank`) servisine iç istek (Feign) atar.
-*   **Detay:** `bill-service/hafiza.txt`
-
-### 6. 💶 Currency Service (`currency-service` / Port: 8083)
-*   **Dış Entegrasyon:** DB barındırmaz. Kimlik istemez (PermitAll). İnternet üzerinden canlı çapraz döviz kurunu çekip JSON olarak sunar. Core Backend havale atarken dövizler çakışırsa buna gelir.
-*   **Detay:** `currency-service/hafiza.txt`
-
-### 7. 📯 Notification Service (`notification-service` / Port: 8082)
-*   **Postane Olay İşleyicisi:** Pasif bekler. RabbitMQ (`notification_queue`) üzerinden dinlediği DTO zarflarını (`NotificationMessage`) alır almaz e-posta/sms gönderim motorlarını ateşler.
-*   **Detay:** `notification-service/hafiza.txt`
-
-### 8. 🔍 Discovery Server (`discovery-server` / Port: 8761)
-*   **Servis Santrali (Eureka):** Yukarıdaki tüm 7 servisin "Biz hayattayız, IP'miz şu" diye ayağa kalkarken kayıt olduğu iletişim rehberidir.
+*   **REST ve FEIGN İletişimi:** Veritabanları (`bank_auth_db`, `bank_core_db`, `bank_corporate_db`, `bank_bill_db`) tamamen izoledir. Hiçbir servis bir diğerinin Entity'sine erişemez. Ortaklaşa iş yapmak istediklerinde (Örn: Auth'tan silinen adamın banka hesabı silinirken) **FeignClient** mekanizması ile birbirlerinin "Internal (İç)" Controller kapılarına HTTP paketleri fırlatırlar.
+*   **Keycloak & Gateway Güvenlik Zırhı:** Frontend, elindeki JWT token'ı sadece Gateway'e (`api-gateway` / port 8081) bırakır. Gateway Token'ı siler! Yerine adama güvenmek için `X-Identity-Number` (Gerçek kişinin TC/VKN bilgisi) header'ı yazar arkaya fırlatır. İç servislerde bu yüzden JWT kontrolü aranmaz. İç haberleşme güvenliği için Feign Interceptor'lar havada yakaladıkları paketlere sahte `X-Internal-Identity` basarlar.
+*   **RabbitMQ Asenkron Postane:** Sistemin işlem yükünü tutmamak için, mail/bildirim atmak vs. işlemleri RabbitMQ'da `bank_exchange` isimli kuyruğa (Queue) zarf `NotificationMessage` JSON'u fırlatıp araya bırakılır. `notification-service` tek başına bu kuyruğu okuyup asıl işi arkada gerçekleştirir.
 
 ---
 
-## 🎨 3. FRONTEND KATMANI (Next.js 14)
+## 🗂️ 2. SİSTEMİN PARÇALARININ KISACASI
 
-### 🖥️ Bank-Demo-Frontend (Next.js 14 & Zustand)
-Sistemin vitrini. Kullanıcının Browser'da gördüğü her şey.
-*   `proxy.ts`: Sunucu tarafında (SSR) Gelen kişinin elindeki Token (Cookie) çözülür (JWT base64 ile parçalanarak). Kullanıcı Auth ekranı, Bireysel Ekran veya Kurumsal Ekran (Dashboard) olarak doğru klasörlere şutlanır. 
-*   Bütün Axios istekleri sadece ve sadece `http://localhost:8081/api/v1/` adresine (Gateway) yapılır. Gateway görünmez bir huni gibi içeride yukarıda anlatılan ilgili servise yükü dağıtır. Front-end geliştiricisi backend yapısından tamamen habersiz kalır.
-*   **Detay:** `Bank-Demo-Frontend/hafiza.txt`
+Aşağıdaki liste, klasörleşmiş projelerin "Sorumluluk Çizgileri"ni belirtir. Kod detayları, her birinin kendi klasörü altındaki `hafiza.txt` blueprintlerinde yatar.
 
----
-
-> 💡 **KRİTİK UYARI:** Klasörlerin içindeki `hafiza.txt` dosyaları tam anlamıyla "Sıfır Tahmin" ve "Kusursuz Tanımlama" politikasıyla (Extreme Detail) yazılmıştır. Kod üretimi veya bug tespiti yapılmadan önce hedef servisin `hafiza.txt` belgesi mutlak ve kesin olarak okunmalıdır. O belgeleri okuyan bir yapay zeka değişken (var, property, dto alan adı) hatası yapmaz.
+1.  **🚪 `api-gateway` (Port: 8081):** Gelen gidenin durdurulduğu, Keycloak süzgecinden geçirildiği Trafik noktası.
+2.  **🔐 `bank-auth-micro` (Port: 8086):** Sistemin pasaport gişesi. `AppUser` nesnesi Keycloak UUID si ile barındırılır. Kayıt olma (`Register`) vs işlemleri buradadır. Parayla vs. hiç işi olmaz.
+3.  **🏦 `Bank-Demo-Backend` (Port: 8080):** "Karargah". Paranın tek sahibi. Müşteri bilgisi veya profili tutmaz. SADECE hesap bakiyesi, dekont `Transaction` tutar. İban ve hesaplara giren/çıkan mermiler buradan akar.
+4.  **🏢 `bank-corporate-micro` (Port: 8085):** Kurumsal İK ve Maaş. Şirketi ve Memurları tutar. Cron job tetiklenince parayı memurlara dağıtmak için devasa listeyi Karargaha atar.
+5.  **🧾 `bill-service` (Port: 8084):** Fatura veznesi. Su, Gaz. Zamanı gelen talimatı alır, Karargaha fırlatır hesaptan tutarı düşürür.
+6.  **💶 `currency-service` (Port: 8083):** İnternetten "Dolar şuan ne kadar?" diye çeken redisli memcached yapı.
+7.  **📯 `notification-service` (Port: 8082):** Kuyruk ağası. Zarf gelirse işlem yapar.
+8.  **🔍 `discovery-server` (Port: 8761):** Tüm bu 7 askerin, "ben buradayım ip'm bu" diyerek iletişim listesini tuttuğu Eureka santrali.
+9.  **🖥️ `Bank-Demo-Frontend`:** Next.js Zirvesi. Bütün bunlardan habersiz, elindeki tokeni Gateway portuna atan ve SSR işleyen tasarım ekranı.

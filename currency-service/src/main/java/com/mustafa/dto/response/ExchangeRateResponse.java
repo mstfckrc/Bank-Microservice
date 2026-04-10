@@ -1,11 +1,14 @@
 package com.mustafa.dto.response;
 
 import lombok.Data;
-
+import java.io.Serializable;
 import java.util.Map;
 
 @Data
-public class ExchangeRateResponse {
-    private String base_code; // Örn: TRY
-    private Map<String, Double> rates; // Kurlar: USD: 0.03, EUR: 0.028 vb.
+public class ExchangeRateResponse implements Serializable {
+    // 🚀 1. ZIRH: Redis'in bu sınıfı Byte'a çevirebilmesi için gereken zorunlu kimlik.
+    private static final long serialVersionUID = 1L;
+
+    private String base_code;
+    private Map<String, Double> rates;
 }

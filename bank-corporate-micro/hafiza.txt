@@ -1,47 +1,100 @@
-# 🏢 SEC-DEMO CORPORATE (B2B) SERVİSİ HAFIZA KARTI (V7.0 - İZOLASYON)
+# 🏢 ABSOLUTE BLUEPRINT: bank-corporate-micro (PORT 8085)
 
-Şirketlerin IK (İnsan Kaynakları) ve devasa maaş dağıtımlarını yürüttüğü şirket yönetim merkezi uygulamasıdır. (Veritabanı: `bank_corporate_db` | Port: 5436). Yönettiği tüm para için FeignClient kullanarak paranın kokusunu aldığı Karargah (Backend) servisine vurmak zorundadır.
-
----
-
-## 🗄️ 1. VERİ TABANI (ENTITY) & KOLON HARİTASI
-Kendisine ait tamamen yalıtılmış evrendeki tabloları 2 kolon şeklindedir:
-
-### 1.1. Company (Şirket/Kurum Özü)
-*   **Alanlar:** `Long id`, `String companyIdentityNumber` (VKN / Şirket Vergi Kimliği String'i), `String companyName` (Şirketin Adı), `String taxOffice`, `String contactEmail`, `Boolean autoSalaryPaymentEnabled = false` (Eğer patron maaşları otomatik Cron botuna verdiyse True olur), `Integer salaryPaymentDay` (Ayın kaçıncı gününde bot paraları dağıtacak, Örn: 5), `String defaultSalaryIban` (Bot maaşları şirketin hangi kasasından alıp dağıtacak, referansı tutar).
-
-### 1.2. CompanyEmployee (Köprü Çalışan/Memur)
-*   **Alanlar:** `Long id`, `String firstName`, `String lastName`, `Company company` (ManyToOne, bir şirketin altında 1000 çalışan olabilir), `String employeeIdentityNumber` (Sistemdeki sıradan AppUser TC'si - gerçek kişinin haritası), `BigDecimal salaryAmount` (Alacağı aylık maaş fiyatı), `String salaryIban` (Maaşın fiili olarak yatırılacağı personelin Karargahtaki kasası).
+Bu belge, Corporate (Kurumsal/IK) servisinin src/main/java/com/mustafa altındaki TÜM klasörlerini, sınıflarını ve arayüzlerini istisnasız bir döküm halinde listeler. Bir IDE ağacını nasıl görüyorsanız, bu dosya da o şekildedir.
 
 ---
 
-## 📦 2. VERİ TRANSFER OBJELERİ (DTO)
-İçerisindeki devasa IK akışını besleyen JSON paketleri ve tip alanları:
-
-### 2.1. Request (İstek) DTO'ları
-*   **`CompanySyncRequest`:** `companyIdentityNumber`, `companyName`, `contactEmail`, `taxOffice` (Auth servisinde bir admin şirketi onayladığında rüzgar gibi buraya ulaşıp Şirketi baştan var eden paket).
-*   **`HireEmployeeRequest`:** `identityNumber` (Personelin TC'si), `salaryIban`, `salaryAmount` (Personeli şirkete kaydettirmek).
-*   **`UpdateEmployeeRequest`:** `salaryIban`, `salaryAmount` (ZAM yapma talebi veya bankasını değiştirme).
-*   **`AutoPaymentSettingsRequest`:** `autoPaymentEnabled`, `paymentDay`, `defaultSalaryIban` (Patronun "Maaşları bu ibandan şu gün otomatik kes" dedirten ayar paketi).
-*   **`BulkSalaryRequest`:** `senderIban`, `companyName`, `List<SalaryPaymentItem> salaryItems` (Maaş zamanı Karargaha fırlatılan Ölümcül derecede büyük JSON).
-*   **`SalaryPaymentItem`:** `receiverIban`, `amount` (Tek bir işçinin payı).
-
-### 2.2. Response (Yanıt) DTO'ları
-*   **`CompanyEmployeeResponse`:** `id`, `identityNumber`, `firstName`, `lastName`, `salaryIban`, `salaryAmount`.
-*   **`CustomerProfileResponse`**, **`AccountValidationResponse`** vb. alanlar diğer mikroservislerden avlanan harici paketlerdir.
+## 1. PAKET: `entity` (Veritabanı Tabloları)
+*   **`Company.java`**: (Table: `company`)
+    *   **Fields**: `Long id`, `String companyIdentityNumber`, `String companyName`, `String taxOffice`, `String contactEmail`, `Boolean autoSalaryPaymentEnabled = false`, `Integer salaryPaymentDay`, `String defaultSalaryIban`.
+*   **`CompanyEmployee.java`**: (Table: `company_employee`)
+    *   **Fields**: `Long id`, `String firstName`, `String lastName`, `Company company` (ManyToOne mapping), `String employeeIdentityNumber` (AppUser'ın tc nosu), `BigDecimal salaryAmount`, `String salaryIban`.
 
 ---
 
-## 🔄 3. APİ KAPILARI VE İŞ MANTIĞI (CONTROLLER VE YÖNETİM)
+## 2. PAKET: `dto` (Veri Transfer Objeleri)
+### `dto.request`
+*   **`CompanySyncRequest.java`**: `companyIdentityNumber`, `companyName`, `contactEmail`, `taxOffice`.
+*   **`HireEmployeeRequest.java`**: `identityNumber`, `salaryIban`, `BigDecimal salaryAmount`.
+*   **`UpdateEmployeeRequest.java`**: `salaryIban`, `BigDecimal salaryAmount`.
+*   **`SalaryPaymentRequest.java`**: `String senderIban`.
+*   **`SalaryPaymentItem.java`**: `String receiverIban`, `BigDecimal amount`.
+*   **`BulkSalaryRequest.java`**: `String senderIban`, `String companyName`, `List<SalaryPaymentItem> salaryItems`.
+*   **`AutoPaymentSettingsRequest.java`**: `boolean autoPaymentEnabled`, `Integer paymentDay`, `String defaultSalaryIban`.
+### `dto.response`
+*   **`CompanyEmployeeResponse.java`**: `Long id`, `String identityNumber`, `String firstName`, `String lastName`, `String salaryIban`, `BigDecimal salaryAmount`.
+*   **`CustomerProfileResponse.java`**: `String identityNumber`, `String firstName`, `String lastName`, `String email`. (Auth'tan istenir).
+*   **`AccountValidationResponse.java`**: `String ownerIdentityNumber`, `boolean isActive`. (Backend'ten istenir).
+*   **`AutoPaymentSettingsResponse.java`**: `boolean autoPaymentEnabled`, `Integer paymentDay`, `String defaultSalaryIban`.
+*   **`TransactionResponse.java`**: Kendi başına `TransactionType` ve `TransactionStatus` barındırır (Enum paketleri ayrıdır).
+### `dto.enums` & `dto.message`
+*   **`TransactionType.java`**, **`TransactionStatus.java`**: Karargah döngüsü kopyaları.
+*   **`NotificationMessage.java`**: Standart RabbitMQ bildirim DTO'su.
 
-### 3.1. CompanyEmployeeControllerImpl & ICompanyEmployeeService
-İK ofisinin tüm ekranlarını besleyen uç noktalar:
-*   **`POST /api/v1/companies/employees` -> `hireEmployee`:** HR ofisinde işçi alınır. **(FEIGN İSTİHBARAT KONTROLÜ)** Şirket adamı eklerken, gelen isimlerin gerçekliğini teyit etmek zorundadır. Önce `AuthServiceClient.getCustomerProfile` ile "Bu TC gerçek birine ait mi?" diye Auth servise sorar. Peşine `BackendServiceClient.validateAccount` ile IBAN'ı okutup Karagahtan "Bu kasa gerçekten açık ve bu isme mi ait?" testini vurur. Karşıda patlayan bir hatada adam işe girmez.
-*   **`GET /api/v1/companies/employees`:** Şirketin kendi `X-Identity-Number` etrafında kümelenen maaşlı adamlarını tek seferde frontend döner.
-*   **`PUT /.../{employeeIdentityNumber}` -> `updateEmployee` / `DELETE` -> `removeEmployee`:** Personelin kasasını değiştirmek (ZAM) ve adamı işten şutlamak.
-*   **`POST /api/v1/companies/employees/pay-salaries` (MANUEL BOT VURUŞU):** Patron bu tuşa bastığı an `BulkSalaryRequest` hazırlanıp tek seferde Backend Karargaha telsiz edilir! (Paralar dağıtılır).
-*   **`PUT /api/v1/companies/employees/auto-payment-settings` -> `updateAutoPaymentSettings`:** Ay sonu botunun parametrelerini tıklar (Aktif mi, ayın on beşi mi?). Eğer açık demezse bot bu şirketi Gece Cron işçisi taramasında atlayaıp geçer.
+---
 
-### 🛡️ 3.2. İÇ (INTERNAL) UÇ NOKTALAR (`/api/v1/internal`)
-*   **`POST /api/v1/internal/companies/sync` -> `syncNewCompany`:** (DIKKAT: Dış dünyaya kapalıdır). Sadece `bank-auth-micro` servisi, bir CEO'yu sisteme resmi onayladığı an, o servisten seken bir HTTP Request buraya devasa şirketin tohumunu eker ve Entity verisini doğurur! (Dışarıdan Postman gibi yollarla ulaşılamaz, `X-Internal-Identity` kullanır).
-*   Aynı şekilde şirket silinirse, Auth buraya `DELETE /sync/{identityNumber}` vurup şirketi küle çevirir.
+## 3. PAKET: `controller` (API Uç Noktaları) ve `controller.impl`
+*   **`ICompanyEmployeeController.java` & `CompanyEmployeeControllerImpl.java`** (`/api/v1/companies/employees`)
+    *   `@PostMapping`: -> `ResponseEntity<CompanyEmployeeResponse> hireEmployee(@RequestBody HireEmployeeRequest)`.
+    *   `@GetMapping`: -> `ResponseEntity<List<CompanyEmployeeResponse>> listEmployees()`.
+    *   `@PutMapping("/{employeeIdentityNumber}")`: -> `ResponseEntity<CompanyEmployeeResponse> updateEmployee(...)`.
+    *   `@DeleteMapping("/{employeeIdentityNumber}")`: -> `ResponseEntity<Void> removeEmployee(...)`.
+    *   `@PostMapping("/pay-salaries")`: -> `ResponseEntity<Void> paySalariesManually(@RequestBody SalaryPaymentRequest)`.
+    *   `@PutMapping("/auto-payment-settings")`: -> `ResponseEntity<AutoPaymentSettingsResponse> updateAutoPaymentSettings(...)`.
+    *   `@GetMapping("/auto-payment-settings")`: -> `ResponseEntity<AutoPaymentSettingsResponse> getAutoPaymentSettings()`.
+*   **`IInternalCompanyController.java` & `InternalCompanyControllerImpl.java`** (`/api/v1/internal/companies`)
+    *   `@PostMapping("/sync")`: -> `ResponseEntity<Void> syncNewCompany(...)`. (Auth tetikler).
+    *   `@PutMapping("/sync/{identityNumber}")`: -> `ResponseEntity<Void> updateCompanyInfo(...)`.
+    *   `@DeleteMapping("/sync/{identityNumber}")`: -> `ResponseEntity<Void> deleteCompanyInfo(...)`.
+
+---
+
+## 4. PAKET: `service` (İş Mantığı Arayüzleri) ve `service.impl`
+*   **`ICompanyEmployeeService.java` & `CompanyEmployeeServiceImpl.java`**
+    *   `hireEmployee`: **Kritik**. Feign çağrısıyla Auth'tan profil çeker (`getCustomerProfile`), Backend'den hesabı sorar (`validateAccount`). Karşılıklı doğrularsa DB'ye yazar.
+    *   `updateEmployee`, `removeEmployee`, `updateAutoPaymentSettings`, `getAutoPaymentSettings`.
+    *   `paySalaries` (Private/Manuel): Tüm işçileri çeker, `BulkSalaryRequest` hazırlar, `BackendServiceClient`'e vurur.
+*   **`IInternalCompanyService.java` & `InternalCompanyServiceImpl.java`**
+    *   `syncNewCompany`, `updateCompanyInfo`, `deleteCompanyInfo`. Auth servisinin senkron taleplerini DB'ye işler. (Company entity silme kurgusu vs).
+
+---
+
+## 5. PAKET: `client` (Feign İletişimleri)
+*   **`IAuthServiceClient.java`**: `@FeignClient(name = "bank-auth-micro")`
+    *   `@GetMapping("/api/v1/internal/users/profile/{identityNumber}") CustomerProfileResponse getCustomerProfile(...)`
+*   **`IBackendServiceClient.java`**: `@FeignClient(name = "bank-demo-backend")`
+    *   `@GetMapping("/api/v1/internal/accounts/validate") AccountValidationResponse validateAccount(...)`
+    *   `@PostMapping("/api/v1/internal/transactions/bulk-salary") void processBulkSalary(...)`
+
+---
+
+## 6. PAKET: `scheduler` (Zamanlanmış CRON İşleri)
+*   **`CorporateScheduledTasks.java`**:
+    *   `@Scheduled(cron = "0 0 1 * * ?")` (`payAutoSalaries`): Her gece 01:00'da çalışır.
+    *   Veritabanındaki tüm şirketleri tarar, `autoSalaryPaymentEnabled == true` olanları ve bugünün numarası `salaryPaymentDay` ile eşleşenleri bulur.
+    *   Bulunanlar için Backend servise fırlatılmak üzere `BulkSalaryRequest` hazırlar.
+
+---
+
+## 7. PAKET: `repository` (Veritabanı Arayüzleri)
+*   **`ICompanyRepository.java`**: `Optional<Company> findByCompanyIdentityNumber(String companyIdentityNumber)`.
+*   **`ICompanyEmployeeRepository.java`**: `List<CompanyEmployee> findByCompany(Company company)`, `Optional<CompanyEmployee> findByCompanyAndEmployeeIdentityNumber(Company company, String employeeIdentityNumber)`.
+
+---
+
+## 8. PAKET: `security` (Güvenlik Kalkanları)
+*   **`SecurityConfig.java`**: "/api/v1/internal/**" dışındaki isteklerde Keycloak yetkisini denetleyen `HeaderAuthenticationFilter`'ı serer.
+*   **`HeaderAuthenticationFilter.java`**: Gateway tarafından basılmış `X-Identity-Number` metnini yakalar ve Context'e oturtturur.
+
+---
+
+## 9. PAKET: `config` (Altyapı Ayarları)
+*   **`FeignConfig.java`**: Feign Client'lar HTTP isteği atarken Context'ten kimliği alıp eklesin diye bir `RequestInterceptor` tanımlar.
+*   **`FeignIdentityInterceptor.java`**: Gerçek `RequestInterceptor` sınıfı. Header olarak `X-Internal-Identity` kalkanını basar. Karargaha vurmadan önce bunu iliştirir.
+
+---
+
+## 10. PAKET: `exception` & `messaging`
+*   **`GlobalExceptionHandler.java`**: Bütün error stacklerini karşılar.
+*   **`BankOperationException.java`**: Personel eklenirken DB hatası alınırsa vs.
+*   **`messaging.publisher.RabbitMQPublisher`**: Bildirim mesajları pompalamak için.

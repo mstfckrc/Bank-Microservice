@@ -1,14 +1,29 @@
-# 📯 RABBITMQ NOTIFICATION DISPATCHER (PORT 8082) HAFIZA KARTI
+# 📯 ABSOLUTE BLUEPRINT: notification-service (PORT 8082)
 
-Sistemin "Postanesi"dir. Dış dünyadan Gateway üzerinden hiçbir HTTP Rest İsteği (API Call) almaz. Bir denetleyicisi (Controller) sınıf felsefesi yoktur. Asenkron bir "Consumer" botudur.
+Bu belge, mesajlaşma ve bildirim kuyruklarını dinleyip mail/sms atan pasif dinleyici (Subscriber) servisin src/main/java/com/mustafa altındaki sınıflarını listeler. (Veritabanı yoktur).
 
-## 🗄 1. MİMARİ PRENSİBİ
-1.  **Sıfır API:** Hiçbir Controller dosyası barındırmaz. Kimse ona Http GET, POST atamaz.
-2.  **Veritabanı Yok:** RabbitMQ kuyruk mimarisindeki transient olaylara odaklandığından DB'de log veya kayıt tutmaz. 
+---
 
-## ⚙️ 2. İŞLEYİŞ (AMQP & RABBITMQ MANTIĞI)
-*   **Queue ve Exchange Bağlantısı:** Boot aşamasında `RabbitMQConfig` sınıfları sayesinde kendisini `notification_queue` hattına diker (Bind eder) ve dinleyici (Listener) moduna alır. Devasa `bank_exchange` dağıtım santralinden sadece kendine düşen RouteKey'leri kapar.
-*   **Dinle ve Tetikle:** Sistemdeki diğer servisler (Örn: Auth servisi yeni kullanıcı ekleyince ve Karargah büyük bir hesap transferi yapınca) bir DTO olan `NotificationMessage` JSON paketini havaya fırlatır. Notification servisi bunu milisaniyeler içinde havada yakalar ve mesajın türüne göre konsola yazar, ileride eklenecek olan Twilio (SMS) veya SendGrid (Email) SDK'larına işi iade eder ve işlemi sonlandırır.
+## 1. PAKET: `starter`
+*   **`NotificationServiceApplication.java`**: Uygulamayı ayağa kaldırır (`@EnableDiscoveryClient`).
 
-## 🛡 3. PERFORMANCE DARBOĞAZI & ORCHESTRATION
-*   Servisin çökmesi veya çalışmaması, bankacılık kayıt/havale işlemlerini engellemez. Bu servisin yapısı asenkron (fire-and-forget) tasarım şablonudur. Mesajlar RabbitMQ içerisinde tutulur, postane sunucusu ayağa kalktığında hepsini geriye dönük işleyerek kullanıcılara yollarını tayin eder.
+---
+
+## 2. PAKET: `config` (RabbitMQ Bağlantıları)
+*   **`RabbitMQConfig.java`**: 
+    *   RabbitMQ sunucusundaki yapılandırmaları tanır.
+    *   Gelen byte array payload'ları anlayabilmek için `MessageConverter jsonMessageConverter()` bean'ini `Jackson2JsonMessageConverter` formatına uygun çevirir.
+
+---
+
+## 3. PAKET: `dto.message` (Zarf Kodlaması)
+*   **`NotificationMessage.java`**: Sistemin beyni. Bütün mikroservislerin (Auth, Core, Corporate) fırlatabileceği ortak dil.
+    *   **Fields**: `String destination` (Mail adresi veya telefon no), `String subject` (Mesaj konusu), `String content` (Gövde metni), `String identityNumber`, `NotificationType notificationType`.
+    *   **Enums (İçinde)**: `NotificationType` (EMAIL, SMS, PUSH).
+
+---
+
+## 4. PAKET: `listener` (Dinleyici Kancalar)
+*   **`NotificationListener.java`**:
+    *   `@RabbitListener(queues = "${rabbitmq.queue.notification.name}")` anatasyonuyla kuyruğun ağzında pusuya yatar.
+    *   `public void consumeMessage(NotificationMessage message)`: Kuyruğa bir JSON düştüğü an devreye girip consol'a yazar. Mimaride ileride SMTP veya Twilio SMS kütüphaneleri dökülürse, gerçek mail atma servisleri direkt bu bloğun içine işlenecektir.

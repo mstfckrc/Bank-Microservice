@@ -135,6 +135,7 @@ services:
       - "8083:8083"
     environment:
       - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://discovery-server:8761/eureka/
+      - REDIS_HOST=redis
     depends_on:
       - discovery-server
     networks:
@@ -323,6 +324,17 @@ services:
     networks:
       - bank-network-micro
     restart: unless-stopped
+
+  # ==========================================
+  # 🚀 ÖNBELLEK JET MOTORU (Redis)
+  # ==========================================
+  redis:
+    image: redis:7-alpine
+    container_name: bank_redis_micro
+    ports:
+      - "6379:6379"
+    networks:
+      - bank-network-micro
 
 # 📦 YENİ MÜSTAKİL VERİ DEPOLARI
 volumes:

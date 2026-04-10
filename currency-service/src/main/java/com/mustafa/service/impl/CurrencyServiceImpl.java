@@ -4,30 +4,35 @@ import com.mustafa.dto.response.ExchangeRateResponse;
 import com.mustafa.exception.BankOperationException;
 import com.mustafa.service.ICurrencyService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
-@Slf4j // 🚀 LOGGER AKTİF
+@Slf4j
 @Service
 public class CurrencyServiceImpl implements ICurrencyService {
 
-    // Spring'in dış dünyayla konuşmasını sağlayan HTTP aracı
     private final RestTemplate restTemplate = new RestTemplate();
+    private final ICurrencyService self; // 🛡️ KENDİMİZİ (PROXY KOPYASINI) TUTACAĞIMIZ DEĞİŞKEN
 
+    // 🚀 @Lazy ile Spring'e diyoruz ki: "Beni bana enjekte et ama sonsuz döngüye sokma!"
+    public CurrencyServiceImpl(@Lazy ICurrencyService self) {
+        this.self = self;
+    }
+
+    // 🚀 KURLARI RAM'E KAYDETME EMRİ (isim: "rates", anahtar: TRY, USD vs.)
+    @Cacheable(value = "rates", key = "#baseCurrency")
     @Override
     public ExchangeRateResponse getLiveRates(String baseCurrency) {
-        // Ücretsiz ve API Key istemeyen kur sağlayıcısı
         String url = "https://open.er-api.com/v6/latest/" + baseCurrency.toUpperCase();
-
         log.info("Dış API İsteği: {} bazlı canlı döviz kurları çekiliyor... [URL: {}]", baseCurrency.toUpperCase(), url);
 
         try {
-            // Dış API'ye GET isteği at ve gelen JSON'ı bizim DTO'ya dönüştür
             ExchangeRateResponse response = restTemplate.getForObject(url, ExchangeRateResponse.class);
             log.info("Canlı kurlar başarıyla çekildi. Sağlayıcı yanıt verdi.");
             return response;
         } catch (Exception e) {
-            // 🚀 EĞER API ÇÖKERSE EN BÜYÜK KANITIMIZ BURASI:
             log.error("🚨 DIŞ API BAĞLANTI HATASI: Canlı kurlar çekilemedi! Hata Detayı: {}", e.getMessage());
             throw new BankOperationException("Canlı kurlar çekilirken bir hata oluştu: " + e.getMessage());
         }
@@ -36,30 +41,27 @@ public class CurrencyServiceImpl implements ICurrencyService {
     @Override
     public Double convertAmount(Double amount, String fromCurrency, String toCurrency) {
 
-        // 1. ÖNCE AKILLI KONTROLÜ YAP (Aynıysa hiç motoru yorma)
         if (fromCurrency.equalsIgnoreCase(toCurrency)) {
-            log.info("Çevirim İptali: Kaynak ve hedef para birimleri aynı ({}). İşlem yapılmadı.", fromCurrency.toUpperCase());
+            log.info("Çevirim İptali: Kaynak ve hedef aynı ({}).", fromCurrency.toUpperCase());
             return amount;
         }
 
-        // 2. EĞER FARKLIYSA MOTORU ÇALIŞTIRDIĞINI BİLDİR (🚀 Logu buraya taşıdık)
         log.info("Döviz çevirim motoru çalıştı: {} {} -> {}", amount, fromCurrency.toUpperCase(), toCurrency.toUpperCase());
 
-        // 3. "From" para birimine göre tüm kurları çek
-        ExchangeRateResponse response = getLiveRates(fromCurrency);
+        // 🚀 DİKKAT: Artık doğrudan getLiveRates() değil, self.getLiveRates() diyoruz!
+        // Böylece Spring Cache araya girip "Bu veri RAM'de var mı?" diye bakabilecek.
+        ExchangeRateResponse response = self.getLiveRates(fromCurrency);
 
-        // 4. Hedef para biriminin karşılığını al
         Double rate = response.getRates().get(toCurrency.toUpperCase());
 
         if (rate == null) {
-            log.warn("Çevirim Başarısız: Hedeflenen para birimi ({}) sistemde veya dış API'de desteklenmiyor!", toCurrency.toUpperCase());
+            log.warn("Çevirim Başarısız: Hedef para birimi ({}) desteklenmiyor!", toCurrency.toUpperCase());
             throw new BankOperationException("Desteklenmeyen para birimi: " + toCurrency);
         }
 
-        // 5. Miktarı kurla çarp ve dön
         Double result = amount * rate;
 
-        log.info("✅ Çevirim Başarılı: {} {} = {} {} (Uygulanan Kur Çarpanı: {})",
+        log.info("✅ Çevirim Başarılı: {} {} = {} {} (Kur: {})",
                 amount, fromCurrency.toUpperCase(), String.format("%.2f", result), toCurrency.toUpperCase(), rate);
 
         return result;

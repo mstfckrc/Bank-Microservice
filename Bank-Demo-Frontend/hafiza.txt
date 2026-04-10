@@ -1,57 +1,67 @@
-# 🖥️ SEC-DEMO FRONTEND HAFIZA KARTI (V6.0 - EXTREME DETAYLI & EKSİKSİZ)
+# 🖥️ ABSOLUTE BLUEPRINT: Bank-Demo-Frontend (Next.js 14)
 
-Bu doküman, sistemin ön yüzünü (React/Next.js) inşa ederken kullanılacak tek geçerli kaynak rehberidir. Sıfır tahmin ile yazılmıştır. Yeni mikroservislere bölünen backend ağacı Gateway sayesinde Frontend'den %100 soyutlanmıştır.
+Bu belge, sistemin tek kullanıcı arayüzü olan Frontend klasörünün (React/Next.js) `src` veya projenin kök dizinindeki tüm kritik dosyalarının, statelerinin ve fonksiyon yapılarının tam bir haritasıdır.
 
 ---
 
-## 🏗️ 1. MİMARİ VE YAPI
-*   **Çatı (Framework):** Next.js 14 (App Router).
-*   **Ağ Katmanı (Network):** Axios (`lib/axios.ts`). Tüm istekler `http://localhost:8081/api/v1` (API Gateway) üzerinden gider. Axios Interceptor, Zustand'dan token'ı alıp `Authorization: Bearer ...` olarak başlığa yapıştırır.
+## 1. TEMEL YÖNLENDİRME (ROUTING / MIDDLEWARE)
+*   **`proxy.ts` (Next.js Middleware)**:
+    *   Tüm sayfa geçişleri tarayıcıda başlamadan önce Sunucu Tarafından (SSR) önce bu dosyaya takılır.
+    *   **İşlem**: Tarayıcının çerezlerindeki (Cookies) JWT token'ı alır, base64 payload kısmını kırar (decode eder) ve `preferred_username` ile `Realm_access: roles` bilgilerini okur.
+    *   **Yönlendirme**: Ziyaretçinin rolüne göre onu `/(user)`, `/(admin)` veya `/(corporate)` klasörlerine şutlar. Token yoksa login'e zorlar.
 
-## 🛡️ 2. GÜVENLİK VE YÖNLENDİRME (ROUTING & MIDDLEWARE)
-Gelen ziyaretçi sadece `proxy.ts` duvarını geçebilirse içerideki sayfalara erişebilir.
-*   **Dosya:** `proxy.ts` (Next.js Middleware)
-    *   **Çalışma Rotası:** `/login`, `/register`, `/admin/*`, `/user/*`, `/company/*`.
-    *   **Mantığı:** Tarayıcı çerezinden (`request.cookies.get('token')`) token okunur.
-    *   **Token Çözümleme:** Sunucuya sormadan `atob(paddedBase64)` ile JWT payload'u frontend'de decode edilir. İçerisindeki `role` bilgisine bakılır.
-    *   **Yetki Kuralları (Strict Routing):**
-        *   Token yokken `/user`, `/admin`, `/company` sayfalarına girmeye çalışırsan `NextResponse.redirect('/login')` yersin.
-        *   `role.includes("ADMIN")` değilken `/admin` sayfasına girmeye çalışırsan `/login`'e düşersin.
-        *   `role.includes("CORPORATE_MANAGER")` değilken `/company` rotasına gidersen `/user/dashboard`'a atılırsın.
-        *   Token varken `/login`'e gelirsen rolüne göre kendi dashboard'una otomatik şutlanırsın.
+---
 
-## 📦 3. DURUM YÖNETİMİ (STATE MANAGEMENT - ZUSTAND)
-Uygulama Redux veya Context API yerine Zustand ve Cookie kullanır.
-*   **Dosya:** `store/useAuthStore.ts`
-*   **Yapı:** `AuthUser` nesnesi (`identityNumber`, `profileName`, `email`, `role`, `status`), `token` ve `isAuthenticated` değişkenlerini tutar.
-*   **Aksiyonlar:**
-    *   `login(user, token)`: Zustand state'ini doldurur ve eşzamanlı olarak `js-cookie` ile tarayıcıya yazar (`Cookies.set("token", token, { secure: true/false, sameSite: "strict", path: "/" })`).
-    *   `logout()`: Kök dizindeki çerezi (`path: "/"`) siler ve state'i sıfırlar.
-    *   `updateUser(fields)`: Kullanıcı adını/emailini değiştirdiğinde günceller.
+## 2. KLASÖR: `types` (TypeScript Arayüzleri)
+Backend'deki DTO'ların birebir Frontend karşılıklarıdır. Sayfalar renderlanırken `any` tipi kullanılmaz, hepsi `index.ts` içindeki bu şablonlardan türer.
+*   **`types/index.ts`**
+    *   `Role`: `"ADMIN" | "RETAIL_CUSTOMER" | "CORPORATE_MANAGER"`
+    *   `ApprovalStatus`, `TransactionStatus`, `TransactionType`.
+    *   **Auth DTOs**: `LoginRequest`, `RegisterRequest`, `AuthResponse`, `UserProfileResponse`, `ChangePasswordRequest`.
+    *   **Bank DTOs**: `AccountResponse`, `CreateAccountRequest`, `TransferRequest`, `DepositRequest`, `TransactionResponse`.
+    *   **Corporate DTOs**: `CompanyEmployeeResponse`, `HireEmployeeRequest`, `AutoPaymentSettingsRequest`.
+    *   **Bill DTOs**: `BillInstructionRequest`, `BillInstructionResponse`.
+    *   **Ortak**: `ApiErrorResponse` (Backend'in GlobalExceptionHandler'ından seken hatalar için), `ExchangeRateResponse`.
 
-## 🧱 4. TYPESCRIPT TİPLERİ (EXACT DTO BINDINGS)
-Aşağıdaki tipler `types/index.ts` dosyasında bulunur ve Backend'deki DTO'larla %100 eşittir. Asla farklı isimler kullanmayın!
-*   **Numaralandırmalar (Enums):**
-    *   `Role`: `ADMIN` | `RETAIL_CUSTOMER` | `CORPORATE_MANAGER`
-    *   `ApprovalStatus`: `PENDING` | `APPROVED` | `REJECTED`
-    *   `TransactionStatus`: `COMPLETED` | `PENDING_APPROVAL` | `REJECTED`
-    *   `TransactionType`: `DEPOSIT` | `WITHDRAWAL` | `TRANSFER`
-    *   `BillType`: `ELECTRICITY` | `WATER` | `INTERNET` | `GAS`
-*   **İstekler (Requests):**
-    *   `LoginRequest`: `identityNumber`, `password`.
-    *   `RegisterRequest`: `identityNumber`, `password`, `role`, `email`, (Bireyse: `firstName`, `lastName`), (Şirketse: `companyName`, `taxOffice`).
-    *   `TransferRequest`: `senderIban`, `receiverIban`, `amount`, `description`.
-    *   `BillInstructionRequest`: `accountId`, `billType`, `subscriberNo`, `paymentDay`.
-    *   `HireEmployeeRequest`: `identityNumber`, `salaryIban`, `salaryAmount`.
-    *   `AutoPaymentSettingsRequest`: `autoPaymentEnabled`, `paymentDay`, `defaultSalaryIban`.
-*   **Yanıtlar (Responses):**
-    *   `UserProfileResponse`: `identityNumber`, `profileName`, `email`, `role`, `status`.
-    *   `AccountResponse`: `id`, `accountNumber`, `iban`, `balance`, `currency`, `isActive`, `ownerName`, `identityNumber`.
-    *   `TransactionResponse`: `referenceNo`, `amount`, `convertedAmount`, `transactionType`, `description`, `transactionDate`, `senderAccountId`, `receiverAccountId`, `status`.
-    *   `CompanyEmployeeResponse`: `id`, `identityNumber`, `firstName`, `lastName`, `salaryIban`, `salaryAmount`.
-    *   `ExchangeRateResponse`: `base`, `date`, `rates` (Object mapping).
+---
 
-## 🗂️ 5. SAYFA DÜZENLERİ (PAGES)
-*   **`/(auth)`:** Header/Footer olmayan, ortalanmış kartlı saf Login/Register tasarımları.
-*   **`/currencies`:** `ExchangeRateResponse` listesinin anlık gösterildiği umumi borsa tahtası stili. Token dahi istenmez.
-*   **`/(dashboard)`:** Sol tarafta role göre değişen spesifik linklere sahip `Sidebar`, üstte `Navbar` içeren korumalı (Protected) alan. Modallar (Dialog) yardımıyla sayfayı değiştirmeden Transfer/Para Yatırma yaptırır.
+## 3. KLASÖR: `services` (API Bağlantı Kancaları)
+Sadece bu klasör `axios` kullanır. Sayfaların doğrudan `axios.post` yapması yasaktır. Her servisin fonksiyonları buradadır:
+*   **`auth.service.ts`**: `login(data)`, `register(data)`.
+*   **`account.service.ts`**: `createAccount(data)`, `getUserAccounts()`, `deleteAccount(accountNumber)`.
+*   **`transaction.service.ts`**: `deposit(data)`, `transfer(data)`, `getTransactions(accountNumber)`.
+*   **`admin.service.ts`**: `getAllCustomers()`, `updateStatus(tc, status)`.
+*   **`company.service.ts`**: İK departmanı işlemleri, personel ekleme, `paySalaries()`.
+*   **`bill.service.ts`**: Otomatik ödeme talimatı API çağrıları.
+*   *(Not: Tüm istekler baseURL olarak Gateway'in `http://localhost:8081/api/v1/` adresine fırlatılır!)*
+
+---
+
+## 4. KLASÖR: `store` (Global Durum Yönetimi - Zustand)
+*   **`useAuthStore.ts`**: Zustand kullanan merkezi State dosyası.
+    *   `interface AuthUser`: Sitede o an asılı duran adamı temsil eder.
+    *   `login(user, token)`: Çerezlere tokeni basar, UI'a "adam geldi" der.
+    *   `logout()`: Komple çerezleri siler, Zustand'i resetler ve login'e fırlatır.
+
+---
+
+## 5. KLASÖR: `lib` (Yardımcı Araçlar)
+*   **`axios.ts`**: Projenin Axios Instance'ı. 
+    *   `interceptors.request.use(...)` ile her giden isteğin Header'ına "Authorization: Bearer [token]" yapıştırır.
+*   **`utils.ts`**: `cn(...)` gibi Tailwind CSS class birleştirici yardımcı fonksiyonlar.
+
+---
+
+## 6. KLASÖR: `hooks` (React Özel Komponent Mantıkları)
+API Services ile UI arasındaki kör nokta. React hook kurallarıyla sayfada state tutar ve loading barları çizer.
+*   **`useUserDashboard.ts`**: Cüzdan ve İşlem geçmişinin eş zamanlı render edilmesini sağlar.
+*   **`useAccounts.ts`**: Kullanıcının kasalarını çeker, `isLoading` veya `error` flag'leriyle UI besler.
+*   **`useCompanyEmployees.ts` / `useBills.ts`**: Kurumsal ve Fatura sayfalarının hook denetleyicileri.
+
+---
+
+## 7. KLASÖR: `components` (Görsel Parçalar)
+*   **`shared/StatusBadge.tsx`**: APPROVED, PENDING gibi statüleri okuyup ona göre Yeşil, Kırmızı, Sarı Tailwind arka planı atayan rozet (Badge).
+*   **`shared/PageHeader.tsx`**: Sayfa üstlerinde Geri Dön oku ve Title barındıran kalıp.
+*   **`dashboard/transaction-table.tsx`**: Backend'den gelen List<Transaction> listesinin map ile html `<table>... <tr>` bloklarına döküldüğü ve `convertedAmount` (Döviz var mı) var ise iki fiyatı alt alta gösteren hücre tablo.
+*   **`dashboard/modals/TransferModal.tsx`**: Açılır kapanır havale formu. `TransferRequest` toplar.

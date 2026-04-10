@@ -1,14 +1,40 @@
-# 💶 EXTERNAL CURRENCY SERVICE (PORT 8083) HAFIZA KARTI
+# 💶 ABSOLUTE BLUEPRINT: currency-service (PORT 8083)
 
-Sistemin Dünya'ya (veya internete) açılan dış entegrasyon havuzudur. Veritabanı bulundurmaz (Stateless). Temel ve yegane amacı canlı veya izole edilmiş exchange kurlarını çekmektir.
+Bu belge, döviz kuru sağlayan ve diğer servislere veri atan servisin src/main/java/com/mustafa altındaki tüm klasörlerini listeler. (Veritabanına ihtiyaç duymaz, memcached/redis mimarisi vardır).
 
-## 🗄 1. MİMARİ KARAKTERİSTİĞİ
-1.  **Dışa Açık Port:** Sistemdeki `PermitAll` yemiş yegane uç noktalardan birine sahiptir. Dışarıdaki ziyaretçiler, banka müşterisi olmadan bile Gateway üzerindeki `/api/v1/currencies/rates` ibaresinden bu servisin döviz tahtasına erişebilir. Herhangi bir Authorization bypass etmez veya Header (`X-Identity-Number`) aramaz.
-2.  **Entity Yok:** İçerisinde `Entity` anatosyonu yemiş veya DB tablosu oluşturan hiçbir şey bulunmaz. Harici Data Transfer Objeleriyle (DTO) yaşar.
-3.  **Dış Ağ İstekleri:** Diğer mikroservisler gibi iç `FeignClient` kullanmak yerine dış dünyadaki herhangi bir API'a RESTful çağrı ile vurarak paritenin güncel değerini kapar (`WebClient` veya `RestTemplate` gibi motorlarla).
+---
 
-## ⚙️ 2. İLETİŞİM VE FEIGN BAĞIMLILIĞI
-Sistemin beyni (Core Karargah), parasal işlemlerde çapraz döviz takaslarına ihtiyaç duyduğunda `CurrencyServiceClient` (Feign) ile bu servise iç ağdan bağlanır. 
+## 1. PAKET: `starter`
+*   **`CurrencyServiceApplication.java`**: `@EnableCaching` ve `@EnableDiscoveryClient` etiketlerini taşır.
 
-*   *Senaryo:* Müşteri, TRY kamerasından EURO kasasına SWIFT yaptığında, Backend doğrudan Currency Servis kancasını ateşler. "Şu an TRY to EUR nedir?" der. Cevaba göre transaction değerini oluşturur.
-*   *Önemli Not:* Servis arızalanırsa veya external site düşerse devasa bir Fallback / Exception mekanizması Karargahı kitlememelidir, kur için varsayılan rakam atanabilir.
+---
+
+## 2. PAKET: `dto.response`
+*   **`ExchangeRateResponse.java`**: 
+    *   `String base_code` (Hangi kurdan çekildi. Örn: TRY)
+    *   `Map<String, Double> rates` (Çapraz kurların devasa Hash eşleşmesi. TRY -> USD, EUR vb.)
+    *(Not: Bu DTO, dış internet kaynağının (ExchangeRate-API vb.) geri döndürdüğü birebir JSON fırçasına uyumludur).*
+
+---
+
+## 3. PAKET: `controller` ve `controller.impl`
+*   **`ICurrencyController.java` & `CurrencyControllerImpl.java`**
+    *   `@GetMapping("/api/v1/currencies/rates")`: -> `ResponseEntity<ExchangeRateResponse> getRates(@RequestParam("base") String base)` (Örn: `?base=TRY`).
+
+---
+
+## 4. PAKET: `service` (İş Mantığı Arayüzleri) ve `service.impl`
+*   **`ICurrencyService.java` & `CurrencyServiceImpl.java`**
+    *   `getRates(String baseCurrency)`: İnternetteki gerçek döviz servisine (ExchangeRate-API) `RestTemplate` veya native metotla çağrı atar, gelen veriyi `ExchangeRateResponse` kalıbına parse eder.
+    *   `@Cacheable(value = "exchangeRates", key = "#baseCurrency")`: Her istekte API kotası yememek için dönen sonucu Redis belleğine şifreler, 10 dakikada bir bayatlar.
+
+---
+
+## 5. PAKET: `config` (Önbellek)
+*   **`RedisCacheConfig.java`**: Spring Boot'un Standart Cache altyapısını Redis üzerine monte eder.
+    *   Verilerin memory'de (RAM'de) ne kadar yaşayacağını (`Duration.ofMinutes(10)` vs) TTL olarak confguration manager ile derler.
+
+---
+
+## 6. PAKET: `exception`
+*   **`BankOperationException.java`**: Dış API'nin (Kur API'si) çökmesi, Timeout yemesi durumlarında yakalanıp fırlatılacak zırh.

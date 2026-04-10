@@ -1,60 +1,99 @@
-# 🔐 SEC-DEMO AUTH (KİMLİK) SERVİSİ HAFIZA KARTI (V7.0 - TAM İZOLASYON)
+# 🔐 ABSOLUTE BLUEPRINT: bank-auth-micro (PORT 8086)
 
-Sistemin kimlik yönetimi (Login, Register, Profil, Şifre Değiştirme) operasyonlarını Monolith projeden tamamen ayırarak üstlenen, üstüne bir de V7.0 serüveniyle "Lokal Şifreleme" bağımlılığını söküp atıp yepyeni **Keycloak Güvenlik Merkezine** bağlanan kimlik duvarı mikroservisidir. (Port: 8086).
-
----
-
-## 🗄️ 1. VERİ TABANI (ENTITY) & KOLON HARİTASI
-Kendine özgü bağımsız bir DB'ye geçirildi (`bank_auth_db`). Sadece kimlik profiline ve sisteme giriş yetkisine dair pürüzsüz bilgileri barındırır. (Cüzdan, Bakiye asla buraya giremez).
-
-### 1.1. AppUser (Sistemin Kalbi)
-*   **Alanlar (Fields):** `Long id`, `String identityNumber` (Unique TC / Vergi No), `String keycloakId` (🚨 DİKKAT: V6'daki `password` silindi, Keycloak Sunucusundaki eşlenik UUID'si budur), `Role role` (Enum: ADMIN, RETAIL_CUSTOMER, CORPORATE_MANAGER), `ApprovalStatus status` (Enum: PENDING, APPROVED, REJECTED).
-*   *(Dikkat: Account tablosuyla olan OneToMany ilişkisi koparılmıştır, çünkü hesaplar Backend'dedir!)*
-
-### 1.2. RetailCustomer (Bireysel Müşteri Profili)
-*   **Alanlar (Fields):** `Long id`, `AppUser appUser` (OneToOne), `String firstName`, `String lastName`, `String email`.
-*   *(Kurumsal şirketlerin ana profilleri (Company) tamamen Corporate-Service'te tutulur)*
+Bu belge, servisin src/main/java/com/mustafa altındaki TÜM klasörlerini, sınıflarını ve arayüzlerini istisnasız bir döküm halinde listeler. Bir IDE ağacını nasıl görüyorsanız, bu dosya da o şekildedir.
 
 ---
 
-## 📦 2. VERİ TRANSFER OBJELERİ (DTO)
-Bütün kimlik doğrulama aktarımlarında kullanılan exact DTO nesneleri ve içerdikleri değişken tipleri (Fields):
-
-### 2.1. Request (İstek) DTO'ları
-*   **`RegisterRequest`:** `identityNumber` (TC 11 veya VKN 10 hane), `password` (Keycloak'ta saklanmak üzere iletilir), `role`, `email`, (Bireyse: `firstName`, `lastName`), (Kurumsalsa: `companyName`, `taxOffice`). Projeyi tetikleyen en ağır pakettir.
-*   **`LoginRequest`:** `identityNumber`, `password`. (Arka uçta bu şifre artık Keycloak'a atılarak karşılığında Token dilenilmesi beklenir).
-*   **`UpdateProfileRequest`:** `email`, `profileName` (Şahıssa ad-soyad, kurumsa unvan günceller).
-*   **`ChangePasswordRequest`:** `oldPassword`, `newPassword` (Direkt dış kaynaklı Keycloak ayarlarını resetletmek için kullanılır).
-*   **`CompanySyncRequest`:** `companyIdentityNumber`, `companyName`, `contactEmail`, `taxOffice` (Admin kayıt onayladığında, Corporate servise senkron atmak ve diğer DB'de kaydı başlatmak için kullanılır).
-
-### 2.2. Response (Yanıt) DTO'ları
-*   **`AuthResponse`:** `token`, `message`. (Eğer Keycloak yapısı gereği front-end şifreyi kendi yönetiyorsa bu token yapay bir success dönücüsü olarak da bırakılır).
-*   **`UserProfileResponse`:** `identityNumber`, `profileName` (Ad soyad veya şirket adı birleşiktir), `email`, `role`, `status`.
-*   **`CustomerResponse`:** `tcNo` (Eski sistem uyumu için TC no string'i), `fullName`, `email`, `role`, `status`.
-*   **`ErrorResponse`:** `timestamp`, `message`, `details`.
-*   **`CustomerProfileResponse`:** `identityNumber`, `firstName`, `lastName`, `email`. (Internal servis fısıldaşmalarında hap bilgi taşıyıcısıdır).
+## 1. PAKET: `entity` (Veritabanı Tabloları)
+*   **`AppUser.java`**: (Table: `app_user`)
+    *   **Fields**: `Long id`, `String identityNumber` (TC/VKN), `String keycloakId` (Şifre yerine uuid), `Role role`, `ApprovalStatus status`.
+    *   **Enums**: `Role` (ADMIN, RETAIL_CUSTOMER, CORPORATE_MANAGER), `ApprovalStatus` (PENDING, APPROVED, REJECTED).
+*   **`RetailCustomer.java`**: (Table: `retail_customer`)
+    *   **Fields**: `Long id`, `AppUser appUser` (OneToOne), `String firstName`, `String lastName`, `String email`.
 
 ---
 
-## 🔄 3. SERVİS VE İŞ MANTIĞI EKSENİ (KEYCLOAK DEVRİMİ V7.0)
+## 2. PAKET: `dto` (Veri Transfer Objeleri)
+### `dto.request`
+*   **`RegisterRequest.java`**: `identityNumber`, `password`, `role`, `email`, `firstName`, `lastName`, `companyName`, `taxOffice`.
+*   **`LoginRequest.java`**: `identityNumber`, `password`.
+*   **`UpdateProfileRequest.java`**: `email`, `profileName`.
+*   **`ChangePasswordRequest.java`**: `oldPassword`, `newPassword`.
+*   **`CompanySyncRequest.java`**: `companyIdentityNumber`, `companyName`, `contactEmail`, `taxOffice` (Corporate'a yollanan senkron payload'u).
+### `dto.response`
+*   **`AuthResponse.java`**: `String token`, `String message`.
+*   **`CustomerProfileResponse.java`**: `String identityNumber`, `String firstName`, `String lastName`, `String email`.
+*   **`CustomerResponse.java`**: `String tcNo`, `String fullName`, `String email`, `String role`, `String status`.
+*   **`UserProfileResponse.java`**: `String identityNumber`, `String profileName`, `String email`, `String role`, `String status`.
+*   **`ErrorResponse.java`**: `LocalDateTime timestamp`, `String message`, `String details`.
+### `dto.message`
+*   **`NotificationMessage.java`**: `String destination`, `String subject`, `String content`, `String identityNumber`, `NotificationType notificationType` (Enum: EMAIL, SMS, PUSH).
 
-Gateway mimaride tokenları ayıklayıp uçurduğu için, Auth servisi diğer tüm servisler gibi `X-Identity-Number` kalkanına sığınarak işlemlerine izin verir.
+---
 
-### 3.1. Controller (Uç Noktalar) ve Servis İmzaları
-*   **`AuthControllerImpl` (`/api/v1/auth`) & `IAuthService`:**
-    *   `POST /register` -> `register`: Sisteme yeni kayıt oluşturur. İstek geldiğinde doğrudan **Keycloak API'sine (`UserRepresentation`)** vurur ve kullanıcıyı dış merkezi güvenlik sunucusunda fiziksel olarak yaratır. Oluşan `keycloakId`'yi kementle alıp sistemin lokal veritabanındaki (`bank_auth_db`) `AppUser` tablosuna çakar!
-*   **`CustomerControllerImpl` (`/api/v1/customers`) & `ICustomerService`:**
-    *   `GET /profile`: Gateway'den gelen adamın profili döndürülür.
-    *   `PUT /profile`: Profil ve adres günceller.
-    *   `POST /appeal` -> `appealRejection`: Admin'in Raporladığı/Reddettiği adam çaresizce Admin'e geri basar, "Lütfen sistemime beni al".
-*   **`AdminUserControllerImpl` (`/api/v1/admin/customers`) & `IAdminUserService`:**
-    *   `GET /`: Tüm kullanıcıları harf harf listele.
-    *   `PUT /{identityNumber}/status` -> `updateCustomerStatus`: `APPROVED`/`REJECTED` statüsüne çekme bölgesi. **KRİTİK:** Admin bir `CORPORATE_MANAGER` rolündeki kullanıcıyı onayladığında, `auth-service` kendi Feign Client (`CompanyServiceClient`) komutuyla `http://corporate-service:8085` kapısına tekmeyle dalarak `CompanySyncRequest` json'u atar ve o mükemmel şirketi o mikroserviste diriltir.
-    *   **`DELETE /{identityNumber}` -> `deleteCustomer` [AĞIR YIKIM]:** Admin bir kullanıcıyı SİLDİĞİNDE "Distributed Transaction / Orchestration" harikası başlar:
-        1. Bireyselse kendi yöresindeki profili siler, kurumsalsa `CompanyServiceClient` ile (`Corporate-Service`) profilini acımasızca patlatır.
-        2. `BackendServiceClient.deleteCustomerAccounts(identity)` çağrısıyla Karargaha (`Bank-Demo-Backend`) vurup müşterinin tüm kasalarını, IBAN'larını imha emrini çıkartır.
-        3. Son olarak kendi `AppUser` kimliğini kömüre çevirir. (Backend bakiye var deyip patlarsa bu metod `TransactionAspect` ile komple rollback'e uğrar ve hiçbir şey silinmeden can kurtarılır).
+## 3. PAKET: `controller` (API Uç Noktaları) ve `controller.impl`
+*   **`IAuthController.java` & `AuthControllerImpl.java`**
+    *   `@PostMapping("/api/v1/auth/register")`: -> `ResponseEntity<AuthResponse> register(@RequestBody RegisterRequest)`.
+*   **`ICustomerController.java` & `CustomerControllerImpl.java`**
+    *   `@GetMapping("/api/v1/customers/profile")`: -> `ResponseEntity<CustomerProfileResponse> getCustomerProfile()`.
+    *   `@PutMapping("/api/v1/customers/profile")`: -> `ResponseEntity<Void> updateProfile(@RequestBody UpdateProfileRequest)`.
+    *   `@PostMapping("/api/v1/customers/appeal")`: -> `ResponseEntity<Void> appealRejection()`.
+*   **`IAdminUserController.java` & `AdminUserControllerImpl.java`**
+    *   `@GetMapping("/api/v1/admin/customers")`: -> `ResponseEntity<List<CustomerResponse>> getAllCustomers()`.
+    *   `@PutMapping("/api/v1/admin/customers/{identityNumber}")`: -> `ResponseEntity<Void> updateCustomerInfo(...)`.
+    *   `@PutMapping("/api/v1/admin/customers/{identityNumber}/status")`: -> `ResponseEntity<Void> updateCustomerStatus(String id, String status)`.
+    *   `@DeleteMapping("/api/v1/admin/customers/{identityNumber}")`: -> `ResponseEntity<Void> deleteCustomer(String id)`.
+*   **`IInternalUserController.java` & `InternalUserControllerImpl.java`**
+    *   `@GetMapping("/api/v1/internal/users/profile/{identityNumber}")`: -> `ResponseEntity<CustomerProfileResponse> getCustomerProfile(String id)`.
 
-### 🛡️ 3.2. İÇ (INTERNAL) UÇ NOKTALAR (`/api/v1/internal`)
-Sadece diğer mikroservislerinarka kapıdan Feign aracılığıyla `X-Internal-Identity` vurarak ulaştığı kapılardır. Gateway'den asla girilemez.
-*   **`GET /users/profile/{identityNumber}` [AJAN SORGUSU] -> `IInternalUserService.getCustomerProfile`:** `bank-corporate-micro` (Corporate Servis), eline yeni bir çalışan belgesi geldiğinde, adamın adını soyadını sahtekarlık olmasın diye kontrol etmek için radyodan (Auth Servisine) fısıldar ve adamın gerçek ismini yetkili ağızdan öğrenir.
+---
+
+## 4. PAKET: `service` (İş Mantığı Arayüzleri) ve `service.impl`
+*   **`IAuthService.java` & `AuthServiceImpl.java`**
+    *   `AuthResponse register(RegisterRequest request)`: Keycloak Rest Client ile user oluşturur, sonra AppUser veritabanına `keycloakId` ile kaydeder. RabbitMQ üzerinden Notification fırlatır.
+*   **`ICustomerService.java` & `CustomerServiceImpl.java`**
+    *   `CustomerProfileResponse getCustomerProfile()`
+    *   `void updateProfile(UpdateProfileRequest request)`
+    *   `void appealRejection()`: Admin'in reddini RabbitMQ'ya mesaj olarak atar ki sisteme bildirim düşsün.
+*   **`IAdminUserService.java` & `AdminUserServiceImpl.java`**
+    *   `List<CustomerResponse> getAllCustomers()`
+    *   `void updateCustomerInfo(String identityNumber, UpdateProfileRequest request)`
+    *   `void updateCustomerStatus(String identityNumber, String status)`: Özel kontrol var: Status APPROVED ise ve rol CORPORATE_MANAGER ise `companyServiceClient.syncNewCompany()` Feign çağrısı yapılır.
+    *   `void deleteCustomer(String identityNumber)`: Kapsamlı (Ağır Yıkım). Önce `CompanyServiceClient.deleteCompanyInfo()`, sonra `BackendServiceClient.deleteCustomerAccounts()`. Başarılıysa RetailCustomer ve AppUser Repolarından uçurulur.
+*   **`IInternalUserService.java` & `InternalUserServiceImpl.java`**
+    *   `CustomerProfileResponse getCustomerProfile(String identityNumber)`: Sadece DB'den veriyi sorgulayıp DTO döner.
+
+---
+
+## 5. PAKET: `client` (Feign İletişimleri)
+*   **`BackendServiceClient.java`**: `@FeignClient(name = "bank-demo-backend")`
+    *   `@DeleteMapping("/api/v1/internal/accounts/customer/{identityNumber}") void deleteCustomerAccounts(@PathVariable("identityNumber") String identityNumber);`
+*   **`CompanyServiceClient.java`**: `@FeignClient(name = "bank-corporate-micro")`
+    *   `@PostMapping("/api/v1/internal/companies/sync") void syncNewCompany(@RequestBody CompanySyncRequest request);`
+    *   `@DeleteMapping("/api/v1/internal/companies/sync/{identityNumber}") void deleteCompanyInfo(@PathVariable("identityNumber") String identityNumber);`
+
+---
+
+## 6. PAKET: `repository` (Veritabanı Arayüzleri)
+*   **`IAppUserRepository.java`**: `Optional<AppUser> findByIdentityNumber(String identityNumber);`
+*   **`IRetailCustomerRepository.java`**: `Optional<RetailCustomer> findByAppUser(AppUser appUser);` ve `Optional<RetailCustomer> findByAppUser_IdentityNumber(String identityNumber);`
+
+---
+
+## 7. PAKET: `security` (Güvenlik Kalkanları)
+*   **`SecurityConfig.java`**: `/api/v1/auth/register` haricindeki tüm trafiği Spring Security OAuth2 (Keycloak) zırhından geçirir. Global filtrelere sahiptir.
+*   **`InternalHeaderFilter.java`**: Gateway tarafından gönderilen Header içerilerindeki `X-Identity-Number` metnini filtreleyip Spring bağlamına (SecurityContext'e) manuel yazar ki Controllerlar kimin işlem yaptığını bilsin.
+*   **`JwtService.java` & `JwtAuthenticationFilter.java`**: Keycloak devriminden kaldıkları için işlevsizleştirilmiş olan (Ölü) sınıflardır. (Gateway yetkiyi yönetiyor).
+
+---
+
+## 8. PAKET: `exception` (Hata Denetimi)
+*   **`GlobalExceptionHandler.java`**: `@RestControllerAdvice`. Yakalanan özel hataları HTTP durum kodlarıyla sarıp `ErrorResponse.java` nesnesine dönüştürür.
+*   **`CustomerAlreadyExistsException.java`**, **`BankOperationException.java`**: Custom kurgulanmış çalışma zamanı RuntimeException dosyaları.
+
+---
+
+## 9. PAKET: `messaging` & `config`
+*   **`config / RabbitMQConfig.java`**: Exchange vs. kuyruk ayarları.
+*   **`config / KeycloakConfig.java`**: Keycloak Admin Instance'ı üretir (`KeycloakBuilder` ile `admin-cli` şifresiyle port:8080'e bağlanır).
+*   **`messaging.publisher / RabbitMQPublisher.java`**: `rabbitTemplate.convertAndSend(exchange, routingKey, NotificationMessage)` operasyonunu gerçekleştirir.

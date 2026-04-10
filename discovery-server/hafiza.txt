@@ -1,12 +1,11 @@
-# 🔍 EUREKA DISCOVERY SERVER (PORT 8761) HAFIZA KARTI
+# 🔍 ABSOLUTE BLUEPRINT: discovery-server (PORT 8761)
 
-Tüm Spring Cloud mikroservis galaksisinin "Merkezi İletişim Rehberi / DNS Santrali"dir. Olmazsa olmaz mimari omurgadır.
+Bu belge, Spring Cloud Netflix Eureka sunucusunun src/main/java/com/mustafa altındaki sınıfını listeler. Tüm mikroservisleri barındıran rehberdir. (Sadece tek bir sınıfa hitap eder).
 
-## ⚙️ 1. GÖREV VE PRENSİP
+---
 
-*   Mikroservisler ayağa kalktıklarında (Gateway, Auth, Backend vb.) doğrudan bu portun kapısını çalar (Docker container adresini veya Localhost'u kullanarak) ve "Benim adım X, IP adresim Y, şu an hayattayım" diyerek kendini kaydeder (Registry).
-*   Sistemde hiçbir servis kendi içinde port adresi (`localhost:8086` vb.) tutmaz. Bunun yerine Gateway ve Feign Client'lar bir işlem yapacakları zaman bu Santrale ulaşıp "Bana *auth-service* isimli makineyi bul" der. Santral o makinenin canlı IP'sini ve Load Balance havuzundaki en uygununu sevk eder.
-
-## 🏗 2. YAPILANDIRMASI
-*   `application.yml` içerisinde `register-with-eureka: false` ve `fetch-registry: false` yazar. Santralin kendisi bir kütüphane/kayıtçu kurumu değildir, kimseye bağlanma huyu yoktur, herkes ona bağlanır.
-*   Hiçbir DB, Entity, Controller yapısı içermez. Sadece `@EnableEurekaServer` kaskı kuşanmış salt bir Spring Boot uygulamasıdır. İçine girip kod analizi yapmak yersizdir.
+## 1. PAKET: `starter`
+*   **`DiscoveryServerApplication.java`**: 
+    *   `@SpringBootApplication`
+    *   `@EnableEurekaServer`
+    *   Ayağa kalktığında `bank-auth-micro`, `Bank-Demo-Backend` vs. gibi client'ların `/eureka/apps` adresine yaptıkları kayıtları hafızaya alır, loadbalancer işlemlerini organize eder. Kodun devamı tamamen `pom.xml` ve `application.yml` bağımlılığına yataral işlenir.

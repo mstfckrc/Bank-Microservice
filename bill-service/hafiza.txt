@@ -1,37 +1,70 @@
-# 🧾 SEC-DEMO BILL (FATURA / OTOMATİK ÖDEME) SERVİSİ HAFIZA KARTI (V7.0)
+# 🧾 ABSOLUTE BLUEPRINT: bill-service (PORT 8084)
 
-Bireysel müşterilerin veya abonelerin elektrik, su, doğalgaz hesap numaralarını sisteme tanımlayarak otomatik çekim emri verdiği (veya peşinen anlık tahsilatlarını denetlediği) yalıtılmış makinedir. (Port: 8084). İşine geldiğinde Karargaha Feign ile vurup parayı cukkalar.
-
----
-
-## 🗄️ 1. VERİ TABANI (ENTITY) & KOLON HARİTASI
-Kendisine ait olan `bank_bill_db` evreninde tek ve acımasız bir Entity ile yönetilir.
-
-### 1.1. BillPaymentInstruction (Fatura Talimatı)
-*   **Alanlar:** `Long id`, `String identityNumber` (Talimatı kuran asıl Müşteri - Yabancı anahtar referans string'i), `Long accountId` (Karargahta cukkalanacak olan asıl KASANIN rakamsal anahtarı - id'si), `String iban` (Front-end'de şık görünsün diye eklenen saklama ibanı), `BillType billType` (Enum: ELECTRICITY, WATER, INTERNET, GAS), `String subscriberNo` (Abonelik / Sayaç Numarası), `Integer paymentDay` (Ayın bilmem kaçında otomatik kesileceğinin günü), `LocalDate lastPaymentDate` (En son bu sayaçtan ne zaman para tahsil edildiği tarihi tutar ki fatura bir ayda 2 kez koparılmasın!), `boolean isActive` (İptal edilirse false çekilir).
+Bu belge, Bill (Fatura) servisinin src/main/java/com/mustafa altındaki TÜM klasörlerini, sınıflarını ve arayüzlerini istisnasız bir döküm halinde listeler.
 
 ---
 
-## 📦 2. VERİ TRANSFER OBJELERİ (DTO)
-İçerisindeki talimat akışına hükmeden basit ama etkili JSON formatları:
-
-### 2.1. Request (İstek) DTO'ları
-*   **`BillInstructionRequest`:** `accountId`, `billType`, `subscriberNo`, `paymentDay` (Cüzdandaki hangi ibanı ayarlayacaksam onu seçerken yollanan direkt komutlar).
-*   **`InternalPaymentRequest`:** `accountId`, `amount` (Miktar), `description` (Dekont açıklaması). (Karargahın asıl `/internal/transactions/bill-payment` ağına mermiyi atmak için kullanılır).
-
-### 2.2. Response (Yanıt) DTO'ları
-*   **`BillInstructionResponse`:** `id`, `identityNumber`, `accountId`, `iban`, `billType`, `subscriberNo`, `paymentDay`, `lastPaymentDate`, `isActive` (Sıradan kullanıcıya "Al talimat listem budur" dediğimiz ekrandır).
+## 1. PAKET: `entity` (Veritabanı Tabloları)
+*   **`BillPaymentInstruction.java`**: (Table: `bill_payment_instruction`)
+    *   **Fields**: `Long id`, `String identityNumber`, `Long accountId` (Para çekilecek backend kasası), `String iban`, `BillType billType`, `String subscriberNo`, `Integer paymentDay`, `LocalDate lastPaymentDate`, `boolean isActive = true`.
+    *   **Enums (İçinde)**: `BillType` (ELECTRICITY, WATER, GAS, INTERNET).
 
 ---
 
-## 🔄 3. APİ KAPILARI VE İŞ MANTIĞI (CONTROLLER VE BOTLAR)
+## 2. PAKET: `dto` (Veri Transfer Objeleri)
+### `dto.request`
+*   **`BillInstructionRequest.java`**: `Long accountId`, `String billType`, `String subscriberNo`, `Integer paymentDay`.
+*   **`InternalPaymentRequest.java`**: `Long accountId`, `BigDecimal amount`, `String description`. (Backend'e fırlatılır).
+### `dto.response`
+*   **`BillInstructionResponse.java`**: `Long id`, `String identityNumber`, `Long accountId`, `String iban`, `String billType`, `String subscriberNo`, `Integer paymentDay`, `LocalDate lastPaymentDate`, `boolean isActive`.
+### `dto.message`
+*   **`NotificationMessage.java`**: `String destination`, `String subject`, `String content`, `String identityNumber`, `NotificationType notificationType`.
 
-### 3.1. BillPaymentControllerImpl (`/api/v1/bills/instructions`) & IBillPaymentService
-Fatura kurma ve iptalin vitrinidir:
-*   **`POST /` -> `createInstruction`:** `X-Identity-Number` ile kendisini ispatlamış adamın gönderdiği `BillInstructionRequest` paketini alır ve veritabanına otomatik fatura emri olarak işler.
-*   **`GET /` -> Oku:** Kullanıcının (yalnızca kendi TC'siyle eşleşen) fatura listesini `List<BillInstructionResponse>` olarak döküm eder.
-*   **`DELETE /{id}` -> `deleteInstruction`:** Kişinin talimat iptal butonu (Gerçekten silinmez, soft delete mantığıyla `isActive=false` yapılır).
+---
 
-### 3.2. CRON BOTU VE ÇEKİM NOKTASI (KARARGAH VURUŞU)
-*   *(Manuel Tahsilat Emri - Taslak Durumu)*: Eğer kullanıcının ekranında "Öde" tuşu varsa, sistem fatura şirketinden miktar bilgisini hayali olarak çeker `InternalPaymentRequest` isimle paketi hazırlar.
-*   **`BackendServiceClient` ile Telsiz Araması:** Seçilen hesaptan parayı koparmak üzere Karargah'taki (`Bank-Demo-Backend`) ölümcül `/api/v1/internal/transactions/bill-payment` kapısına `POST` fırlatır! `InternalHeaderFilter` bu trafiği tanıyıp yetkilendirir ve Karargah parayı hesaptan çıkartır. Fatura servisi de `lastPaymentDate` alanını bugüne çeker ve "Ödendi" emrini onaylar. (Maaş dağıtımıyla bire bir orchestration kurgusuna sahiptir).
+## 3. PAKET: `controller` (API Uç Noktaları) ve `controller.impl`
+*   **`IBillPaymentController.java` & `BillPaymentControllerImpl.java`** (`/api/v1/bills/instructions`)
+    *   `@PostMapping`: -> `ResponseEntity<BillInstructionResponse> createInstruction(@RequestBody BillInstructionRequest)`. (Header'dan X-Identity-Number okur).
+    *   `@GetMapping`: -> `ResponseEntity<List<BillInstructionResponse>> getUserInstructions()`.
+    *   `@DeleteMapping("/{id}")`: -> `ResponseEntity<Void> deleteInstruction(@PathVariable Long id)`.
+
+---
+
+## 4. PAKET: `service` (İş Mantığı Arayüzleri) ve `service.impl`
+*   **`IBillPaymentService.java` & `BillPaymentServiceImpl.java`**
+    *   `createInstruction`: Gelen isteği entity'e çevirip DB'ye (isActive=true olarak) kaydeder.
+    *   `deleteInstruction`: Sadece ilgili kişinin id'si eşleşiyorsa isActive=false yapar.
+    *   `payBillAutomatically`: (Cron job tetikler). Feign ile Backend'e `InternalPaymentRequest` atar, başarılı dönerse faturanın `lastPaymentDate`'ini bugüne günceller ve RabbitMQ bildirimi çakar.
+*   **`IExternalBillService.java` & `ExternalBillMockServiceImpl.java`**
+    *   Sözde elektrik/su kurumuna bağlanıp abone numarasının o ayki borcunu soran Fake servis. Rastgele 100-500 TL arası BigDecimal tutar döner.
+
+---
+
+## 5. PAKET: `client` (Feign İletişimleri)
+*   **`BackendServiceClient.java`**: `@FeignClient(name = "bank-demo-backend")`
+    *   `@PostMapping("/api/v1/internal/transactions/bill-payment") void processInternalPayment(@RequestBody InternalPaymentRequest request, @RequestHeader("X-Internal-Identity") String role);`
+
+---
+
+## 6. PAKET: `scheduler` (Zamanlanmış CRON İşleri)
+*   **`BillScheduledTasks.java`**:
+    *   `@Scheduled(cron = "0 0 2 * * ?")` (`processDailyBillPayments`): Her gece 02:00'da çalışır.
+    *   Veritabanındaki talimatları tarar. Eğer `isActive == true` ve `paymentDay == bugününGünü` ise `billPaymentService.payBillAutomatically(...)` metodunu döngüde çağırarak faturaları ödetir.
+
+---
+
+## 7. PAKET: `repository` (Veritabanı Arayüzleri)
+*   **`IBillPaymentInstructionRepository.java`**: `List<BillPaymentInstruction> findByIdentityNumberAndIsActiveTrue(...)`, `List<BillPaymentInstruction> findByPaymentDayAndIsActiveTrue(...)`.
+
+---
+
+## 8. PAKET: `config` & `security`
+*   (Güvenlik Header filtreleri eksikse Gateway yetki taşımasını direkt Controller'da `@RequestHeader("X-Identity-Number")` ile ele alır).
+*   **`RabbitMQConfig.java`**: Mesajlaşma ayarları.
+
+---
+
+## 9. PAKET: `exception` & `messaging`
+*   **`GlobalExceptionHandler.java`**: Bütün error stacklerini karşılar.
+*   **`BankOperationException.java`**: Fatura kesilirken karargah yetersiz bakiye atarsa bu yakalar.
+*   **`RabbitMQPublisher.java`**: `rabbitTemplate.convertAndSend` yetkisi.
