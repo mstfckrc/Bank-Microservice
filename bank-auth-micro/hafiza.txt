@@ -1,62 +1,60 @@
-# 🔐 SEC-DEMO AUTH (KİMLİK) SERVİSİ HAFIZA KARTI (V6.0 - TAM İZOLASYON)
+# 🔐 SEC-DEMO AUTH (KİMLİK) SERVİSİ HAFIZA KARTI (V7.0 - TAM İZOLASYON)
 
-Sistemin kimlik yönetimi (Login, Register, Profil, Şifre Değiştirme) operasyonlarını Monolith projeden ayırarak üstlenen yeni güvenlik ve kimlik duvarı mikroservisidir.
+Sistemin kimlik yönetimi (Login, Register, Profil, Şifre Değiştirme) operasyonlarını Monolith projeden tamamen ayırarak üstlenen, üstüne bir de V7.0 serüveniyle "Lokal Şifreleme" bağımlılığını söküp atıp yepyeni **Keycloak Güvenlik Merkezine** bağlanan kimlik duvarı mikroservisidir. (Port: 8086).
 
 ---
 
 ## 🗄️ 1. VERİ TABANI (ENTITY) & KOLON HARİTASI
-Kendine özgü bağımsız bir DB yerine, güvenlik verileri tuttuğu için geçici olarak `bank_db` (Ana veritabanı) ile bağlantı kurar ancak Monolith ile tabloları bölüşmüştür. (Mikroservis kuralları gereği idealde kendi DB'si olmalıdır).
+Kendine özgü bağımsız bir DB'ye geçirildi (`bank_auth_db`). Sadece kimlik profiline ve sisteme giriş yetkisine dair pürüzsüz bilgileri barındırır. (Cüzdan, Bakiye asla buraya giremez).
 
 ### 1.1. AppUser (Sistemin Kalbi)
-*   **Alanlar (Fields):** `Long id`, `String identityNumber` (Unique TC/Vergi No), `String password` (Bcrypt), `Role role` (Enum: ADMIN, RETAIL_CUSTOMER, CORPORATE_MANAGER), `ApprovalStatus status` (Enum: PENDING, APPROVED, REJECTED).
+*   **Alanlar (Fields):** `Long id`, `String identityNumber` (Unique TC / Vergi No), `String keycloakId` (🚨 DİKKAT: V6'daki `password` silindi, Keycloak Sunucusundaki eşlenik UUID'si budur), `Role role` (Enum: ADMIN, RETAIL_CUSTOMER, CORPORATE_MANAGER), `ApprovalStatus status` (Enum: PENDING, APPROVED, REJECTED).
 *   *(Dikkat: Account tablosuyla olan OneToMany ilişkisi koparılmıştır, çünkü hesaplar Backend'dedir!)*
 
 ### 1.2. RetailCustomer (Bireysel Müşteri Profili)
 *   **Alanlar (Fields):** `Long id`, `AppUser appUser` (OneToOne), `String firstName`, `String lastName`, `String email`.
-*   *(Kurumsal müşteriler (Company) artık tamamen Corporate-Service'te tutulur)*
+*   *(Kurumsal şirketlerin ana profilleri (Company) tamamen Corporate-Service'te tutulur)*
 
 ---
 
 ## 📦 2. VERİ TRANSFER OBJELERİ (DTO)
-Bütün kimlik doğrulama aktarımlarında kullanılan exact DTO nesneleri:
+Bütün kimlik doğrulama aktarımlarında kullanılan exact DTO nesneleri ve içerdikleri değişken tipleri (Fields):
 
 ### 2.1. Request (İstek) DTO'ları
-*   **`RegisterRequest`:** `identityNumber`, `password`, `role`, `email`, (Bireyse: `firstName`, `lastName`), (Kurumsalsa: `companyName`, `taxOffice`).
-*   **`LoginRequest`:** `identityNumber`, `password`.
-*   **`UpdateProfileRequest`:** `email`, `profileName`.
-*   **`ChangePasswordRequest`:** `oldPassword`, `newPassword`.
-*   **`CompanySyncRequest`:** `companyIdentityNumber`, `companyName`, `contactEmail`, `taxOffice` (Admin kayıt onayladığında Corporate servise senkron atmak için kullanılır).
+*   **`RegisterRequest`:** `identityNumber` (TC 11 veya VKN 10 hane), `password` (Keycloak'ta saklanmak üzere iletilir), `role`, `email`, (Bireyse: `firstName`, `lastName`), (Kurumsalsa: `companyName`, `taxOffice`). Projeyi tetikleyen en ağır pakettir.
+*   **`LoginRequest`:** `identityNumber`, `password`. (Arka uçta bu şifre artık Keycloak'a atılarak karşılığında Token dilenilmesi beklenir).
+*   **`UpdateProfileRequest`:** `email`, `profileName` (Şahıssa ad-soyad, kurumsa unvan günceller).
+*   **`ChangePasswordRequest`:** `oldPassword`, `newPassword` (Direkt dış kaynaklı Keycloak ayarlarını resetletmek için kullanılır).
+*   **`CompanySyncRequest`:** `companyIdentityNumber`, `companyName`, `contactEmail`, `taxOffice` (Admin kayıt onayladığında, Corporate servise senkron atmak ve diğer DB'de kaydı başlatmak için kullanılır).
 
 ### 2.2. Response (Yanıt) DTO'ları
-*   **`AuthResponse`:** `token`, `message`.
+*   **`AuthResponse`:** `token`, `message`. (Eğer Keycloak yapısı gereği front-end şifreyi kendi yönetiyorsa bu token yapay bir success dönücüsü olarak da bırakılır).
 *   **`UserProfileResponse`:** `identityNumber`, `profileName` (Ad soyad veya şirket adı birleşiktir), `email`, `role`, `status`.
 *   **`CustomerResponse`:** `tcNo` (Eski sistem uyumu için TC no string'i), `fullName`, `email`, `role`, `status`.
 *   **`ErrorResponse`:** `timestamp`, `message`, `details`.
-*   **`NotificationMessage`:** (Kayıt olan kullanıcıya Hoşgeldin emaili atmak için MQ asenkron mesaj payload'u).
+*   **`CustomerProfileResponse`:** `identityNumber`, `firstName`, `lastName`, `email`. (Internal servis fısıldaşmalarında hap bilgi taşıyıcısıdır).
 
 ---
 
-## ⚙️ 3. SERVİS VE İŞ MANTIĞI EKSENİ (KEYCLOAK DEVRİMİ V7.0)
-*   **Ağ Ayarları:** Port: 8086. Eureka'ya `auth-service` adıyla kaydolur. 
-*   **Keycloak Entegrasyonu:** Lokal şifre Hash'leme ve JWT Builder devri kapandı! Artık `KeycloakConfig` üzerinden bir Admin Rest Client ayağa kaldırılır ve Auth servisi, Keycloak Realm'inde tam yetkili sekreter gibi davranır. `AppUser` tablosundaki `password` alanı silinmiştir; onun yerine `keycloakId` tutulmaktadır.
+## 🔄 3. SERVİS VE İŞ MANTIĞI EKSENİ (KEYCLOAK DEVRİMİ V7.0)
 
-### 3.1. Controller (Uç Noktalar)
-*   **`AuthControllerImpl` (`/api/v1/auth`):**
-    *   `POST /register`: Sisteme yeni kayıt oluşturur (`AuthServiceImpl`). İstek geldiğinde doğrudan **Keycloak API'sine (`UserRepresentation`)** vurur ve kullanıcıyı dış merkezi güvenlik sunucusunda yaratır. Oluşan `keycloakId`'yi alıp sistemin lokal veritabanındaki (`bank_db`) `AppUser`'a yazar. Bireysel/Kurumsal senkronizasyonu RabbitMQ fırlatması vs. aynen devam eder.
-    *   *(Dikkat: Token üretimi yoktur! Login uç noktası da Keycloak mimarisine geçilmiştir, `AuthResponse` içindeki `token` bilerek boş gönderilir.)*
-*   **`CustomerControllerImpl` (`/api/v1/customers`):**
-    *   `GET /profile`: Gateway'den `X-Identity-Number` header'ı ile gelen isteğe profil döner.
-    *   `PUT /profile`: Profil güncelleme.
-    *   `POST /appeal`: Kurumsalların tekrar incelenme talebi.
-    *   `PUT /password`: Şifre değiştirme.
-*   **`AdminUserControllerImpl` (`/api/v1/admin/customers`):**
-    *   `GET /`: Admin'in tüm kullanıcıları listelemesi.
-    *   `PUT /{identityNumber}/status`: `APPROVED`/`REJECTED` statüsüne çekmesi. **KRİTİK:** Admin bir CORPORATE_MANAGER rolündeki kullanıcıyı onayladığında, `auth-service` Feign Client (`CompanyServiceClient`) kullanarak `http://corporate-service:8085` adresine `CompanySyncRequest` atar ve şirketi o mikroserviste fiziksel olarak oluşturur.
-    *   **`DELETE /{identityNumber}`:** Admin bir kullanıcıyı SİLDİĞİNDE "Distributed Transaction / Orchestration" başlar:
-        1. Bireyselse kendi DB'sindeki profili siler, kurumsalsa `CompanyServiceClient` ile (`Corporate-Service`) profilini patlatır.
-        2. `BackendServiceClient.deleteCustomerAccounts` çağrısıyla `Bank-Demo-Backend`'e vurup tüm IBAN kasalarını imha eder.
-        3. Son olarak kendi `AppUser` tablosundan siler. (Eğer backend hesabı silemezse tüm işlemi Rollback atar).
+Gateway mimaride tokenları ayıklayıp uçurduğu için, Auth servisi diğer tüm servisler gibi `X-Identity-Number` kalkanına sığınarak işlemlerine izin verir.
+
+### 3.1. Controller (Uç Noktalar) ve Servis İmzaları
+*   **`AuthControllerImpl` (`/api/v1/auth`) & `IAuthService`:**
+    *   `POST /register` -> `register`: Sisteme yeni kayıt oluşturur. İstek geldiğinde doğrudan **Keycloak API'sine (`UserRepresentation`)** vurur ve kullanıcıyı dış merkezi güvenlik sunucusunda fiziksel olarak yaratır. Oluşan `keycloakId`'yi kementle alıp sistemin lokal veritabanındaki (`bank_auth_db`) `AppUser` tablosuna çakar!
+*   **`CustomerControllerImpl` (`/api/v1/customers`) & `ICustomerService`:**
+    *   `GET /profile`: Gateway'den gelen adamın profili döndürülür.
+    *   `PUT /profile`: Profil ve adres günceller.
+    *   `POST /appeal` -> `appealRejection`: Admin'in Raporladığı/Reddettiği adam çaresizce Admin'e geri basar, "Lütfen sistemime beni al".
+*   **`AdminUserControllerImpl` (`/api/v1/admin/customers`) & `IAdminUserService`:**
+    *   `GET /`: Tüm kullanıcıları harf harf listele.
+    *   `PUT /{identityNumber}/status` -> `updateCustomerStatus`: `APPROVED`/`REJECTED` statüsüne çekme bölgesi. **KRİTİK:** Admin bir `CORPORATE_MANAGER` rolündeki kullanıcıyı onayladığında, `auth-service` kendi Feign Client (`CompanyServiceClient`) komutuyla `http://corporate-service:8085` kapısına tekmeyle dalarak `CompanySyncRequest` json'u atar ve o mükemmel şirketi o mikroserviste diriltir.
+    *   **`DELETE /{identityNumber}` -> `deleteCustomer` [AĞIR YIKIM]:** Admin bir kullanıcıyı SİLDİĞİNDE "Distributed Transaction / Orchestration" harikası başlar:
+        1. Bireyselse kendi yöresindeki profili siler, kurumsalsa `CompanyServiceClient` ile (`Corporate-Service`) profilini acımasızca patlatır.
+        2. `BackendServiceClient.deleteCustomerAccounts(identity)` çağrısıyla Karargaha (`Bank-Demo-Backend`) vurup müşterinin tüm kasalarını, IBAN'larını imha emrini çıkartır.
+        3. Son olarak kendi `AppUser` kimliğini kömüre çevirir. (Backend bakiye var deyip patlarsa bu metod `TransactionAspect` ile komple rollback'e uğrar ve hiçbir şey silinmeden can kurtarılır).
 
 ### 🛡️ 3.2. İÇ (INTERNAL) UÇ NOKTALAR (`/api/v1/internal`)
-Sadece diğer mikroservislerin arka kapıdan ulaştığı kapılardır. Gateway'den girilemez.
-*   **`GET /users/profile/{identityNumber}` [YENİ EKLENDİ]:** `bank-corporate-micro` (Corporate Servis), bir personeli işe alırken sadece TC numarasını girer. Personelin adını soyadını doğrulamak ve çekmek için telsizle (`IAuthServiceClient` üzerinden) Auth Servisine vurur ve bu uç noktadan `CustomerProfileResponse` nesnesini çeker.
+Sadece diğer mikroservislerinarka kapıdan Feign aracılığıyla `X-Internal-Identity` vurarak ulaştığı kapılardır. Gateway'den asla girilemez.
+*   **`GET /users/profile/{identityNumber}` [AJAN SORGUSU] -> `IInternalUserService.getCustomerProfile`:** `bank-corporate-micro` (Corporate Servis), eline yeni bir çalışan belgesi geldiğinde, adamın adını soyadını sahtekarlık olmasın diye kontrol etmek için radyodan (Auth Servisine) fısıldar ve adamın gerçek ismini yetkili ağızdan öğrenir.

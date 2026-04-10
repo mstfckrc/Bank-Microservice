@@ -1,14 +1,12 @@
-# 🔍 SEC-DEMO DISCOVERY SERVER HAFIZA KARTI (V6.0 - EXTREME DETAYLI)
+# 🔍 EUREKA DISCOVERY SERVER (PORT 8761) HAFIZA KARTI
 
-Ağ üzerinde ayağa kalkan tüm 7 mikroservisin donanımsal IP adreslerini ve portlarını tespit ederek mikroservislerin birbirlerini Gateway arkasında sadece "isimle" bulmalarını sağlayan merkezi santral (Eureka) sunucusudur.
+Tüm Spring Cloud mikroservis galaksisinin "Merkezi İletişim Rehberi / DNS Santrali"dir. Olmazsa olmaz mimari omurgadır.
 
----
+## ⚙️ 1. GÖREV VE PRENSİP
 
-## 🏗️ 1. MİMARİ VE YAPI
-*   **Çekirdek:** Spring Cloud Netflix Eureka Server (Port: 8761).
-*   **Bağlı Olanlar:** `api-gateway`, `auth-service`, `bank-demo-backend`, `corporate-service`, `bill-service`, `currency-service`, `notification-service`.
+*   Mikroservisler ayağa kalktıklarında (Gateway, Auth, Backend vb.) doğrudan bu portun kapısını çalar (Docker container adresini veya Localhost'u kullanarak) ve "Benim adım X, IP adresim Y, şu an hayattayım" diyerek kendini kaydeder (Registry).
+*   Sistemde hiçbir servis kendi içinde port adresi (`localhost:8086` vb.) tutmaz. Bunun yerine Gateway ve Feign Client'lar bir işlem yapacakları zaman bu Santrale ulaşıp "Bana *auth-service* isimli makineyi bul" der. Santral o makinenin canlı IP'sini ve Load Balance havuzundaki en uygununu sevk eder.
 
-## ⚙️ 2. İŞ MANTIĞI VE SUNUCU DAVRANIŞI
-*   Bu bir sunucu (`@EnableEurekaServer`) olduğu için Entity, Controller veya DTO barındırmaz.
-*   Bütün alt servisler ayağa kalktığında `eureka.client.service-url.defaultZone=http://localhost:8761/eureka/` adresi vasıtasıyla kendilerini buraya kaydettirirler.
-*   Örneğin Gateway, `/api/v1/auth/**` route'unu `http://auth-service` adresine atarken, arka planda buraya ("Santral, auth-service'in IP'si kaç?") diye sorar.
+## 🏗 2. YAPILANDIRMASI
+*   `application.yml` içerisinde `register-with-eureka: false` ve `fetch-registry: false` yazar. Santralin kendisi bir kütüphane/kayıtçu kurumu değildir, kimseye bağlanma huyu yoktur, herkes ona bağlanır.
+*   Hiçbir DB, Entity, Controller yapısı içermez. Sadece `@EnableEurekaServer` kaskı kuşanmış salt bir Spring Boot uygulamasıdır. İçine girip kod analizi yapmak yersizdir.

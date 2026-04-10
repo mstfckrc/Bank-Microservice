@@ -1,23 +1,14 @@
-# 💶 SEC-DEMO CURRENCY (DÖVİZ) SERVİSİ HAFIZA KARTI (V6.0 - EXTREME DETAYLI)
+# 💶 EXTERNAL CURRENCY SERVICE (PORT 8083) HAFIZA KARTI
 
-Sistemin döviz kurlarını güncelleyen mini servisidir. Hedef: Tüm kurları internetten alıp `ExchangeRateResponse` DTO'suna basmak. Veri tabanı, Auth veya kimlik katmanı barındırmaz.
+Sistemin Dünya'ya (veya internete) açılan dış entegrasyon havuzudur. Veritabanı bulundurmaz (Stateless). Temel ve yegane amacı canlı veya izole edilmiş exchange kurlarını çekmektir.
 
----
+## 🗄 1. MİMARİ KARAKTERİSTİĞİ
+1.  **Dışa Açık Port:** Sistemdeki `PermitAll` yemiş yegane uç noktalardan birine sahiptir. Dışarıdaki ziyaretçiler, banka müşterisi olmadan bile Gateway üzerindeki `/api/v1/currencies/rates` ibaresinden bu servisin döviz tahtasına erişebilir. Herhangi bir Authorization bypass etmez veya Header (`X-Identity-Number`) aramaz.
+2.  **Entity Yok:** İçerisinde `Entity` anatosyonu yemiş veya DB tablosu oluşturan hiçbir şey bulunmaz. Harici Data Transfer Objeleriyle (DTO) yaşar.
+3.  **Dış Ağ İstekleri:** Diğer mikroservisler gibi iç `FeignClient` kullanmak yerine dış dünyadaki herhangi bir API'a RESTful çağrı ile vurarak paritenin güncel değerini kapar (`WebClient` veya `RestTemplate` gibi motorlarla).
 
-## 🏗️ 1. MİMARİ VE YAPI
-*   **Çekirdek:** Spring Boot (Port: 8083).
-*   **Ağ Ayarı:** `prefer-ip-address: true` ile Eureka'ya (`http://localhost:8761/eureka/`) bağlanır.
+## ⚙️ 2. İLETİŞİM VE FEIGN BAĞIMLILIĞI
+Sistemin beyni (Core Karargah), parasal işlemlerde çapraz döviz takaslarına ihtiyaç duyduğunda `CurrencyServiceClient` (Feign) ile bu servise iç ağdan bağlanır. 
 
-## 📦 2. VERİ TRANSFER OBJELERİ (DTO)
-Servisin içerisinde veri taşıyan tek bir Response objesi vardır.
-### 2.1. `ExchangeRateResponse` (Yanıt)
-*   **Alanlar (Fields):**
-    *   `String base_code` (Gelen kur bazı, Örn: "TRY").
-    *   `Map<String, Double> rates` (Karşılık kurları, Örn: `{"USD": 0.03, "EUR": 0.028, "TRY": 1.0}`).
-
-## ⚙️ 3. SERVİS İŞ MANTIĞI VE API
-*   **Controller:** `CurrencyControllerImpl` (`/api/v1/currencies`).
-    *   **Endpoint:** `GET /rates?base={baseCurrency}` -> Parametre alır (`base`). İstekleri doğrudan `Gateway` üzerinden `PermitAll` olarak herkese açık bir şekilde karşılar.
-*   **Servis:** `CurrencyServiceImpl` (`ICurrencyService`).
-    *   **Metot 1 - `getLiveRates(String baseCurrency)`:** İçerisindeki `RestTemplate` nesnesini kullanarak `https://open.er-api.com/v6/latest/{base}` API'sine GET isteği atar. Dış ağ çökerse `BankOperationException` fırlatır.
-    *   **Metot 2 - `convertAmount(Double amount, String fromCurrency, String toCurrency)`:** Para aynıysa (`from == to`) döviz motorunu yormayıp doğrudan `amount` u döndürür (`return amount;`). Farklıysa `getLiveRates`'i çağırır, dönen `rates` map'inden `toCurrency` değerini çeker (`rate`). `amount * rate` işlemini yaparak `Double result` döner. Eğer istenen para birimi API'de yoksa Exception atar.
+*   *Senaryo:* Müşteri, TRY kamerasından EURO kasasına SWIFT yaptığında, Backend doğrudan Currency Servis kancasını ateşler. "Şu an TRY to EUR nedir?" der. Cevaba göre transaction değerini oluşturur.
+*   *Önemli Not:* Servis arızalanırsa veya external site düşerse devasa bir Fallback / Exception mekanizması Karargahı kitlememelidir, kur için varsayılan rakam atanabilir.

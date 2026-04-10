@@ -1,46 +1,30 @@
-# 🚪 SEC-DEMO API GATEWAY HAFIZA KARTI (V4.0 - EXTREME DETAYLI)
+# 🚪 API GATEWAY (PORT 8081) HAFIZA KARTI
 
-Bütün trafik yönetiminin, güvenlik duvarı (`Authorization` filter) kontrollerinin yapıldığı giriş noktasıdır. Veri tabanı barındırmaz.
+Tüm sistemin dış dünyaya açılan uç beygiri, "Zero Trust" prensibinin mutasyon operatörü ve tek giriş merkezidir. Veritabanı yoktur, konfigürasyonu en kritik olan katmandır.
 
----
+## 🏗 1. KİMLİK GÜMRÜĞÜ (KEYCLOAK OAUTH2 RESOURCE SERVER)
 
-## 🏗️ 1. MİMARİ VE EUREKA
-*   **Çekirdek:** Spring Cloud Gateway (Port 8081).
-*   **Eureka Client:** `http://localhost:8761/eureka/` (veya `$EUREKA_URL`) adresine kendini kaydeder.
+Projede lokal bir JWT parser (`JwtUtil`) veya custom authentication filter **YOKTUR**. Filtre altyapısını bütünüyle Spring Security Oauth2 Resource Server ve `Keycloak` yönetir.
 
-## 🛡️ 2. FİLTRELER VE CORS (GÜVENLİK AYARLARI KODU)
+### 1.1. `SecurityConfig.java` Rolü
+*   **Public (Açık) Kapılar:** `/api/v1/auth/register` (kayıt), `/api/v1/currencies/rates` (ziyaretçi kur tarama) ve `/eureka/**` dışında gelen akımsız tüm dış trafik reddedilir.
+*   **Tercüman Devrede (`grantedAuthoritiesExtractor`):** Keycloak sisteminden Bearer token ulaştığında, Gateway doğrudan bu JWT biletindeki şifreyi kırar. İçerisindeki kalabalık rollerden `realm_access.roles` objesine ulaşıp `["ADMIN", "RETAIL_CUSTOMER"]` gibi yetkilerin önüne **`ROLE_`** basarak Spring'in okuyabileceği `SimpleGrantedAuthority` nesnesine kalibre eder.
 
-### 2.1. CORS Sınırı (`CorsConfig.java`)
-Browser tabanlı Pre-Flight (`OPTIONS`) isteklerinin havada yakalanıp geçirilmesini sağlar. Ayarlar `CorsWebFilter` `registerCorsConfiguration("/**", corsConfig)` üzerinden tüm projeye vurur:
-*   `allowedOrigins`: Hata vermemesi için `allowedOriginPatterns: "*"` (Herkese açık yapılmıştır veya array olarak geçilmiştir, kodda `localhost:3000` test izni de mevcuttur).
-*   `allowedMethods`: `"GET", "POST", "PUT", "DELETE", "OPTIONS"`.
-*   `allowedHeaders`: `*`.
-*   `allowCredentials`: `true` (Bearer Token taşımak için zorunludur).
+### 1.2. Mimari Mutasyon: `KeycloakHeaderFilter.java`
+Bu Global Süzgeç Sınıfı projenin Zero Trust operasyonunun kalbidir. Sistemin çalışması şu şekildedir:
+1.  SecurityContext'ten doğrulanmış Token (`Jwt`) çekilir.
+2.  `preferred_username` iddialarından (class) kişinin net kimlik numarası (TC) olan `identityNumber` parse edilir.
+3.  Kişinin bütün yetki statüleri virgüllü stringe dönüştürülür.
+4.  Gateway **Trafiği Mutasyona Sokar:** İsteğin `Headers` kısmının içine kilit vurarak `X-Identity-Number` ve `X-User-Role` değişkenlerini gömer.
+5.  **💣 Yıkıcı Emrah Hamlesi:** Gateway arka tarafa asla güvenilmeyen sızıntı vermemek için gelen istekteki koskoca `Authorization: Bearer <TOKEN>` başlığını tamamen siler! Arka mikroservislere sadece ve sadece Gateway'in tasdikleyip mühür vurduğu "X-Header" bilgileri iletilir. Bu sayede hiçbir alt servis token çözmekle zerre kadar uğraşmaz.
 
-### 1.1. Ağ Ayarları ve Bağımlılıklar
-*   Uygulama **8081** portunda ayağa kalkar. Dış dünyadan gelen ve Frontend'in gönderdiği tüm "fetch" veya "axios" istekleri direkt buraya çarpar.
-*   **Eureka Client (`discovery-server:8761`)**: Tüm mikroservislerin ismini IP'ye çevirmek üzere `discovery-server` DNS havuzuna bağlanır. `application.yml` dosyasında Eureka url'i explicitly "http://discovery-server:8761/eureka/" olarak güncellenmiştir (Docker tam uyumluluğu için).
-*   Ortak 512-bit gizli `jwt.secret` anahtarını application config içerisinde barındırır. Auth servisle aynı anahtara sahip olduğu için şifreyi çözebilir.
+## 🧭 2. YÖNLENDİRME TRAFİĞİ (`application.yml` veya RoutingConfig)
 
-### 2.2. Oauth2 ve Keycloak Resource Server (`SecurityConfig.java`)
-Eksiden kullanılan lokal JWT doğrulama işi çöpe atıldı. Gateway artık Keycloak entegreli bir `oauth2ResourceServer` olarak çalışır:
-*   Açık rotalar haricindeki HER istek için `authenticated()` (Token ile korunmuş) kuralı vardır.
-*   **Keycloak Tercüman Motoru (`grantedAuthoritiesExtractor`):** Gateway kendisine Bearer olarak sunulan Keycloak JWT Biletinin (`realm_access.roles`) kasasını bizzat kırar ve içindeki rolleri okuyarak önüne "ROLE_" takısı koyar ve Spring'in anlayacağı yetki paketine döndürür.
+Filtreden geçen veya public olan akış, hedef servisin ismine (`LoadBalancer`) vuracak biçimde tünellenir.
+1.  **DÖVİZ:** `Path=/api/v1/currencies/**` $\rightarrow$ `lb://currency-service`
+2.  **FATURA:** `Path=/api/v1/bills/**` $\rightarrow$ `lb://bank-bill-micro`
+3.  **BİREYSEL/ADMIN/KİMLİK PROFİLLERİ:** `/api/v1/auth/**`, `/api/v1/customers/**`, `/api/v1/admin/customers/**` $\rightarrow$ `lb://auth-service`
+4.  **MEMUR VE ŞİRKETLER:** `/api/v1/companies/**` $\rightarrow$ `lb://bank-corporate-micro`
+5.  **KARARGAH (HESAP/İŞLEM):** `/api/v1/**` (Son tünel, Regex Fallback) kapsamına giren tüm Account (`/accounts`) ve Transaction (`/transactions`) işleri $\rightarrow$ `lb://bank-demo-backend`
 
-### 2.3. Mimarinin Kalbi: Keycloak Başlık Filtresi (`KeycloakHeaderFilter.java`)
-Bütün mimarinin kaderini değiştiren Global Süzgeç!
-1. Gateway dış dünyadan gelen Keycloak biletini doğrular, içinden `preferred_username` claim'ini yani **TC Kimlik Numarasını** (`identityNumber`) çıkarır.
-2. Rolleri bir string halinde virgülle birleştirir.
-3. **KRİTİK HAMLE (MUTASYON):** Gelen isteği mutasyona uğratarak içine `X-Identity-Number` ve `X-User-Role` HTTP Header'larını çakar!
-4. **Zero Trust Bypass:** İsteğin üzerindeki orjinal Token'ı (`Authorization: Bearer...`) **SİLER**. Arkadaki Karargaha veya corporate servislere Token gitmez. O servisler jwt çözmekle uğraşmaz, Gateway'in sözüne (Header) güvenerek lokal filtreleriyle (`InternalHeaderFilter`) hayatına devam eder.
-
-## 🔀 3. ROUTING REHBERİ (`GatewayRoutingConfig.java` V5.2 STANDARDI)
-Prensip: Yukarıdaki kurallar eşleşmezse en alttaki Monolith Karargaha düşer.
-
-1.  **Döviz (`currency-service-route`):** `/api/v1/currencies/**` hedefini yakalar, `http://currency-service:8083` servis adresine zıplatır. (Polis filtresi yok, PermitAll).
-2.  **Fatura (`bill-service-route`):** `/api/v1/bills/**` hedefini yakalar, `http://bill-service:8084` sunucusuna zıplatır. (Auth Filter Aktif).
-3.  **Kurumsal Yönetim (`corporate-service-route`):** `/api/v1/companies/employees/**` rotasını yakalar, `http://corporate-service:8085` sunucusuna zıplatır. (Auth Filter Aktif).
-4.  **Admin Müşteri Hesapları (`backend-admin-customer-accounts-route`):** `/api/v1/admin/customers/*/accounts` hedefine gidiyorsa, hesap işlemlerini Monolith yapacağı için istisnai olarak `http://backend:8080`'a zıplatılır.
-5.  **Admin Kullanıcı İşlemleri (`auth-admin-route`):** `/api/v1/admin/customers/**` (Kullanıcı listeleme, onaylama) işlemleri `http://auth-service:8086` hedefine zıplatılır.
-6.  **Kimlik Üssü (Auth & Profile):** `/api/v1/auth/**` ve `/api/v1/customers/**` çağrıları login ve profil işlemleri için `http://auth-service:8086` sunucusuna aktarılır.
-7.  **Karargah (Monolith):** `/api/v1/**` (Tüm Accounts, Transactions ve Internal mantıklar) `http://backend:8080` adresine vurur. (Auth Filter var).
+Bu haritalandırmaları Eureka DNS listesine sorarak çözer ve IP kullanmadan (e.g., `http://discovery-server:8761/eureka/` adresinden bakarak) pürüzsüz iletir.

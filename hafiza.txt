@@ -1,6 +1,6 @@
-# 🚀 SEC-DEMO (V6.0) MİKROSERVİS MİMARİSİ ANA HAFIZA (MASTER KÖK DOSYA)
+# 🚀 SEC-DEMO (V7.0) MİKROSERVİS MİMARİSİ ANA HAFIZA (MASTER KÖK DOSYA)
 
-Bu proje, tek bir `bank-demo-backend` monolitinden yola çıkılıp modern **Multi-Microservice (Spring Cloud)** mimarisine geçiş yapmış devasa bir bankacılık sistemidir.
+Bu proje, tek bir `bank-demo-backend` monolitinden yola çıkılıp modern **Multi-Microservice (Spring Cloud)** mimarisine geçiş yapmış ve V7.0 ile tamamen "Keycloak OAuth2" bağımsızlık savaşını kazanmış devasa bir bankacılık sistemidir.
 
 Yapay zeka asistanı olarak kodu analiz edeceğiniz veya ekleme yapacağınız zaman; **önce bu master dosyayı okuyun, ardından hangi servise dokunacaksanız doğrudan onun içindeki (`ilgili-klasor/hafiza.txt`) aşırı kod-merkezli detay dosyasına müracaat edin.**
 
@@ -21,11 +21,11 @@ Sistemdeki 8 Java mikroservisi ve 1 Frontend uygulaması aşağıdaki gibi konum
 
 ### 1. 🚪 API Gateway (`api-gateway` / Port: 8081)
 *   **Uç Nokta Trafik Polisi:** React Frontend'den gelen bütün istekler istisnasız buraya (`/api/v1/**`) girer.
-*   **Yetki Kontrolü:** Keycloak entegreli bir sunucu olarak çalışır. `KeycloakHeaderFilter.java` sayesinde ağdan gelen tokenları çözer, rolleri Spring Security formatına dönüştürüp arıtarak arkaya saf `X-Identity-Number` ile fırlatır.
+*   **Yetki Kontrolü:** Keycloak entegreli bir sunucu olarak çalışır. `KeycloakHeaderFilter.java` sayesinde ağdan gelen tokenları çözer, rolleri Spring Security formatına dönüştürüp arıtarak arkaya saf `X-Identity-Number` ile fırlatır. Orijinal tokeni güvenlik nedeniyle uçurur.
 *   **Detay:** `api-gateway/hafiza.txt`
 
 ### 2. 🔐 Auth Service (`bank-auth-micro` / Port: 8086) [YENİ AYRILDI]
-*   **Kimlik ve Profil Yönetimi:** Kullanıcıların (Bireysel ve Admin) kayıt olması (`Register`), sisteme girmesi (`Login`) ve profil düzenlemelerini ele alır. Gelen kayıtları lokal şifreleme yerine direkt **Keycloak sunucusunda (`UserRepresentation`)** yaratır. `keycloakId` bilgisini kendi lokal `AppUser` tablosunda (`bank_db`) tutar. Admin bir Corporate kullanıcıyı onayladığında `CompanyServiceClient` vasıtasıyla Corporate Servise tetik fırlatır.
+*   **Kimlik ve Profil Yönetimi:** Kullanıcıların (Bireysel ve Admin) kayıt olması (`Register`), sisteme girmesi (`Login`) ve profil düzenlemelerini ele alır. Gelen kayıtları lokal şifreleme yerine direkt **Keycloak sunucusunda (`UserRepresentation`)** yaratır. `keycloakId` bilgisini kendi lokal `AppUser` tablosunda (`bank_auth_db`) tutar. Admin bir Corporate kullanıcıyı onayladığında `CompanyServiceClient` vasıtasıyla Corporate Servise tetik fırlatır.
 *   **Detay:** `bank-auth-micro/hafiza.txt`
 
 ### 3. 🏦 Core Bank Backend (`Bank-Demo-Backend` / Port: 8080) [SAF ÇEKİRDEK]

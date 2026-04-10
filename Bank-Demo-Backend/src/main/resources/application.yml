@@ -1,12 +1,12 @@
 server:
-  port: 8085 # Kurumsal servisimiz bu portta çalışacak
+  port: 8080
 
 spring:
   application:
-    name: bank-corporate-micro
+    name: bank-demo-backend
 
   datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5436/bank_corporate_db}
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/bank_core_db}
     username: ${DB_USER:postgres}
     password: ${DB_PASS:1}
     driver-class-name: org.postgresql.Driver
@@ -14,13 +14,21 @@ spring:
   jpa:
     hibernate:
       ddl-auto: update
-    show-sql: true
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
 
   rabbitmq:
     host: ${SPRING_RABBITMQ_HOST:localhost}
     port: ${SPRING_RABBITMQ_PORT:5672}
     username: ${SPRING_RABBITMQ_USERNAME:admin}
     password: ${SPRING_RABBITMQ_PASSWORD:123456}
+
+# 🚀 ESKİ AJANIN ŞİFRESİ (Backend'in çökmemesi için şart)
+jwt:
+  secret: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
+  expiration: 86400000 # 1 gün
 
 eureka:
   client:

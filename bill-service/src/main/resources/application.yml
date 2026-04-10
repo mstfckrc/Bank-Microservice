@@ -5,7 +5,7 @@ spring:
   application:
     name: bank-bill-micro
   datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5432/bank_bill_db}
+    url: ${DB_URL:jdbc:postgresql://localhost:5435/bank_bill_db}
     username: ${DB_USER:postgres}
     password: ${DB_PASS:1}
     driver-class-name: org.postgresql.Driver

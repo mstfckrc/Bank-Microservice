@@ -1,45 +1,47 @@
-# 🏢 SEC-DEMO CORPORATE (KURUMSAL) SERVİSİ HAFIZA KARTI (V6.0 - EXTREME DETAYLI)
+# 🏢 SEC-DEMO CORPORATE (B2B) SERVİSİ HAFIZA KARTI (V7.0 - İZOLASYON)
 
-Sistemin kurumsal firmalarla (şirket çalışanları, toplu maaş ödemeleri ve otomatik maaş ayarları) ilgili tüm süreçlerini yöneten, V6 mimarisinde Auth/Kimlik doğrulama katmanıyla (Auth Service) senkron çalışan izole mikroservistir.
+Şirketlerin IK (İnsan Kaynakları) ve devasa maaş dağıtımlarını yürüttüğü şirket yönetim merkezi uygulamasıdır. (Veritabanı: `bank_corporate_db` | Port: 5436). Yönettiği tüm para için FeignClient kullanarak paranın kokusunu aldığı Karargah (Backend) servisine vurmak zorundadır.
 
 ---
 
 ## 🗄️ 1. VERİ TABANI (ENTITY) & KOLON HARİTASI
-Kendine özgü `bank_corporate_db` veritabanını kullanır. Ana backend veritabanından tamamen izoledir.
-### 1.1. Company (Kurumsal Müşteri)
-*   **Alanlar (Fields):** `Long id`, `String companyIdentityNumber` (Backend'deki vergi no ile eşleşen kimlik), `String companyName`, `String taxOffice`, `String contactEmail`, `Boolean autoSalaryPaymentEnabled = false`, `Integer salaryPaymentDay`, `String defaultSalaryIban`.
+Kendisine ait tamamen yalıtılmış evrendeki tabloları 2 kolon şeklindedir:
 
-### 1.2. CompanyEmployee (Şirket Çalışanı)
-*   **Alanlar (Fields):** `Long id`, `Company company` (ManyToOne referans), `String employeeIdentityNumber` (Çalışanın TC Nosu), `String firstName`, `String lastName`, `BigDecimal salaryAmount`, `String salaryIban`. (Eski sistemde doğrudan RetailCustomer nesnesi tutulurken, servislerin ayrılmasıyla sadece TC No tutar).
+### 1.1. Company (Şirket/Kurum Özü)
+*   **Alanlar:** `Long id`, `String companyIdentityNumber` (VKN / Şirket Vergi Kimliği String'i), `String companyName` (Şirketin Adı), `String taxOffice`, `String contactEmail`, `Boolean autoSalaryPaymentEnabled = false` (Eğer patron maaşları otomatik Cron botuna verdiyse True olur), `Integer salaryPaymentDay` (Ayın kaçıncı gününde bot paraları dağıtacak, Örn: 5), `String defaultSalaryIban` (Bot maaşları şirketin hangi kasasından alıp dağıtacak, referansı tutar).
+
+### 1.2. CompanyEmployee (Köprü Çalışan/Memur)
+*   **Alanlar:** `Long id`, `String firstName`, `String lastName`, `Company company` (ManyToOne, bir şirketin altında 1000 çalışan olabilir), `String employeeIdentityNumber` (Sistemdeki sıradan AppUser TC'si - gerçek kişinin haritası), `BigDecimal salaryAmount` (Alacağı aylık maaş fiyatı), `String salaryIban` (Maaşın fiili olarak yatırılacağı personelin Karargahtaki kasası).
 
 ---
 
 ## 📦 2. VERİ TRANSFER OBJELERİ (DTO)
-Bütün Controller ve Feign aktarımlarında kullanılan exact DTO nesneleri:
+İçerisindeki devasa IK akışını besleyen JSON paketleri ve tip alanları:
 
 ### 2.1. Request (İstek) DTO'ları
-*   **`CompanySyncRequest`:** `companyIdentityNumber`, `companyName`, `contactEmail`, `taxOffice` (Backend'de şirket onaylandığında buraya senkron olması için atılır).
-*   **`HireEmployeeRequest`:** `identityNumber` (Çalışan TC), `salaryIban`, `salaryAmount`.
-*   **`UpdateEmployeeRequest`:** `salaryIban`, `salaryAmount`.
-*   **`AutoPaymentSettingsRequest`:** `autoPaymentEnabled`, `paymentDay`, `defaultSalaryIban`.
-*   **`SalaryPaymentItem`:** `receiverIban`, `amount`. (Toplu maaş ödeme listesi için iç obje).
-*   **`SalaryPaymentRequest`:** `senderIban`. (Tek seferlik işlem isteği).
-*   **`BulkSalaryRequest`:** `senderIban`, `companyName`, `List<SalaryPaymentItem> salaryItems`. (Backend'e maaş ödeme emri olarak Feign üzerinden giden toplu paket).
+*   **`CompanySyncRequest`:** `companyIdentityNumber`, `companyName`, `contactEmail`, `taxOffice` (Auth servisinde bir admin şirketi onayladığında rüzgar gibi buraya ulaşıp Şirketi baştan var eden paket).
+*   **`HireEmployeeRequest`:** `identityNumber` (Personelin TC'si), `salaryIban`, `salaryAmount` (Personeli şirkete kaydettirmek).
+*   **`UpdateEmployeeRequest`:** `salaryIban`, `salaryAmount` (ZAM yapma talebi veya bankasını değiştirme).
+*   **`AutoPaymentSettingsRequest`:** `autoPaymentEnabled`, `paymentDay`, `defaultSalaryIban` (Patronun "Maaşları bu ibandan şu gün otomatik kes" dedirten ayar paketi).
+*   **`BulkSalaryRequest`:** `senderIban`, `companyName`, `List<SalaryPaymentItem> salaryItems` (Maaş zamanı Karargaha fırlatılan Ölümcül derecede büyük JSON).
+*   **`SalaryPaymentItem`:** `receiverIban`, `amount` (Tek bir işçinin payı).
 
 ### 2.2. Response (Yanıt) DTO'ları
 *   **`CompanyEmployeeResponse`:** `id`, `identityNumber`, `firstName`, `lastName`, `salaryIban`, `salaryAmount`.
-*   **`CustomerProfileResponse`:** `identityNumber`, `firstName`, `lastName`, `email`. (Backend'den Feign ile kimlik doğrulamada döner).
-*   **`AccountValidationResponse`:** `ownerIdentityNumber`, `isActive`. (IBAN Backend'de gerçekten bu TC'ye mi ait diye sorgulandığında döner).
-*   **`AutoPaymentSettingsResponse`:** `autoPaymentEnabled`, `paymentDay`, `defaultSalaryIban`, `message`.
-*   **`TransactionResponse`:** `referenceNo`, `amount`, `transactionType`, `status`, `description`, `transactionDate`, `senderAccountId`, `receiverAccountId`, `convertedAmount`.
-*   **`NotificationMessage`:** (Bildirim servisine atılan) `identityNumber`, `destination`, `subject`, `content`, `notificationType`.
+*   **`CustomerProfileResponse`**, **`AccountValidationResponse`** vb. alanlar diğer mikroservislerden avlanan harici paketlerdir.
 
 ---
 
-## ⚙️ 3. SERVİS VE İŞ MANTIĞI EKSENİ (API & MİKROSERVİS İLETİŞİMİ)
-*   **Ağ Ayarları:** Port: 8085. Eureka'ya `bank-corporate-micro` adıyla kaydolur.
-*   **Güvenlik:** Tıpkı Bill-Service gibi JWT Header'ından API Gateway tarafından çözülmüş `@RequestHeader("X-Identity-Number")` string'ini Security Context olmadan okur ve işlem sahibini belirler.
-*   **Mikroservis Entegrasyonları (FeignClients):**
-    *   Bu servis, dış dünyaya kapalı yeraltı uç noktalarına vurarak veri doğrulaması yapmak zorundadır.
-    *   **Auth Servisi Bağlantısı (`IAuthServiceClient`):** Personel işe alınırken TC kimlik numarasına karşılık gelen ad/soyad bilgisini öğrenmek için doğrudan Kimlik (Auth) servisine vurur (`/api/v1/internal/users/profile/{tc}`). 
-    *   **Karargah (Backend) Bağlantısı (`IBackendServiceClient`):** İşe alınacak personelin girdiği maaş IBAN'ı gerçekten o TC'ye mi ait diye sorgulamak (`AccountValidationResponse`) ve toplu maaş ödeme günü geldiğinde `BulkSalaryRequest` fırlatmak için doğrudan Backend'in `/api/v1/internal` yeraltı kapısına zıplar.
+## 🔄 3. APİ KAPILARI VE İŞ MANTIĞI (CONTROLLER VE YÖNETİM)
+
+### 3.1. CompanyEmployeeControllerImpl & ICompanyEmployeeService
+İK ofisinin tüm ekranlarını besleyen uç noktalar:
+*   **`POST /api/v1/companies/employees` -> `hireEmployee`:** HR ofisinde işçi alınır. **(FEIGN İSTİHBARAT KONTROLÜ)** Şirket adamı eklerken, gelen isimlerin gerçekliğini teyit etmek zorundadır. Önce `AuthServiceClient.getCustomerProfile` ile "Bu TC gerçek birine ait mi?" diye Auth servise sorar. Peşine `BackendServiceClient.validateAccount` ile IBAN'ı okutup Karagahtan "Bu kasa gerçekten açık ve bu isme mi ait?" testini vurur. Karşıda patlayan bir hatada adam işe girmez.
+*   **`GET /api/v1/companies/employees`:** Şirketin kendi `X-Identity-Number` etrafında kümelenen maaşlı adamlarını tek seferde frontend döner.
+*   **`PUT /.../{employeeIdentityNumber}` -> `updateEmployee` / `DELETE` -> `removeEmployee`:** Personelin kasasını değiştirmek (ZAM) ve adamı işten şutlamak.
+*   **`POST /api/v1/companies/employees/pay-salaries` (MANUEL BOT VURUŞU):** Patron bu tuşa bastığı an `BulkSalaryRequest` hazırlanıp tek seferde Backend Karargaha telsiz edilir! (Paralar dağıtılır).
+*   **`PUT /api/v1/companies/employees/auto-payment-settings` -> `updateAutoPaymentSettings`:** Ay sonu botunun parametrelerini tıklar (Aktif mi, ayın on beşi mi?). Eğer açık demezse bot bu şirketi Gece Cron işçisi taramasında atlayaıp geçer.
+
+### 🛡️ 3.2. İÇ (INTERNAL) UÇ NOKTALAR (`/api/v1/internal`)
+*   **`POST /api/v1/internal/companies/sync` -> `syncNewCompany`:** (DIKKAT: Dış dünyaya kapalıdır). Sadece `bank-auth-micro` servisi, bir CEO'yu sisteme resmi onayladığı an, o servisten seken bir HTTP Request buraya devasa şirketin tohumunu eker ve Entity verisini doğurur! (Dışarıdan Postman gibi yollarla ulaşılamaz, `X-Internal-Identity` kullanır).
+*   Aynı şekilde şirket silinirse, Auth buraya `DELETE /sync/{identityNumber}` vurup şirketi küle çevirir.

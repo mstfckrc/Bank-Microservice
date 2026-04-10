@@ -6,7 +6,7 @@ spring:
     name: auth-service
 
   datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5432/bank_db}
+    url: ${DB_URL:jdbc:postgresql://localhost:5434/bank_auth_db}
     username: ${DB_USER:postgres}
     password: ${DB_PASS:1}
     driver-class-name: org.postgresql.Driver
@@ -40,4 +40,4 @@ keycloak:
   auth-server-url: http://keycloak:8080
   realm: bank-realm
   client-id: bank-auth-client
-  client-secret: Gl0MBqM5kIECcXUVl3G4OyG2zKTiNEa4
+  client-secret: PJqdHOdCoRbNe5dFNATs1kZxSrrYQTel

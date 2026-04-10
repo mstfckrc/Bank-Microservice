@@ -1,56 +1,74 @@
-# 🏦 SEC-DEMO BACKEND HAFIZA KARTI (V6.0 - TAM İZOLASYON / SAF ÇEKİRDEK)
+# 🏦 SEC-DEMO BACKEND HAFIZA KARTI (V7.0 - TAM İZOLASYON / SAF ÇEKİRDEK)
 
-Sistemin donanımsal para birimini tutan Monolith Backend uygulaması (Karargah), V6.0 yaması ile birlikte **Auth, Kullanıcı ve Kurumsal** tüm mantıklarından arındırılmış, SADECE hesap ve para aktarımı (Transaction) operasyonlarına odaklanan saf (Core) finans merkezine dönüşmüştür.
+Sistemin donanımsal para birimini tutan Monolith Backend uygulaması (Karargah), V7.0 yaması ile birlikte **Auth, Kullanıcı ve Kurumsal** tüm mantıklarından arındırılmış, SADECE hesap ve para aktarımı (Transaction) operasyonlarına odaklanan saf (Core) finans merkezine dönüşmüştür.
 
 ---
 
 ## 🗄️ 1. VERİ TABANI (ENTITY) & KOLON HARİTASI
-Veritabanı işlemleri JPA/Hibernate ile yürütülür (`bank_db`). Kullanıcı kayıtları (`AppUser`, `RetailCustomer`) artık Auth Servistedir. Sadece IBAN/Bakiye ve Hesap ilişkileri kalmıştır.
+Veritabanı işlemleri JPA/Hibernate ile yürütülür (`bank_core_db`). Kullanıcı kayıtları (`AppUser`, `RetailCustomer`) tamamen Auth Servise itilmiştir. İzolasyon gereği tablolar fiziken ayrılmıştır.
 
 ### 1.1. Account (Müşteri Cüzdanları)
-*   **Alanlar:** `Long id`, `String accountNumber` (Rastgele 10 hane rakam), `String iban` (TR... 26 hane), `BigDecimal balance`, `Currency currency` (Enum: TRY, USD, EUR vb.), `String identityNumber` (Hesap sahibinin kimliği - artık AppUser objesi tutulmuyor, string TC tutuluyor!), `List<Transaction> sentTransactions`, `List<Transaction> receivedTransactions`, `boolean isActive`.
+*   **Alanlar:** `Long id`, `String accountNumber` (Rastgele özel 10 hane rakam), `String iban` (TR12... 26 hane özel seri), `BigDecimal balance`, `Currency currency` (Enum: TRY, USD, EUR vb.), `String ownerIdentityNumber` (Hesap sahibinin dış dünyadaki kimliği - YENİ! String referansı tutar!), `List<Transaction> sentTransactions`, `List<Transaction> receivedTransactions`, `boolean isActive` (Soft Delete kontrolü).
 
 ### 1.2. Transaction (İşlem Hareketi / Dekont)
-*   **Alanlar:** `Long id`, `String referenceNo` (UUID), `Account senderAccount`, `Account receiverAccount`, `BigDecimal amount`, `BigDecimal convertedAmount` (Çapraz kurlar için çevrilmiş değer), `TransactionType transactionType` (Enum: DEPOSIT, WITHDRAWAL, TRANSFER, BILL_PAYMENT, SALARY_PAYMENT), `TransactionStatus status` (Enum: COMPLETED, PENDING_APPROVAL, REJECTED), `String description`, `LocalDateTime transactionDate`.
+*   **Alanlar:** `Long id`, `String referenceNo` (UUID, Örn: TXN-58294A), `Account senderAccount`, `Account receiverAccount`, `BigDecimal amount`, `BigDecimal convertedAmount` (Çapraz kurlar için dövizli halinin TRY karşılığı), `TransactionType transactionType` (Enum: DEPOSIT, WITHDRAWAL, TRANSFER, BILL_PAYMENT, SALARY_PAYMENT), `TransactionStatus status` (Enum: COMPLETED, PENDING_APPROVAL, REJECTED), `String description`, `LocalDateTime transactionDate`.
 
 ---
 
 ## 📦 2. VERİ TRANSFER OBJELERİ (DTO)
-Kimlik (Login/Register) DTO'ları tamamen Auth servise gitmiştir. Burada sadece para trafiği DTO'ları kalmıştır.
+Kimlik (Login/Register) DTO'ları tamamen Auth servise gitmiştir. Burada sadece para trafiğine has olanlar var.
 
 ### 2.1. Request (İstek) DTO'ları (Yetim Kalanlar Önceden Planlandı)
-*   **ÖNEMLİ NOT:** Kullanıcı (User/Auth) ile ilgili olan `LoginRequest`, `RegisterRequest`, `UpdateProfileRequest` gibi DTO'lar bu serviste artık ölü kod (Dead Code) durumundadır ve kullanılmamaktadır.
-*   **`CreateAccountRequest`:** `currency` (TRY, USD, EUR vb).
-*   **`OpenAccountRequest`:** Başkası adına admin tarafından hesap açılışları.
-*   **`DepositRequest`, `TransferRequest`:** Finansal para trafiği için kullanılır.
-*   **İÇ BAĞLANTI İSTEKLERİ (INTERNAL REQUESTS):** 
-    *   **`InternalPaymentRequest`:** `accountId`, `amount`, `description` (Bill-service'den fatura kesmek için gelir).
-    *   **`BulkSalaryRequest`:** `senderIban`, `companyName`, `List<SalaryPaymentItem> salaryItems` (Corporate servisin maaş dağıtımı için gönderdiği devasa paket).
-    *   **`SalaryPaymentItem`:** `receiverIban`, `amount`.
+*   **ÖNEMLİ NOT:** Kullanıcı (User/Auth) ile ilgili olan `LoginRequest`, `RegisterRequest`, `UpdateProfileRequest`, `ChangePasswordRequest` gibi DTO'lar eğer bu serviste duruyorsa artık "Ölü Kod" (Dead Code) durumundadır ve yoksayılmalıdır. Mimarinin bypass kalkanı devrededir.
+*   **`CreateAccountRequest`:** `Currency currency` alır, kasayı açar.
+*   **`OpenAccountRequest`:** `String identityNumber`, `Currency currency` alır (Başkası adına admin hesap açarken).
+*   **`DepositRequest`:** `String iban`, `BigDecimal amount` (Kendi kasana para koymak için).
+*   **`TransferRequest`:** `String senderIban`, `String receiverIban`, `BigDecimal amount`, `String description` (Havale/EFT omurgasıdır).
+*   **İÇ BAĞLANTI İSTEKLERİ (INTERNAL REQUESTS - FEIGN):** 
+    *   **`InternalPaymentRequest`:** `Long accountId` (Hangi kasadan), `BigDecimal amount` (Ne kadar kesilecek), `String description` (Dekont açıklaması). (Bill-service'den fatura kesmek için gelir).
+    *   **`BulkSalaryRequest`:** `String senderIban`, `String companyName`, `List<SalaryPaymentItem> salaryItems` (Corporate servisin maaş dağıtımı için gönderdiği devasa paket. Her işçiye özel düşülür).
+    *   **`SalaryPaymentItem`:** `String receiverIban`, `BigDecimal amount` (Adamın payı).
 
 ### 2.2. Response (Yanıt) DTO'ları
-*   **`AccountResponse`:** `id`, `accountNumber`, `iban`, `balance`, `currency`, `isActive`, `ownerName`, `identityNumber`.
-*   **`TransactionResponse`:** `referenceNo`, `amount`, `convertedAmount`, `transactionType`, `status`, `description`, `transactionDate`, `receiverAccountId`, `senderAccountId`.
-*   **`ExchangeRateResponse`:** `base_code`, `rates` (Map).
+*   **`AccountResponse`:** `Long id`, `String accountNumber`, `String iban`, `BigDecimal balance`, `Currency currency`, `boolean isActive`, `String ownerName`, `String identityNumber`.
+*   **`TransactionResponse`:** `String referenceNo`, `BigDecimal amount`, `BigDecimal convertedAmount`, `TransactionType transactionType`, `TransactionStatus status`, `String description`, `LocalDateTime transactionDate`, `Long receiverAccountId`, `Long senderAccountId`.
+*   **`AccountValidationResponse`:** `String ownerIdentityNumber`, `boolean isActive`.
+*   **`ExchangeRateResponse`:** `String base_code`, `Map<String, Double> rates`.
+*   **`CustomerProfileResponse` / `CustomerResponse` vb.:** Diğer servislerle tutarlılık korumak için barındırılan klasik nesneler (`tcNo/identityNumber`, `profileName/fullName`, `email`, `role`, `status`).
 
 ---
 
-## 🔄 3. APİ KAPILARI VE İŞ MANTIĞI (CONTROLLER)
+## 🔄 3. APİ KAPILARI VE İŞ MANTIĞI (CONTROLLER VE SERVIS YAPISI)
 
-*   **Account (`/api/v1/accounts`)**: Yeni hesap açma, listeleme ve Soft Delete. Kapatılacak hesabın içinde bakiye varsa kapattırmaz.
-*   **Transaction (`/api/v1/transactions`)**:
-    *   `/deposit`: TRY yatırır.
-    *   `/transfer`: Masak kuralı (+50.000 limit) barındırır. Çapraz Döviz varsa `CurrencyServiceClient`'e vurup kur alır (`convertedAmount` doldurur). RabbitMQ PUSH_NOTIF fırlatır.
-*   **Admin (`/api/v1/admin/customers/*/accounts` & `/api/v1/admin/transactions`)**: Admin'in tüm hesapları takip etmesi, başkalarına hesap açması, masak şüpheli işlemleri listelemesi. *(Eskiden adminin kullanıcıları listelediği yapı Auth servisine gitmiştir)*.
+### 3.1. AccountControllerImpl (`/api/v1/accounts`) & IAccountService
+*   **`POST /` -> `createAccount`:** Kendi `X-Identity-Number`'ına güvenerek kendine yeni bir TRY, USD, EUR kutusu yaratır.
+*   **`GET /` / `GET /{accountNumber}` -> `getAccountByAccountNumber`:** Parametreden dönen hesabı sadece izin verilen kişilere ifşa eder.
+*   **`DELETE /{accountNumber}` -> `deleteAccount`:** Kapatılacak hesabın içinde bakiye varsa kapattırmaz (Sıfır limiti kuralı).
 
-### 🛡️ 4. İÇ (INTERNAL) UÇ NOKTALAR (`/api/v1/internal`)
-Bu kapılar dış dünyadan (Gateway'den) erişilemez, sadece sistem mikroservisleri `FeignClient` ile vurabilir.
-*   **`POST /transactions/bill-payment`:** `bill-service` tahsilat emri gönderdiğinde müşteriden faturayı keser.
-*   **`POST /transactions/bulk-salary`:** `bank-corporate-micro` personellere maaş dağıtırken toplu bir `BulkSalaryRequest` yollar, Backend tek bir DB bloğunda şirketten toplu tutarı düşüp çalışanlara ekler, veritabanına SALARY_PAYMENT olaran dekonte eder. *(DİKKAT: Kurumsal sistemden `X-Internal-Identity` header'ı ile yetki gönderilir ve SecurityContext'e işlenerek işlem yapılır).*
-*   **`GET /accounts/validate`:** Corporate servisi bir IBAN'ın ait olduğu kişinin TC kimlik numarasını ve hesabı aktifliğini kontrol etmek istediğinde bu servise vurur.
-*   **`DELETE /accounts/customer/{identityNumber}` [YENİ]:** Auth servisi, Admin tarafından bir kullanıcı haritadan silindiğinde bu uca telsiz çeker ve kullanıcının Karargahtaki tüm kasalarını (Transaction'lar varsa patlatarak veya pasife alarak) yok eder.
+### 3.2. TransactionControllerImpl (`/api/v1/transactions`) & ITransactionService
+*   **`POST /deposit` -> `deposit`:** Hesaba TRY nakit ateşler.
+*   **`POST /transfer` -> `transfer`:** Masak kuralı (+50.000 limit) barındırır. Çapraz Döviz varsa `CurrencyServiceClient`'e vurup kur alır (`convertedAmount` doldurur). Eğer kuralı bozan miktar varsa `PENDING_APPROVAL` (Onay bekliyor) durumuna atıp bekletir. RabbitMQ PUSH_NOTIF fırlatarak adama sms simüle eder.
+*   **`GET /account/{accountNumber}`:** Dekont dökümü sunar (Hesap Ekstresi).
+
+### 3.3. AdminControllerImpl (`/api/v1/admin`) & IAdminService
+*   Yöneticinin dikiz paneli. Herkesin hesabına bakma (`GET /accounts`), şüpheli büyük işlemleri deşen listeler (`GET /transactions`), duruma göre para aktarımına kilit vurma veya izin verme özelliği taşır.
+*   **`PUT /transactions/{referenceNo}/approve` -> `approveTransaction`**
+*   **`PUT /transactions/{referenceNo}/reject` -> `rejectTransaction`**
+
+---
+
+## 🛡️ 4. İÇ (INTERNAL) UÇ NOKTALAR (`/api/v1/internal`) -> `InternalBankControllerImpl`
+
+Bu kapılar dış dünyadan (Gateway'den) erişilemez, sadece sistem mikroservisleri `X-Internal-Identity` mühürleyen FeignClient ile vurabilir.
+
+*   **`POST /transactions/bill-payment` -> `processInternalPayment`:** `bill-service` gece otomatiği vurduğunda müşteriden faturayı bu kancayı kullanarak koparır.
+*   **`POST /transactions/bulk-salary`:** `bank-corporate-micro` personellere maaş dağıtırken toplu bir `BulkSalaryRequest` yollar, Backend tek bir DB bloğunda şirketten toplu tutarı düşüp çalışanlara seri seri aktarır, veritabanına `SALARY_PAYMENT` olarak dekonte eder.
+*   **`GET /accounts/validate`:** Corporate servisi yeni bir eleman eklerken IBAN'ın ait olduğu kişinin TC kimlik numarasını ve hesabı aktifliğini çapraz sorgular.
+*   **`DELETE /accounts/customer/{identityNumber}` [AĞIR YIKIM]:** Auth servisi, Admin tarafından bir kullanıcı haritadan silindiğinde bu uca telsiz çeker (`IInternalBankService.deleteCustomerAccounts`). Karargah adamın kasalarını tarar, parası yoksa hepsini siler, varsa tüm Auth imha emrini Rollback ederek exception fırlattırır!
+
+---
 
 ## 📡 5. SİSTEM ENTEGRASYONLARI
 *   **Eureka Client:** `http://discovery-server:8761/eureka/`
-*   **`CurrencyServiceClient` (Feign):** Kur API'sine bağlanır.
-*   **RabbitMQ Publisher:** Havale/EFT sonrası PUSH_NOTIFICATION atar.
+*   **`CurrencyServiceClient` (Feign):** Kur API'sine (`/api/v1/currencies/rates`) bağlanır.
+*   **RabbitMQ Publisher:** Havale/EFT sonrası PUSH_NOTIFICATION atıp iletişime kaçar.

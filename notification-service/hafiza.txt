@@ -1,21 +1,14 @@
-# 📯 SEC-DEMO NOTIFICATION (BİLDİRİM) SERVİSİ HAFIZA KARTI (V6.0 - EXTREME DETAYLI)
+# 📯 RABBITMQ NOTIFICATION DISPATCHER (PORT 8082) HAFIZA KARTI
 
-Sistem üzerindeki servislerin (Auth, Bill, Bank-Demo-Backend vs.) RabbitMQ üzerinden fırlattığı tüm bildirim paketlerini (NotificationMessage) anında yakalayıp e-posta veya sistem alarmı olarak asenkron şekilde dağıtan postane motorudur.
+Sistemin "Postanesi"dir. Dış dünyadan Gateway üzerinden hiçbir HTTP Rest İsteği (API Call) almaz. Bir denetleyicisi (Controller) sınıf felsefesi yoktur. Asenkron bir "Consumer" botudur.
 
----
+## 🗄 1. MİMARİ PRENSİBİ
+1.  **Sıfır API:** Hiçbir Controller dosyası barındırmaz. Kimse ona Http GET, POST atamaz.
+2.  **Veritabanı Yok:** RabbitMQ kuyruk mimarisindeki transient olaylara odaklandığından DB'de log veya kayıt tutmaz. 
 
-## 📦 1. VERİ TRANSFER OBJESİ (DTO)
-Gelen haberleşmeyi yakalamak için tek bir DTO içerir.
+## ⚙️ 2. İŞLEYİŞ (AMQP & RABBITMQ MANTIĞI)
+*   **Queue ve Exchange Bağlantısı:** Boot aşamasında `RabbitMQConfig` sınıfları sayesinde kendisini `notification_queue` hattına diker (Bind eder) ve dinleyici (Listener) moduna alır. Devasa `bank_exchange` dağıtım santralinden sadece kendine düşen RouteKey'leri kapar.
+*   **Dinle ve Tetikle:** Sistemdeki diğer servisler (Örn: Auth servisi yeni kullanıcı ekleyince ve Karargah büyük bir hesap transferi yapınca) bir DTO olan `NotificationMessage` JSON paketini havaya fırlatır. Notification servisi bunu milisaniyeler içinde havada yakalar ve mesajın türüne göre konsola yazar, ileride eklenecek olan Twilio (SMS) veya SendGrid (Email) SDK'larına işi iade eder ve işlemi sonlandırır.
 
-### 1.1 `NotificationMessage`
-*   `String identityNumber`: Kullanıcının kimlik no'su
-*   `String destination`: Gidilecek adres (Email vb.)
-*   `String subject`: Konu
-*   `String content`: İçerik (E.g. Para transferi, hoşgeldin emaili)
-*   `NotificationType notificationType`: Enum (EMAIL, SMS, PUSH, IN_APP)
-
-## ⚙️ 2. MİMARİ VE İŞ MANTIĞI
-*   **Çekirdek:** Spring Boot AMQP (RabbitMQ Consumer) - Port: 8082
-*   **Mesaj Dinleyici:** `NotificationListener` sınıfı. İçerisinde `@RabbitListener(queues = "notification_queue")` bulunur.
-*   Herhangi bir dış API uçu (Controller) sunmaz. Tamamen arkada yaşar ve dinler.
-*   Veri tabanı ile işi yoktur, gelen pakette email bilgisi varsa JavaMailSender ile atar ve mesajı bırakır.
+## 🛡 3. PERFORMANCE DARBOĞAZI & ORCHESTRATION
+*   Servisin çökmesi veya çalışmaması, bankacılık kayıt/havale işlemlerini engellemez. Bu servisin yapısı asenkron (fire-and-forget) tasarım şablonudur. Mesajlar RabbitMQ içerisinde tutulur, postane sunucusu ayağa kalktığında hepsini geriye dönük işleyerek kullanıcılara yollarını tayin eder.
