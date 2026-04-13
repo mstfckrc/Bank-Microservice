@@ -25,8 +25,10 @@ Bu belge, döviz kuru sağlayan ve diğer servislere veri atan servisin src/main
 
 ## 4. PAKET: `service` (İş Mantığı Arayüzleri) ve `service.impl`
 *   **`ICurrencyService.java` & `CurrencyServiceImpl.java`**
-    *   `getRates(String baseCurrency)`: İnternetteki gerçek döviz servisine (ExchangeRate-API) `RestTemplate` veya native metotla çağrı atar, gelen veriyi `ExchangeRateResponse` kalıbına parse eder.
-    *   `@Cacheable(value = "exchangeRates", key = "#baseCurrency")`: Her istekte API kotası yememek için dönen sonucu Redis belleğine şifreler, 10 dakikada bir bayatlar.
+    *   **ÖNEMLİ MİMARİ NOTU**: Birbirini doğrudan çağıran önbellek (Cache Bypass) operasyonları için Spring hileleri (`@Lazy self`) tamamen YOK EDİLDİ. Yerine temiz iki bölmeli kurgu getirildi:
+    *   `getLiveRates(String baseCurrency)`: **VİTRİN.** Sadece Frontend/müşteri kullanır. `@Cacheable(value = "rates", key = "#baseCurrency")` etiketiyle 10 dakikalık Redis RAM kopyasını saklar. Dış API'ye sürekli yüklenmez.
+    *   `convertAmount(amount, from, to)`: **KARARGAH CANLI İŞLEMİ.** Arka plandaki muhasebe/para havaleleri sırasında (Feign üzerinden) çalışır. Asla Redis önbelleğine düşmez, Cache'i bilinçli şekilde aşarak (bypass) her seferinde %100 güncel dış kur çeker.
+    *   `fetchRatesFromExternalApi(baseCurrency)`: (Private YARDIMCI). Dış RestTemplate bağlantısını ve `ExchangeRateResponse` parselamasını yapan asıl arka metot.
 
 ---
 

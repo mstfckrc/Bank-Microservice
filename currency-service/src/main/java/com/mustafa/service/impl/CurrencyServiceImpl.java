@@ -5,7 +5,6 @@ import com.mustafa.exception.BankOperationException;
 import com.mustafa.service.ICurrencyService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.Cacheable;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
@@ -14,30 +13,25 @@ import org.springframework.web.client.RestTemplate;
 public class CurrencyServiceImpl implements ICurrencyService {
 
     private final RestTemplate restTemplate = new RestTemplate();
-    private final ICurrencyService self; // 🛡️ KENDİMİZİ (PROXY KOPYASINI) TUTACAĞIMIZ DEĞİŞKEN
 
-    // 🚀 @Lazy ile Spring'e diyoruz ki: "Beni bana enjekte et ama sonsuz döngüye sokma!"
-    public CurrencyServiceImpl(@Lazy ICurrencyService self) {
-        this.self = self;
-    }
+    // 🗑️ @Lazy self değişkenini ve constructor'ı tamamen SİLDİK!
+    // Artık sınıflar birbirini kandırmayacak.
 
-    // 🚀 KURLARI RAM'E KAYDETME EMRİ (isim: "rates", anahtar: TRY, USD vs.)
+    // ========================================================================
+    // 1. VİTRİN OPERASYONU (ÖNBELLEKLİ - RAM ÜZERİNDEN)
+    // Sadece /api/v1/currencies/rates endpoint'i (Next.js ekranı) burayı kullanır.
+    // ========================================================================
     @Cacheable(value = "rates", key = "#baseCurrency")
     @Override
     public ExchangeRateResponse getLiveRates(String baseCurrency) {
-        String url = "https://open.er-api.com/v6/latest/" + baseCurrency.toUpperCase();
-        log.info("Dış API İsteği: {} bazlı canlı döviz kurları çekiliyor... [URL: {}]", baseCurrency.toUpperCase(), url);
-
-        try {
-            ExchangeRateResponse response = restTemplate.getForObject(url, ExchangeRateResponse.class);
-            log.info("Canlı kurlar başarıyla çekildi. Sağlayıcı yanıt verdi.");
-            return response;
-        } catch (Exception e) {
-            log.error("🚨 DIŞ API BAĞLANTI HATASI: Canlı kurlar çekilemedi! Hata Detayı: {}", e.getMessage());
-            throw new BankOperationException("Canlı kurlar çekilirken bir hata oluştu: " + e.getMessage());
-        }
+        log.info("VİTRİN İÇİN DIŞ API İSTEĞİ: {} kurları çekiliyor (10 dk RAM'de kalacak)...", baseCurrency.toUpperCase());
+        return fetchRatesFromExternalApi(baseCurrency);
     }
 
+    // ========================================================================
+    // 2. KARARGAH OPERASYONU (ÖNBELLEKSİZ - %100 CANLI)
+    // Core Service para transferi yaparken (Feign üzerinden) BURAYI KULLANIR!
+    // ========================================================================
     @Override
     public Double convertAmount(Double amount, String fromCurrency, String toCurrency) {
 
@@ -46,11 +40,11 @@ public class CurrencyServiceImpl implements ICurrencyService {
             return amount;
         }
 
-        log.info("Döviz çevirim motoru çalıştı: {} {} -> {}", amount, fromCurrency.toUpperCase(), toCurrency.toUpperCase());
+        log.info("PARA TRANSFERİ (CANLI): {} {} -> {} çevriliyor...", amount, fromCurrency.toUpperCase(), toCurrency.toUpperCase());
 
-        // 🚀 DİKKAT: Artık doğrudan getLiveRates() değil, self.getLiveRates() diyoruz!
-        // Böylece Spring Cache araya girip "Bu veri RAM'de var mı?" diye bakabilecek.
-        ExchangeRateResponse response = self.getLiveRates(fromCurrency);
+        // 🚀 DİKKAT: Artık getLiveRates() DEĞİL, doğrudan dış API'ye giden gizli metodu çağırıyoruz!
+        // Böylece Cache'i tamamen bypass etmiş oluyoruz.
+        ExchangeRateResponse response = fetchRatesFromExternalApi(fromCurrency);
 
         Double rate = response.getRates().get(toCurrency.toUpperCase());
 
@@ -61,9 +55,25 @@ public class CurrencyServiceImpl implements ICurrencyService {
 
         Double result = amount * rate;
 
-        log.info("✅ Çevirim Başarılı: {} {} = {} {} (Kur: {})",
+        log.info("✅ Çevirim Başarılı (CANLI KUR İLE): {} {} = {} {} (Uygulanan Çarpan: {})",
                 amount, fromCurrency.toUpperCase(), String.format("%.2f", result), toCurrency.toUpperCase(), rate);
 
         return result;
+    }
+
+    // ========================================================================
+    // 🛠️ YARDIMCI METOD (Sadece Dış API'ye Çıkar, Cache'den Asla Haberi Yoktur)
+    // ========================================================================
+    private ExchangeRateResponse fetchRatesFromExternalApi(String baseCurrency) {
+        String url = "https://open.er-api.com/v6/latest/" + baseCurrency.toUpperCase();
+
+        try {
+            ExchangeRateResponse response = restTemplate.getForObject(url, ExchangeRateResponse.class);
+            log.info("Canlı kurlar başarıyla çekildi. Sağlayıcı yanıt verdi.");
+            return response;
+        } catch (Exception e) {
+            log.error("🚨 DIŞ API BAĞLANTI HATASI: Canlı kurlar çekilemedi! Hata Detayı: {}", e.getMessage());
+            throw new BankOperationException("Canlı kurlar çekilirken bir hata oluştu: " + e.getMessage());
+        }
     }
 }

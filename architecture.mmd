@@ -1,0 +1,50 @@
+graph TD
+    Client((Next.js Frontend))
+    
+    Keycloak{{Keycloak OAuth2}}
+    Gateway[API Gateway :8081]
+    
+    Auth[Auth Service :8086]
+    Backend[Core Backend :8080]
+    Corporate[Corporate Service :8085]
+    Bill[Bill Service :8084]
+    Currency[Currency Service :8083]
+    Notification[Notification Service :8082]
+    
+    subgraph Databases
+        DB_Auth[(bank_auth_db)]
+        DB_Core[(bank_core_db)]
+        DB_Corp[(corp_db)]
+        DB_Bill[(bill_db)]
+    end
+    
+    RabbitMQ(((RabbitMQ Broker)))
+    Redis[(Redis Cache)]
+
+    Client -->|API Call| Gateway
+    Gateway <-->|Token Check| Keycloak
+    
+    Gateway -->|/api/v1/auth| Auth
+    Gateway -->|/api/v1 - Accounts| Backend
+    Gateway -->|/api/v1/companies| Corporate
+    Gateway -->|/api/v1/bills| Bill
+    
+    Auth --- DB_Auth
+    Backend --- DB_Core
+    Corporate --- DB_Corp
+    Bill --- DB_Bill
+    Currency --- Redis
+    
+    %% Feign Internal Calls
+    Auth -.->|Sync| Corporate
+    Corporate -.->|Get Profile| Auth
+    Corporate -.->|Pay Salary| Backend
+    Bill -.->|Pay Bill| Backend
+    Backend -.->|Fetch Rate| Currency
+    
+    %% RabbitMQ Events
+    Auth -.->|Events| RabbitMQ
+    Backend -.->|Events| RabbitMQ
+    Corporate -.->|Events| RabbitMQ
+    Bill -.->|Events| RabbitMQ
+    RabbitMQ -->|Consume| Notification

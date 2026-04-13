@@ -15,26 +15,53 @@ export default function AuthSyncPage() {
   useEffect(() => {
     const syncProfile = async () => {
       try {
-        // 1. Ajanımızın çereze bastığı Token'ı al
+        // 1. Cüzdandaki (Cookie) bileti al
         const token = Cookies.get("token");
         if (!token) throw new Error("Güvenlik jetonu bulunamadı!");
 
-        // 2. Token ile Karargahtan (Backend) Gerçek Müşteri Profilini Çek!
-        const userProfile = await customerService.getProfile(token);
+        // 2. Karargahtan (Backend) Ham Profili Çek (Backend 'Sistem Yöneticisi' dese bile umurumuzda değil)
+        const backendProfile = await customerService.getProfile(token);
 
-        // 3. Zustand Kapsülüne (State) Kaydet
-        login(userProfile, token);
+        // 🚀 3. MİMARİ STANDART: Next.js elindeki bileti açar ve gerçek kimliği okur!
+        const payloadBase64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+        const pad = payloadBase64.length % 4;
+        const paddedBase64 = pad > 0 ? payloadBase64 + '='.repeat(4 - pad) : payloadBase64;
+        
+        // 🚀 TÜRKÇE KARAKTER ZIRHI (UTF-8 Decoding)
+        const binaryString = atob(paddedBase64);
+        const decodedJson = decodeURIComponent(
+          binaryString.split('').map(function(c) {
+            return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+          }).join('')
+        );
+        
+        const keycloakData = JSON.parse(decodedJson);
 
-        // 4. Yetkiye Göre İlgili Karargaha Fırlat!
-        if (userProfile.role.includes("ADMIN")) {
+        // Keycloak'un biletindeki GERÇEK verileri al
+        const realName = keycloakData.name || (keycloakData.given_name ? `${keycloakData.given_name} ${keycloakData.family_name}` : null);
+        const realEmail = keycloakData.email;
+
+        // 4. Backend'den gelen veriyi, Token'dan gelen GERÇEK veriyle harmanla
+        const finalProfile = {
+          ...backendProfile,
+          // Eğer token'da isim varsa onu kullan, yoksa backend'in dediğini kullan
+          profileName: realName || backendProfile.profileName, 
+          email: realEmail || backendProfile.email
+        };
+
+        // 5. Zustand Kapsülüne (State) GERÇEK PROFİLİ Kaydet
+        login(finalProfile, token);
+
+        // 6. Yetkiye Göre İlgili Karargaha Fırlat!
+        if (finalProfile.role.includes("ADMIN")) {
           router.push("/admin/dashboard");
-        } else if (userProfile.role.includes("CORPORATE_MANAGER")) {
+        } else if (finalProfile.role.includes("CORPORATE_MANAGER")) {
           router.push("/company/dashboard");
         } else {
           router.push("/user/dashboard");
         }
         
-        router.refresh(); // Önbelleği temizle, Proxy'yi tetikle!
+        router.refresh();
 
       } catch (err) {
         console.error("Senkronizasyon Hatası:", err);
