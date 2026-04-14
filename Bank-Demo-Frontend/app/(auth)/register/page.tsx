@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import ReCAPTCHA from "react-google-recaptcha"; // 🚀 YENİ MÜHİMMAT
 import { authService } from "@/services/auth.service";
 import { Role } from "@/types";
 import { Button } from "@/components/ui/button";
@@ -14,11 +15,12 @@ import { toast } from "sonner";
 
 export default function RegisterPage() {
   const router = useRouter();
+  const recaptchaRef = useRef<ReCAPTCHA>(null); // 🚀 CAPTCHA REFERANSI
   
   const [accountType, setAccountType] = useState<"RETAIL" | "CORPORATE">("RETAIL");
-  
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null); // 🚀 CAPTCHA BİLETİ
 
   const [formData, setFormData] = useState({
     identityNumber: "",
@@ -34,9 +36,21 @@ export default function RegisterPage() {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
+  const onCaptchaChange = (token: string | null) => {
+    setCaptchaToken(token);
+    if (token) setError(""); // Token alındıysa robot hatasını sil
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+
+    // 🚀 SİBER KALKAN KONTROLÜ: Robot mu İnsan mı?
+    if (!captchaToken) {
+      setError("Güvenlik ihlali: Lütfen robot olmadığınızı doğrulayın!");
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -47,6 +61,7 @@ export default function RegisterPage() {
         email: formData.email,
         password: formData.password,
         role,
+        captchaToken, // 🚀 Karargaha (Backend) iletilecek güvenlik bileti
         ...(accountType === "RETAIL" 
             ? { firstName: formData.firstName, lastName: formData.lastName } 
             : { companyName: formData.companyName, taxOffice: formData.taxOffice }
@@ -60,6 +75,9 @@ export default function RegisterPage() {
       
     } catch (err: any) {
       setError(err.response?.data?.message || "Kayıt işlemi başarısız oldu. Bilgilerinizi kontrol edin.");
+      // Hata alırsak CAPTCHA'yı sıfırla ki adam tekrar işaretlesin
+      recaptchaRef.current?.reset();
+      setCaptchaToken(null);
     } finally {
       setLoading(false);
     }
@@ -67,7 +85,6 @@ export default function RegisterPage() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-4 py-12">
-      
       <div className="w-full max-w-lg mb-4">
         <Link href="/" className="inline-flex items-center text-sm font-semibold text-slate-500 hover:text-blue-600 transition-colors">
           <ArrowLeft className="w-4 h-4 mr-2" />
@@ -89,7 +106,6 @@ export default function RegisterPage() {
         </CardHeader>
         
         <CardContent className="pt-6 bg-white">
-          {/* 🚀 DÜZELTME: variant="ghost" ile shadcn default kararma efekti kaldırıldı */}
           <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1 rounded-lg mb-6">
             <Button
               type="button"
@@ -125,18 +141,15 @@ export default function RegisterPage() {
               </div>
             )}
 
-            {/* --- BİREYSEL FORM ALANLARI --- */}
             {accountType === "RETAIL" && (
               <>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="firstName" className="text-slate-700 font-bold">Ad</Label>
-                    {/* 🚀 DÜZELTME: Placeholder eklendi */}
                     <Input id="firstName" name="firstName" placeholder="Örn: Ahmet" value={formData.firstName} onChange={handleInputChange} required disabled={loading} className="bg-slate-50" />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="lastName" className="text-slate-700 font-bold">Soyad</Label>
-                    {/* 🚀 DÜZELTME: Placeholder eklendi */}
                     <Input id="lastName" name="lastName" placeholder="Örn: Yılmaz" value={formData.lastName} onChange={handleInputChange} required disabled={loading} className="bg-slate-50" />
                   </div>
                 </div>
@@ -147,7 +160,6 @@ export default function RegisterPage() {
               </>
             )}
 
-            {/* --- KURUMSAL FORM ALANLARI --- */}
             {accountType === "CORPORATE" && (
               <>
                 <div className="space-y-2">
@@ -167,7 +179,6 @@ export default function RegisterPage() {
               </>
             )}
 
-            {/* --- ORTAK ALANLAR --- */}
             <div className="space-y-2">
               <Label htmlFor="email" className="text-slate-700 font-bold">E-posta Adresi</Label>
               <Input id="email" name="email" type="email" placeholder="ornek@mail.com" value={formData.email} onChange={handleInputChange} required disabled={loading} className="bg-slate-50" />
@@ -176,6 +187,16 @@ export default function RegisterPage() {
             <div className="space-y-2">
               <Label htmlFor="password" className="text-slate-700 font-bold">Dijital Şifre</Label>
               <Input id="password" name="password" type="password" placeholder="En az 6 karakter" value={formData.password} onChange={handleInputChange} required disabled={loading} className="bg-slate-50 font-mono" />
+            </div>
+
+            {/* 🚀 GOOGLE RECAPTCHA KUTUCUĞU EKLENDİ */}
+            <div className="flex justify-center pt-2">
+              <ReCAPTCHA
+                ref={recaptchaRef}
+                sitekey={process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY || "6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI"} 
+                onChange={onCaptchaChange}
+                hl="tr"
+              />
             </div>
             
             <Button 

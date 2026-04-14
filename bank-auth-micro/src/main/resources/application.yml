@@ -41,3 +41,6 @@ keycloak:
   realm: bank-realm
   client-id: bank-auth-client
   client-secret: PJqdHOdCoRbNe5dFNATs1kZxSrrYQTel
+
+recaptcha:
+  secret: 6Leoc7UsAAAAAOCNi4MbvWjySbcNejwyD4axgfOB

@@ -12,6 +12,7 @@ import com.mustafa.messaging.publisher.RabbitMQPublisher;
 import com.mustafa.repository.IAppUserRepository;
 import com.mustafa.repository.IRetailCustomerRepository;
 import com.mustafa.service.IAuthService;
+import com.mustafa.service.ICaptchaService; // 🚀 Siber Kalkan Arayüzü
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -35,9 +36,10 @@ public class AuthServiceImpl implements IAuthService {
     private final IRetailCustomerRepository retailCustomerRepository;
     private final RabbitMQPublisher rabbitPublisher;
     private final CompanyServiceClient companyServiceClient;
-
-    // 🚀 YENİ: Keycloak Telsizi
     private final Keycloak keycloak;
+
+    // 🚀 SİBER KALKAN (Interface üzerinden güvenli bağlantı)
+    private final ICaptchaService captchaService;
 
     @Value("${keycloak.realm}")
     private String realm;
@@ -53,26 +55,33 @@ public class AuthServiceImpl implements IAuthService {
         String maskedId = maskIdentity(request.getIdentityNumber());
         log.info("Kayıt işlemi başlatıldı. Kimlik/Vergi No: {}, Rol: {}", maskedId, request.getRole());
 
+        // 🚀 0. ADIM: SİBER KALKAN KONTROLÜ (Veritabanına gitmeden önce fail-fast)
+        boolean isHuman = captchaService.verifyToken(request.getCaptchaToken());
+        if (!isHuman) {
+            log.warn("Saldırı Engellendi: {} kimlik numaralı kayıt isteği Google Captcha testini geçemedi!", maskedId);
+            throw new BankOperationException("Güvenlik doğrulaması başarısız! Lütfen robot olmadığınızı kanıtlayıp tekrar deneyin.");
+        }
+
         // 1. KONTROL (Kendi veritabanımızda var mı?)
         if (appUserRepository.existsByIdentityNumber(request.getIdentityNumber())) {
             log.warn("Kayıt Reddedildi: {} kimlik numarası sistemde zaten mevcut!", maskedId);
             throw new BankOperationException("Bu Kimlik/Vergi Numarası sistemde zaten kayıtlı!");
         }
 
-        // 🚀 2. BÜYÜK DEĞİŞİM: Önce Keycloak'a adamı kaydet ve UUID'sini al!
+        // 2. KEYCLOAK KAYDI: Önce Nüfus Müdürlüğüne (Keycloak) adamı kaydet ve UUID'sini al!
         String keycloakId = createKeycloakUser(request);
 
-        // 3. Merkezi Kimliği (AppUser) Kendi Veritabanımızda Oluştur
+        // 3. MERKEZİ KİMLİK: (AppUser) Kendi Veritabanımızda Oluştur
         AppUser appUser = AppUser.builder()
                 .identityNumber(request.getIdentityNumber())
-                .keycloakId(keycloakId) // ARTIK ŞİFRE DEĞİL, KEYCLOAK ID TUTUYORUZ!
+                .keycloakId(keycloakId) // Şifre değil, Keycloak ID tutuyoruz
                 .role(AppUser.Role.valueOf(request.getRole()))
                 .status(AppUser.ApprovalStatus.PENDING)
                 .build();
         appUserRepository.save(appUser);
         log.info("Merkezi kullanıcı (AppUser) başarıyla oluşturuldu. ID: {}", appUser.getId());
 
-        // 4. Bireysel / Kurumsal Fabrika Mantığı (Aynen Kalıyor)
+        // 4. BİREYSEL / KURUMSAL AYRIMI
         if (appUser.getRole() == AppUser.Role.RETAIL_CUSTOMER) {
             if (retailCustomerRepository.existsByEmail(request.getEmail())) {
                 log.warn("Kayıt Reddedildi: {} e-posta adresi bireysel hesaplar için kullanımda!", request.getEmail());
@@ -108,7 +117,7 @@ public class AuthServiceImpl implements IAuthService {
             throw new BankOperationException("Geçersiz veya yetkisiz rol seçimi!");
         }
 
-        // 5. Karşılama Mesajını Fırlat
+        // 5. KARŞILAMA MESAJI (RabbitMQ)
         NotificationMessage welcomeMessage = NotificationMessage.builder()
                 .destination(request.getEmail())
                 .subject("Bankamıza Hoş Geldiniz")
@@ -118,14 +127,14 @@ public class AuthServiceImpl implements IAuthService {
                 .build();
         rabbitPublisher.sendNotification(welcomeMessage);
 
-        // 🚀 6. SONUÇ: Artık token üretmiyoruz! Frontend'e sadece başarılı mesajı dönüyoruz.
+        // 6. SONUÇ: Başarılı mesajı dön (Token artık Keycloak'tan alınacak)
         return AuthResponse.builder()
-                .token("") // Token artık yok, boş bırakıyoruz. Müşteri gidip Keycloak'tan giriş yapacak.
+                .token("")
                 .message("Kayıt işlemi başarıyla gerçekleşti. Güvenlik ekranından giriş yapabilirsiniz.")
                 .build();
     }
 
-    // 🚀 KEYCLOAK YARDIMCI METODU (İmportları temizlenmiş hali)
+    // 🚀 KEYCLOAK YARDIMCI METODU
     private String createKeycloakUser(RegisterRequest request) {
 
         UserRepresentation user = new UserRepresentation();

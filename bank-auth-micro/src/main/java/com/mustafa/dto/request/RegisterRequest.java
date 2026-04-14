@@ -30,4 +30,8 @@ public class RegisterRequest {
     // --- KURUMSAL ŞİRKET İÇİN GEREKLİ ALANLAR ---
     private String companyName;
     private String taxOffice;
+
+    // 🚀 SİBER KALKAN BİLETİ
+    @NotBlank(message = "Güvenlik doğrulaması (Captcha) eksik! Lütfen robot olmadığınızı kanıtlayın.")
+    private String captchaToken;
 }
