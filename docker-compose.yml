@@ -102,6 +102,9 @@ services:
       - discovery-server
       - bill-service 
       - auth-service
+      - redis # 🚀 EKLENDİ: Önce Redis ayağa kalksın ki telsiz kopmasın
+    environment: # 🚀 EKLENDİ: Gateway'e Redis'in koordinatlarını veriyoruz
+      - REDIS_HOST=redis 
     ports:
       - "8081:8081" 
     networks:

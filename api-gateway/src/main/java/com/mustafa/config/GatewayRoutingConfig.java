@@ -1,5 +1,6 @@
 package com.mustafa.config;
 
+import org.springframework.cloud.gateway.filter.ratelimit.RedisRateLimiter;
 import org.springframework.cloud.gateway.route.RouteLocator;
 import org.springframework.cloud.gateway.route.builder.RouteLocatorBuilder;
 import org.springframework.context.annotation.Bean;
@@ -8,7 +9,23 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class GatewayRoutingConfig {
 
-    // 🗺️ KUSURSUZ HARİTA MERKEZİ (V5.2 - KEYCLOAK DEVRİMİ)
+    // Radarımızı buraya çağırıyoruz
+    private final RateLimitConfig rateLimitConfig;
+
+    public GatewayRoutingConfig(RateLimitConfig rateLimitConfig) {
+        this.rateLimitConfig = rateLimitConfig;
+    }
+
+    /**
+     * 🛡️ ÖZEL JETON KOVASI (Siber Kalkan Mühimmatı)
+     * Saniyede 1 jeton dolar, kova en fazla 3 jeton alır.
+     */
+    @Bean
+    public RedisRateLimiter authRateLimiter() {
+        return new RedisRateLimiter(1, 3);
+    }
+
+    // 🗺️ KUSURSUZ HARİTA MERKEZİ (V6.0 - RATE LIMIT DEVRİMİ)
     @Bean
     public RouteLocator customRouteLocator(RouteLocatorBuilder builder) {
         return builder.routes()
@@ -32,8 +49,20 @@ public class GatewayRoutingConfig {
                 .route("auth-admin-route", r -> r.path("/api/v1/admin/customers/**")
                         .uri("http://auth-service:8086"))
 
-                // 6. KİMLİK ÜSSÜ (Kayıt ve Bireysel Profil)
-                .route("auth-service-route", r -> r.path("/api/v1/auth/**", "/api/v1/customers/**")
+                // ==========================================
+                // 6-A: 🛡️ SİBER KALKANLI AUTH ROTASI (Login/Register)
+                // ==========================================
+                .route("auth-service-login-route", r -> r.path("/api/v1/auth/**")
+                        .filters(f -> f.requestRateLimiter(config -> {
+                            config.setRateLimiter(authRateLimiter());
+                            config.setKeyResolver(rateLimitConfig.ipKeyResolver());
+                        }))
+                        .uri("http://auth-service:8086"))
+
+                // ==========================================
+                // 6-B: 🔓 SERBEST MÜŞTERİ PROFİL ROTASI
+                // ==========================================
+                .route("customer-profile-route", r -> r.path("/api/v1/customers/**")
                         .uri("http://auth-service:8086"))
 
                 // 7. KARARGAH: Geri kalan her şey
