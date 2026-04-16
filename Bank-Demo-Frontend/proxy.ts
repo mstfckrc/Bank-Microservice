@@ -4,11 +4,12 @@ import type { NextRequest } from 'next/server';
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const token = request.cookies.get('token')?.value;
+  const idToken = request.cookies.get('id_token')?.value; // Çıkış için eklendi
 
   const isAuthRoute = pathname.startsWith('/login') || pathname.startsWith('/register');
   const isAdminRoute = pathname.startsWith('/admin');
   const isUserRoute = pathname.startsWith('/user') || pathname.startsWith('/dashboard');
-  const isCompanyRoute = pathname.startsWith('/company'); // 🚀 YENİ: Kurumsal rota tanımı
+  const isCompanyRoute = pathname.startsWith('/company');
 
   // 1. Token Yoksa: Korumalı alanlara girişi engelle
   if (!token) {
@@ -18,7 +19,7 @@ export function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // 2. Token Varsa: Rolü kontrol et
+  // 2. Token Varsa: Rolü ve SÜREYİ kontrol et
   try {
     const payloadBase64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
     const pad = payloadBase64.length % 4;
@@ -27,34 +28,47 @@ export function proxy(request: NextRequest) {
     const decodedJson = atob(paddedBase64);
     const payload = JSON.parse(decodedJson);
     
-    // 🚀 BÜYÜK DEĞİŞİM: Rolleri Keycloak'un derinliklerinden ("realm_access.roles") söküp alıyoruz!
+    // 🚀 SÜRE KONTROLÜ (Expiration Check)
+    const currentTimestamp = Math.floor(Date.now() / 1000);
+    if (payload.exp && payload.exp < currentTimestamp) {
+      // Token ölmüş! Keycloak çıkış URL'sini hazırla
+      const keycloakUrl = process.env.NEXT_PUBLIC_KEYCLOAK_URL || "http://localhost:9090";
+      const redirectUri = encodeURIComponent("http://localhost:3000/"); // Anasayfaya döner
+      let logoutUrl = `${keycloakUrl}/realms/bank-realm/protocol/openid-connect/logout?post_logout_redirect_uri=${redirectUri}&client_id=bank-auth-client`;
+      
+      if (idToken) {
+        logoutUrl += `&id_token_hint=${idToken}`;
+      }
+
+      // Çerezleri sil ve doğrudan Keycloak'a fırlat
+      const response = NextResponse.redirect(logoutUrl);
+      response.cookies.delete('token');
+      response.cookies.delete('id_token');
+      return response;
+    }
+
+    // Süre dolmamışsa rollere bakmaya devam et
     const roles: string[] = payload.realm_access?.roles || [];
-    
     const isAdmin = roles.includes("ADMIN");
     const isCorporate = roles.includes("CORPORATE_MANAGER");
 
-    // Giriş/Kayıt sayfalarındayken zaten giriş yapılmışsa, yetkisine göre doğru panele at
     if (isAuthRoute) {
-      let redirectUrl = '/user/dashboard'; // Varsayılan Bireysel
+      let redirectUrl = '/user/dashboard'; 
       if (isAdmin) redirectUrl = '/admin/dashboard';
-      if (isCorporate) redirectUrl = '/company/dashboard'; // 🚀 YENİ: Kurumsal yönlendirme
+      if (isCorporate) redirectUrl = '/company/dashboard'; 
       
       return NextResponse.redirect(new URL(redirectUrl, request.url));
     }
 
     // --- YETKİ DUVARLARI ---
-
-    // Admin sayfasına sadece ADMIN girebilir
     if (isAdminRoute && !isAdmin) {
       return NextResponse.redirect(new URL('/login', request.url));
     }
 
-    // Kurumsal sayfasına sadece CORPORATE_MANAGER girebilir
     if (isCompanyRoute && !isCorporate) {
       return NextResponse.redirect(new URL('/user/dashboard', request.url));
     }
 
-    // Bireysel sayfasına ADMIN veya CORPORATE girerse onları kendi panellerine yolla
     if (isUserRoute) {
        if (isAdmin) return NextResponse.redirect(new URL('/admin/dashboard', request.url));
        if (isCorporate) return NextResponse.redirect(new URL('/company/dashboard', request.url));
@@ -64,13 +78,13 @@ export function proxy(request: NextRequest) {
     console.error("Middleware Token Çözme Hatası:", error);
     const response = NextResponse.redirect(new URL('/login', request.url));
     response.cookies.delete('token');
+    response.cookies.delete('id_token');
     return response;
   }
 
   return NextResponse.next();
 }
 
-// 🚀 KRİTİK GÜNCELLEME: Matcher listesine /company eklendi
 export const config = {
   matcher: [
     '/login', 
@@ -78,6 +92,6 @@ export const config = {
     '/admin/:path*', 
     '/user/:path*', 
     '/dashboard/:path*', 
-    '/company/:path*' // <-- Burası eklendi!
+    '/company/:path*'
   ],
 };

@@ -2,7 +2,9 @@ package com.mustafa.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
 import org.springframework.core.convert.converter.Converter;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AbstractAuthenticationToken;
 import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
@@ -12,6 +14,8 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.ReactiveJwtAuthenticationConverterAdapter;
 import org.springframework.security.web.server.SecurityWebFilterChain;
+import org.springframework.security.web.server.util.matcher.OrServerWebExchangeMatcher;
+import org.springframework.security.web.server.util.matcher.ServerWebExchangeMatchers;
 import reactor.core.publisher.Mono;
 
 import java.util.Collection;
@@ -23,20 +27,43 @@ import java.util.stream.Collectors;
 @EnableWebFluxSecurity
 public class SecurityConfig {
 
+    // -------------------------------------------------------------------
+    // 🟢 1. KAPI: SİVİL BÖLGE (Öncelik 1)
+    // Sadece OPTIONS istekleri, Auth işlemleri, Kurlar ve Eureka buraya düşer.
+    // -------------------------------------------------------------------
     @Bean
-    public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
+    @Order(1)
+    public SecurityWebFilterChain publicFilterChain(ServerHttpSecurity http) {
+        http
+                // Hata veren kısmı ServerWebExchangeMatchers fabrikası ile çözdük:
+                .securityMatcher(new OrServerWebExchangeMatcher(
+                        ServerWebExchangeMatchers.pathMatchers(HttpMethod.OPTIONS, "/**"), // CORS Preflight için serbest geçiş
+                        ServerWebExchangeMatchers.pathMatchers(
+                                "/api/v1/auth/**",
+                                "/api/v1/currencies/**",
+                                "/eureka/**"
+                        )
+                ))
+                .csrf(ServerHttpSecurity.CsrfSpec::disable)
+                .cors(ServerHttpSecurity.CorsSpec::disable)
+                .authorizeExchange(exchanges -> exchanges.anyExchange().permitAll());
+        // DİKKAT: .oauth2ResourceServer() BURADA YOK. Bu sayede ölü token hata verdirmez.
+
+        return http.build();
+    }
+
+    // -------------------------------------------------------------------
+    // 🔴 2. KAPI: ASKERİ BÖLGE (Öncelik 2 - Varsayılan Kapı)
+    // Sivil olmayan her istek (Transferler, Profiller vb.) buraya düşer.
+    // -------------------------------------------------------------------
+    @Bean
+    @Order(2)
+    public SecurityWebFilterChain securedFilterChain(ServerHttpSecurity http) {
         http
                 .csrf(ServerHttpSecurity.CsrfSpec::disable)
                 .cors(ServerHttpSecurity.CorsSpec::disable)
-                .authorizeExchange(exchanges -> exchanges
-                        .pathMatchers(org.springframework.http.HttpMethod.OPTIONS).permitAll()
-                        .pathMatchers("/api/v1/auth/register").permitAll()
-                        .pathMatchers("/api/v1/auth/login").permitAll()
-                        .pathMatchers("/api/v1/currencies/rates").permitAll()
-                        .pathMatchers("/eureka/**").permitAll()
-                        .anyExchange().authenticated()
-                )
-                // 🚀 BÜYÜK DEĞİŞİM: Artık token'ı düz okuma, "Tercüman" (grantedAuthoritiesExtractor) kullan!
+                .authorizeExchange(exchanges -> exchanges.anyExchange().authenticated())
+                // Token kontrolü ve Keycloak Tercümanı burada devreye girer
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(grantedAuthoritiesExtractor()))
                 );
@@ -45,8 +72,6 @@ public class SecurityConfig {
     }
 
     // 🕵️‍♂️ KEYCLOAK TERCÜMANI (Translator)
-    // Keycloak biletindeki gizli "realm_access" kasasını kırar, içindeki rolleri alır
-    // ve Spring'in anlayacağı "ROLE_ADMIN" formatına çevirir.
     @Bean
     public Converter<Jwt, Mono<AbstractAuthenticationToken>> grantedAuthoritiesExtractor() {
         JwtAuthenticationConverter jwtAuthenticationConverter = new JwtAuthenticationConverter();

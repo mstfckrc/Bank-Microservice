@@ -1,6 +1,6 @@
 import axios from 'axios';
 import Cookies from 'js-cookie';
-import { toast } from 'sonner'; // 🚀 Bildirimler için eklendi
+import { toast } from 'sonner';
 
 // 1. Temel Axios Kopyamız
 const api = axios.create({
@@ -24,30 +24,42 @@ api.interceptors.request.use(
 
 // 3. YANIT (RESPONSE) INTERCEPTOR
 api.interceptors.response.use(
-  (response) => response, // Başarılı cevapları olduğu gibi geçir
+  (response) => response, 
   (error) => {
     const isLoginRequest = error.config?.url?.includes('/login');
     const status = error.response?.status;
     const message = error.response?.data?.message || "Beklenmedik bir hata oluştu.";
 
-    // 🚀 MERKEZİ HATA BİLDİRİMİ (Global Toast)
-    // 401 ve 403 hatalarını zaten aşağıda redirect ile yönetiyoruz, 
-    // onlar dışındaki tüm hataları (400, 404, 500 vb.) burada kullanıcıya patlatıyoruz.
+    // 401 ve 403 DIŞINDAKİ Hatalar
     if (status !== 401 && status !== 403) {
       toast.error("İşlem Başarısız", {
         description: message,
       });
     }
 
-    // 401 veya 403 Hataları (Yetki Sorunları)
+    // 🚀 401 veya 403 Hataları (Yetki Sorunları) -> KEYCLOAK ÇIKIŞI
     if (status === 401 || status === 403) {
       if (!isLoginRequest) {
-        // Eğer zaten login sayfasında değilsek dışarı at
+        const idToken = Cookies.get('id_token');
+        
+        // Kendi iç çerezlerimizi temizle
         Cookies.remove('token');
+        Cookies.remove('id_token');
+        
         if (typeof window !== 'undefined') {
-          // Toast ile bilgi verip yönlendir
           toast.error("Oturum Geçersiz", { description: "Lütfen tekrar giriş yapın." });
-          window.location.href = '/login';
+          
+          // Keycloak Çıkış URL'si Hazırlığı
+          const keycloakUrl = process.env.NEXT_PUBLIC_KEYCLOAK_URL || "http://localhost:9090";
+          const redirectUri = encodeURIComponent("http://localhost:3000/"); // Anasayfaya döner
+          let logoutUrl = `${keycloakUrl}/realms/bank-realm/protocol/openid-connect/logout?post_logout_redirect_uri=${redirectUri}&client_id=bank-auth-client`;
+          
+          if (idToken) {
+            logoutUrl += `&id_token_hint=${idToken}`;
+          }
+
+          // Adamı siteden kopar ve Keycloak'a fırlat
+          window.location.href = logoutUrl;
         }
       }
     }
