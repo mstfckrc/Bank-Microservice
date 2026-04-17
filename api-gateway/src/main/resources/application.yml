@@ -13,7 +13,10 @@ spring:
           issuer-uri: http://localhost:9090/realms/bank-realm
           # 2. Gateway'in anahtarları indirmek için İÇ AĞDAN gideceği gerçek adres
           jwk-set-uri: http://keycloak:8080/realms/bank-realm/protocol/openid-connect/certs
-
+  data:
+    redis:
+      host: redis
+      port: 6379
   cloud:
     gateway:
       globalcors:

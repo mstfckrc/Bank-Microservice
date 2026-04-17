@@ -102,6 +102,10 @@ services:
       - discovery-server
       - bill-service 
       - auth-service
+      - redis # 🚀 YENİ: Redis ayağa kalkmadan Gateway kalkmasın
+    environment:
+      - SPRING_REDIS_HOST=redis # 🚀 YENİ: Redis'in adresi
+      - SPRING_REDIS_PORT=6379
     ports:
       - "8081:8081" 
     networks:

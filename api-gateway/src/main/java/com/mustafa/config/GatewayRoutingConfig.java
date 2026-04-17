@@ -1,5 +1,7 @@
 package com.mustafa.config;
 
+import org.springframework.cloud.gateway.filter.ratelimit.KeyResolver;
+import org.springframework.cloud.gateway.filter.ratelimit.RedisRateLimiter;
 import org.springframework.cloud.gateway.route.RouteLocator;
 import org.springframework.cloud.gateway.route.builder.RouteLocatorBuilder;
 import org.springframework.context.annotation.Bean;
@@ -7,6 +9,15 @@ import org.springframework.context.annotation.Configuration;
 
 @Configuration
 public class GatewayRoutingConfig {
+
+    private final KeyResolver ipKeyResolver;
+    private final RedisRateLimiter redisRateLimiter; // 🚀 Kalkanı içeri aldık
+
+    // 🚀 Constructor Injection ile Spring'den kalkanları istedik
+    public GatewayRoutingConfig(KeyResolver ipKeyResolver, RedisRateLimiter redisRateLimiter) {
+        this.ipKeyResolver = ipKeyResolver;
+        this.redisRateLimiter = redisRateLimiter;
+    }
 
     @Bean
     public RouteLocator customRouteLocator(RouteLocatorBuilder builder) {
@@ -31,7 +42,15 @@ public class GatewayRoutingConfig {
                 .route("auth-admin-route", r -> r.path("/api/v1/admin/customers/**")
                         .uri("http://auth-service:8086"))
 
-                // 6. KİMLİK ÜSSÜ (Kayıt ve Bireysel Profil - FİLTREDEN ARINDIRILDI ✅)
+                // 🛡️ 6.A KİMLİK ÜSSÜ (SADECE REGISTER - HIZ SINIRI KALKANI EKLENDİ)
+                .route("auth-register-route", r -> r.path("/api/v1/auth/register")
+                        .filters(f -> f.requestRateLimiter(c -> c
+                                .setRateLimiter(redisRateLimiter) // 🚀 ARTIK NEW YOK, BEAN VAR!
+                                .setKeyResolver(ipKeyResolver)
+                        ))
+                        .uri("http://auth-service:8086"))
+
+                // 🔓 6.B KİMLİK ÜSSÜ (GERİ KALANLAR - FİLTREDEN ARINDIRILDI ✅)
                 .route("auth-service-route", r -> r.path("/api/v1/auth/**", "/api/v1/customers/**")
                         .uri("http://auth-service:8086"))
 
