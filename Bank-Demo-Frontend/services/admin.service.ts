@@ -68,5 +68,16 @@ export const adminService = {
   rejectTransaction: async (referenceNo: string): Promise<TransactionResponse> => {
     const response = await api.put(`/admin/transactions/${referenceNo}/reject`);
     return response.data;
-  }
+  },
+
+  // --- İSTİHBARAT (LOG YÖNETİMİ) ---
+  getSystemLogs: async (limit: number = 100, level?: string): Promise<any[]> => {
+    const response = await api.get<any[]>('/admin/logs', {
+      params: { 
+        limit, 
+        level: level === 'ALL' ? undefined : level 
+      }
+    });
+    return response.data;
+  },
 };

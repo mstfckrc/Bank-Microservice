@@ -2,10 +2,9 @@ package com.mustafa.controller.impl;
 
 import com.mustafa.controller.IAdminController;
 import com.mustafa.dto.request.OpenAccountRequest;
-import com.mustafa.dto.request.UpdateProfileRequest;
 import com.mustafa.dto.response.AccountResponse;
+import com.mustafa.dto.response.SystemLogResponse;
 import com.mustafa.dto.response.TransactionResponse;
-import com.mustafa.dto.response.UserProfileResponse;
 import com.mustafa.service.IAdminService;
 import com.mustafa.service.ITransactionService;
 import lombok.RequiredArgsConstructor;
@@ -13,9 +12,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 @Slf4j // 🚀 LOGGER AKTİF
 @RestController
@@ -76,5 +73,16 @@ public class AdminControllerImpl implements IAdminController {
     public ResponseEntity<TransactionResponse> rejectTransaction(@PathVariable String referenceNo) {
         log.info("REST İsteği: Admin tarafından MASAK limitli işlem ({}) REDDEDİLİYOR.", referenceNo);
         return ResponseEntity.ok(transactionService.rejectTransaction(referenceNo));
+    }
+
+    // --- 🚀 YENİ: İSTİHBARAT (LOG) İZLEME ---
+    @Override
+    @GetMapping("/logs")
+    public ResponseEntity<List<SystemLogResponse>> getSystemLogs(
+            @RequestParam(defaultValue = "100") int limit,
+            @RequestParam(required = false) String level) {
+
+        log.info("REST İsteği: Admin tarafından Elasticsearch logları çekiliyor. Limit: {}, Seviye: {}", limit, level != null ? level : "ALL");
+        return ResponseEntity.ok(adminService.getSystemLogs(limit, level));
     }
 }

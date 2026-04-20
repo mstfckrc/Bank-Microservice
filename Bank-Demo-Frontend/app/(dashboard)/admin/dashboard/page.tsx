@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Settings, ShieldAlert } from "lucide-react"; 
+import { Settings, ShieldAlert, Terminal } from "lucide-react"; 
 import { PageHeader } from "@/components/shared/PageHeader";
 
 export default function AdminDashboardPage() {
@@ -86,6 +86,28 @@ export default function AdminDashboardPage() {
             <Link href="/admin/settings">
               <Button className="w-full" variant="outline">
                 Ayarlara Git
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+
+        {/* Sistem Logları Kartı (İstihbarat) */}
+        <Card className="hover:border-slate-300 transition-colors flex flex-col h-full relative overflow-hidden">
+          <div className="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-blue-500/10 rounded-full blur-2xl pointer-events-none"></div>
+          
+          <CardHeader className="flex-1">
+            <div className="flex items-center gap-2 mb-1">
+              <Terminal className="w-5 h-5 text-blue-600" />
+              <CardTitle>İstihbarat Merkezi (Loglar)</CardTitle>
+            </div>
+            <CardDescription>
+              Mikroservis ağında akan tüm anlık verileri, hataları ve sistem loglarını izle.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Link href="/admin/logs">
+              <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white">
+                Terminali Aç
               </Button>
             </Link>
           </CardContent>
