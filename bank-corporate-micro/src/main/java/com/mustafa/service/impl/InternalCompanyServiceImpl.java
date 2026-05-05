@@ -76,4 +76,19 @@ public class InternalCompanyServiceImpl implements IInternalCompanyService {
         companyRepository.delete(company);
         log.info("SERVICE: Kurumsal firma ({}) ve bağlı tüm çalışanları başarıyla silindi.", identityNumber);
     }
+
+    // 🚀 YENİ EKLENDİ: Karargahın bilgi okuyabilmesi için
+    @Override
+    @Transactional(readOnly = true)
+    public CompanySyncRequest getCompanyInfo(String identityNumber) {
+        Company company = companyRepository.findByCompanyIdentityNumber(identityNumber)
+                .orElseThrow(() -> new BankOperationException("Kurumsal firma bulunamadı!"));
+
+        return CompanySyncRequest.builder()
+                .companyIdentityNumber(company.getCompanyIdentityNumber())
+                .companyName(company.getCompanyName())
+                .taxOffice(company.getTaxOffice())
+                .contactEmail(company.getContactEmail())
+                .build();
+    }
 }

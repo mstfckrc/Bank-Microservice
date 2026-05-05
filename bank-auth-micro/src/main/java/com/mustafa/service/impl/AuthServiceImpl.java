@@ -141,8 +141,15 @@ public class AuthServiceImpl implements IAuthService {
         user.setUsername(request.getIdentityNumber());
         user.setEmail(request.getEmail());
 
-        if (request.getFirstName() != null) user.setFirstName(request.getFirstName());
-        if (request.getLastName() != null) user.setLastName(request.getLastName());
+        // 🚀 TAKTİK 1: Kurumsal şirketleri Keycloak'ta isimsiz bırakmıyoruz (Kapıdaki Formu Engelleme)
+        if (AppUser.Role.CORPORATE_MANAGER.name().equals(request.getRole())) {
+            user.setFirstName(request.getCompanyName() != null ? request.getCompanyName() : "Bilinmeyen Şirket");
+            user.setLastName("Kurumsal");
+        } else {
+            if (request.getFirstName() != null) user.setFirstName(request.getFirstName());
+            if (request.getLastName() != null) user.setLastName(request.getLastName());
+        }
+
         user.setEnabled(true);
 
         CredentialRepresentation credential = new CredentialRepresentation();
@@ -163,6 +170,21 @@ public class AuthServiceImpl implements IAuthService {
         String keycloakUserId = path.substring(path.lastIndexOf('/') + 1);
 
         log.info("Keycloak kaydı başarılı. Üretilen Keycloak ID: {}", keycloakUserId);
+
+        // 🚀 DÜZELTME: Middleware'in (Frontend) doğru yönlendirme yapabilmesi için Rol/Rütbe Ataması!
+        try {
+            org.keycloak.representations.idm.RoleRepresentation realmRole = 
+                    keycloak.realm(realm).roles().get(request.getRole()).toRepresentation();
+            
+            keycloak.realm(realm).users().get(keycloakUserId).roles().realmLevel()
+                    .add(Collections.singletonList(realmRole));
+            
+            log.info("Keycloak rol ataması başarılı: {}", request.getRole());
+        } catch (Exception e) {
+            log.error("Keycloak rol ataması sırasında hata! Rol: {}, Hata: {}", request.getRole(), e.getMessage());
+            throw new BankOperationException("Kullanıcı oluşturuldu ancak yetki (rol) atanamadı!");
+        }
+
         return keycloakUserId;
     }
 }

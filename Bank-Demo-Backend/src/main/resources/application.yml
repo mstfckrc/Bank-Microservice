@@ -6,9 +6,10 @@ spring:
     name: bank-demo-backend
 
   datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5432/bank_core_db}
-    username: ${DB_USER:postgres}
-    password: ${DB_PASS:1}
+    # 🚀 SADECE DEĞİŞKEN ADLARI:
+    url: ${DB_URL}
+    username: ${DB_USER}
+    password: ${DB_PASS}
     driver-class-name: org.postgresql.Driver
 
   jpa:
@@ -20,19 +21,21 @@ spring:
         format_sql: true
 
   rabbitmq:
-    host: ${SPRING_RABBITMQ_HOST:localhost}
-    port: ${SPRING_RABBITMQ_PORT:5672}
-    username: ${SPRING_RABBITMQ_USERNAME:admin}
-    password: ${SPRING_RABBITMQ_PASSWORD:123456}
+    # 🚀 SADECE DEĞİŞKEN ADLARI:
+    host: ${SPRING_RABBITMQ_HOST}
+    port: ${SPRING_RABBITMQ_PORT}
+    username: ${SPRING_RABBITMQ_USERNAME}
+    password: ${SPRING_RABBITMQ_PASSWORD}
 
 # 🚀 ESKİ AJANIN ŞİFRESİ (Backend'in çökmemesi için şart)
 jwt:
-  secret: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
+  secret: ${JWT_SECRET}
   expiration: 86400000 # 1 gün
 
 eureka:
   client:
     service-url:
-      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
+      # 🚀 SADECE DEĞİŞKEN ADI:
+      defaultZone: ${EUREKA_URL}
   instance:
     prefer-ip-address: true

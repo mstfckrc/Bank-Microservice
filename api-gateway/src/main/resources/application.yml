@@ -1,7 +1,6 @@
 server:
   port: 8081
 
-# 🚀 jwt.secret TAMAMEN SİLİNDİ! Yerine Keycloak Adresi geldi:
 spring:
   application:
     name: api-gateway
@@ -9,14 +8,14 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          # 1. Token'ın üstünde yazan mühür (Postman'den bu adresle aldığın için)
-          issuer-uri: http://localhost:9090/realms/bank-realm
-          # 2. Gateway'in anahtarları indirmek için İÇ AĞDAN gideceği gerçek adres
-          jwk-set-uri: http://keycloak:8080/realms/bank-realm/protocol/openid-connect/certs
+          # SADECE DEĞİŞKEN ADLARI:
+          issuer-uri: ${OAUTH_ISSUER_URI}
+          jwk-set-uri: ${KEYCLOAK_INTERNAL_URL}/realms/bank-realm/protocol/openid-connect/certs
   data:
     redis:
-      host: redis
-      port: 6379
+      # SADECE DEĞİŞKEN ADLARI:
+      host: ${SPRING_REDIS_HOST}
+      port: ${SPRING_REDIS_PORT}
   cloud:
     gateway:
       globalcors:
@@ -31,4 +30,5 @@ spring:
 eureka:
   client:
     service-url:
-      defaultZone: ${EUREKA_URL:http://discovery-server:8761/eureka/}
+      # İŞTE SENİN İSTEDİĞİN O TEMİZ YAPI:
+      defaultZone: ${EUREKA_URL}

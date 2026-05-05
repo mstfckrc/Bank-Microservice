@@ -18,4 +18,7 @@ public interface CompanyServiceClient {
     // 3. Şirket Silme (AdminUserServiceImpl kullanacak)
     @DeleteMapping("/sync/{identityNumber}")
     void deleteCompanyInfo(@PathVariable("identityNumber") String identityNumber);
+
+    @GetMapping("/sync/{identityNumber}")
+    CompanySyncRequest getCompanyInfo(@PathVariable("identityNumber") String identityNumber);
 }

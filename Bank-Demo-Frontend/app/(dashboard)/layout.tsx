@@ -28,7 +28,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
     const keycloakUrl = process.env.NEXT_PUBLIC_KEYCLOAK_URL || "http://localhost:9090";
     const realm = "bank-realm";
-    const redirectUri = encodeURIComponent("http://localhost:3000/login"); // 🚀 ESKİ YÖNLENDİRME GERİ GELDİ
+    const redirectUri = encodeURIComponent(window.location.origin + "/login"); // 🚀 ESKİ YÖNLENDİRME GERİ GELDİ
 
     let logoutUrl = `${keycloakUrl}/realms/${realm}/protocol/openid-connect/logout?post_logout_redirect_uri=${redirectUri}&client_id=bank-auth-client`;
 

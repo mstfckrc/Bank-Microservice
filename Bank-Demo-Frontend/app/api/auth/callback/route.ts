@@ -2,18 +2,17 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const code = searchParams.get('code');
 
-  // 🚀 DÜZELTME 1: Docker 0.0.0.0 hatasını önlemek için sabit ana adres
-  const baseUrl = 'http://localhost:3000';
+  // 🚀 BUKALEMUN YAPI: İsteğin geldiği asıl adresi (localhost veya 192.x) dinamik olarak yakala!
+  const requestUrl = new URL(request.url);
+  const baseUrl = process.env.NEXT_PUBLIC_FRONTEND_URL || "http://localhost:3000";
+  const code = requestUrl.searchParams.get('code');
 
   if (!code) {
     return NextResponse.redirect(new URL('/login?error=code_missing', baseUrl));
   }
 
   try {
-    // 🚀 DÜZELTME 2: Docker içindeyken iç ağ adresini (keycloak:8080) kullan
     const internalKeycloakUrl = process.env.KEYCLOAK_INTERNAL_URL || process.env.NEXT_PUBLIC_KEYCLOAK_URL;
 
     // 1. Şifreyi kullanarak Keycloak'tan Gerçek Token'ı alıyoruz!
@@ -25,8 +24,8 @@ export async function GET(request: Request) {
         client_id: process.env.KEYCLOAK_CLIENT_ID!,
         client_secret: process.env.KEYCLOAK_CLIENT_SECRET!,
         code: code,
-        // DİKKAT: redirect_uri KESİNLİKLE http://localhost:3000 kalmalı!
-        redirect_uri: 'http://localhost:3000/api/auth/callback', 
+        // 🚀 BUKALEMUN YAPI: İlk gönderdiğimiz biletle birebir aynı dinamik adresi veriyoruz!
+        redirect_uri: `${baseUrl}/api/auth/callback`,
       }),
     });
 
@@ -37,41 +36,38 @@ export async function GET(request: Request) {
     }
 
     const accessToken = tokenData.access_token;
-    const idToken = tokenData.id_token; // 🚀 YENİ: Çıkış yaparken bize lazım olacak asıl bilet!
+    const idToken = tokenData.id_token; 
 
-    // 🚀 DÜZELTME 3: Next.js 15 kuralları gereği await ile çerezi bekleme
     const cookieStore = await cookies();
     
-    // 1. Giriş Biletini (Access Token) Kaydet
     cookieStore.set({
       name: 'token',
       value: accessToken,
       httpOnly: false, 
       path: '/',
-      secure: process.env.NODE_ENV === 'production',
+      secure: false,
       sameSite: 'lax',
-      maxAge: 60 * 60 * 24, // 1 gün
+      maxAge: 60 * 60 * 24, 
     });
 
-    // 2. Çıkış Biletini (ID Token) Kaydet
     if (idToken) {
       cookieStore.set({
         name: 'id_token',
         value: idToken,
         httpOnly: false, 
         path: '/',
-        secure: process.env.NODE_ENV === 'production',
+        secure: false,
         sameSite: 'lax',
         maxAge: 60 * 60 * 24,
       });
     }
 
-    // 3. Adamı Senkronizasyon Odasına yönlendiriyoruz! (Sabit baseUrl ile)
+    // 3. Adamı Senkronizasyon Odasına yönlendiriyoruz! 
     return NextResponse.redirect(new URL('/auth-sync', baseUrl));
 
   } catch (error) {
     console.error("🚨 Keycloak Callback Hatası:", error);
-    // Hata durumunda da adamı 0.0.0.0 boşluğuna düşürmeyip sabit adrese yolluyoruz
+    // Hata olsa bile artık bizi 0.0.0.0 veya localhost'a değil, doğru IP'ye atacak!
     return NextResponse.redirect(new URL('/login?error=auth_failed', baseUrl));
   }
 }

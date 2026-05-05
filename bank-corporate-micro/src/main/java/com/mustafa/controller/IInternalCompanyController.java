@@ -12,4 +12,6 @@ public interface IInternalCompanyController {
     ResponseEntity<Void> updateCompanyInfo(@PathVariable String identityNumber, @RequestBody CompanySyncRequest request);
 
     ResponseEntity<Void> deleteCompanyInfo(@PathVariable String identityNumber);
+
+    ResponseEntity<CompanySyncRequest> getCompanyInfo(@PathVariable String identityNumber);
 }

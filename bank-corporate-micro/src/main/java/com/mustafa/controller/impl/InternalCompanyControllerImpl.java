@@ -41,4 +41,11 @@ public class InternalCompanyControllerImpl implements IInternalCompanyController
         internalCompanyService.deleteCompanyInfo(identityNumber);
         return ResponseEntity.ok().build();
     }
+
+    @Override
+    @GetMapping("/sync/{identityNumber}")
+    public ResponseEntity<CompanySyncRequest> getCompanyInfo(@PathVariable String identityNumber) {
+        log.info("CONTROLLER: Karargahtan OKUMA (GET) emri alındı. TC/VKN: {}", identityNumber);
+        return ResponseEntity.ok(internalCompanyService.getCompanyInfo(identityNumber));
+    }
 }

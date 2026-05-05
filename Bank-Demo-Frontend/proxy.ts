@@ -33,7 +33,7 @@ export function proxy(request: NextRequest) {
     if (payload.exp && payload.exp < currentTimestamp) {
       // Token ölmüş! Keycloak çıkış URL'sini hazırla
       const keycloakUrl = process.env.NEXT_PUBLIC_KEYCLOAK_URL || "http://localhost:9090";
-      const redirectUri = encodeURIComponent("http://localhost:3000/"); // Anasayfaya döner
+      const redirectUri = encodeURIComponent(request.nextUrl.origin + "/"); // Anasayfaya döner
       let logoutUrl = `${keycloakUrl}/realms/bank-realm/protocol/openid-connect/logout?post_logout_redirect_uri=${redirectUri}&client_id=bank-auth-client`;
       
       if (idToken) {

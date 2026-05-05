@@ -11,8 +11,8 @@ services:
     image: postgres:15-alpine
     container_name: bank_postgres_core
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: 1
+      POSTGRES_USER: ${CORE_DB_USER}
+      POSTGRES_PASSWORD: ${CORE_DB_PASS}
       POSTGRES_DB: bank_core_db
     ports:
       - "5432:5432"
@@ -25,11 +25,11 @@ services:
     image: postgres:15-alpine
     container_name: bank_postgres_auth
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: 1
+      POSTGRES_USER: ${AUTH_DB_USER}
+      POSTGRES_PASSWORD: ${AUTH_DB_PASS}
       POSTGRES_DB: bank_auth_db
     ports:
-      - "5434:5432" # Dışarıya 5434, içeriye 5432
+      - "5434:5432" 
     volumes:
       - pgdata_auth:/var/lib/postgresql/data
     networks:
@@ -39,8 +39,8 @@ services:
     image: postgres:15-alpine
     container_name: bank_postgres_bill
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: 1
+      POSTGRES_USER: ${BILL_DB_USER}
+      POSTGRES_PASSWORD: ${BILL_DB_PASS}
       POSTGRES_DB: bank_bill_db
     ports:
       - "5435:5432"
@@ -53,8 +53,8 @@ services:
     image: postgres:15-alpine
     container_name: bank_postgres_corporate
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: 1
+      POSTGRES_USER: ${CORP_DB_USER}
+      POSTGRES_PASSWORD: ${CORP_DB_PASS}
       POSTGRES_DB: bank_corporate_db
     ports:
       - "5436:5432"
@@ -62,7 +62,7 @@ services:
       - pgdata_corporate:/var/lib/postgresql/data
     networks:
       - bank-network-micro
-
+    
   # ==========================================
   # 🚀 MİKROSERVİSLER
   # ==========================================
@@ -75,17 +75,20 @@ services:
     container_name: bank_backend_micro
     restart: on-failure
     depends_on:
-      - postgres-core # Sadece kendi DB'sini bekler
+      - postgres-core 
       - rabbitmq
       - discovery-server
     environment:
-      - DB_URL=jdbc:postgresql://postgres-core:5432/bank_core_db
-      - SPRING_RABBITMQ_HOST=rabbitmq 
-      - SPRING_RABBITMQ_PORT=5672
-      - SPRING_RABBITMQ_USERNAME=admin
-      - SPRING_RABBITMQ_PASSWORD=123456
-      - EUREKA_URL=http://discovery-server:8761/eureka/
-      - ELASTICSEARCH_URL=http://elasticsearch:9200
+      - DB_URL=${CORE_DB_URL}
+      - DB_USER=${CORE_DB_USER}
+      - DB_PASS=${CORE_DB_PASS}
+      - SPRING_RABBITMQ_HOST=${RMQ_HOST}
+      - SPRING_RABBITMQ_PORT=${RMQ_PORT}
+      - SPRING_RABBITMQ_USERNAME=${RMQ_USER}
+      - SPRING_RABBITMQ_PASSWORD=${RMQ_PASS}
+      - EUREKA_URL=${EUREKA_URL}
+      - ELASTICSEARCH_URL=${ES_URL}
+      - JWT_SECRET=${JWT_SECRET}
     ports:
       - "8080:8080"
     networks:
@@ -103,10 +106,13 @@ services:
       - discovery-server
       - bill-service 
       - auth-service
-      - redis # 🚀 YENİ: Redis ayağa kalkmadan Gateway kalkmasın
+      - redis 
     environment:
-      - SPRING_REDIS_HOST=redis # 🚀 YENİ: Redis'in adresi
-      - SPRING_REDIS_PORT=6379
+      - SPRING_REDIS_HOST=${REDIS_HOST}
+      - SPRING_REDIS_PORT=${REDIS_PORT}
+      - OAUTH_ISSUER_URI=http://${KARARGAH_IP}:9090/realms/bank-realm
+      - KEYCLOAK_INTERNAL_URL=${KC_INTERNAL_URL}
+      - EUREKA_URL=${EUREKA_URL}
     ports:
       - "8081:8081" 
     networks:
@@ -123,10 +129,11 @@ services:
       - rabbitmq
       - discovery-server
     environment:
-      - SPRING_RABBITMQ_HOST=rabbitmq
-      - SPRING_RABBITMQ_PORT=5672
-      - SPRING_RABBITMQ_USERNAME=admin
-      - SPRING_RABBITMQ_PASSWORD=123456
+      - SPRING_RABBITMQ_HOST=${RMQ_HOST}
+      - SPRING_RABBITMQ_PORT=${RMQ_PORT}
+      - SPRING_RABBITMQ_USERNAME=${RMQ_USER}
+      - SPRING_RABBITMQ_PASSWORD=${RMQ_PASS}
+      - EUREKA_URL=${EUREKA_URL}
     ports:
       - "8082:8082"
     networks:
@@ -139,8 +146,9 @@ services:
     ports:
       - "8083:8083"
     environment:
-      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://discovery-server:8761/eureka/
-      - REDIS_HOST=redis
+      - EUREKA_URL=${EUREKA_URL}
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
     depends_on:
       - discovery-server
     networks:
@@ -158,9 +166,14 @@ services:
       - rabbitmq
       - discovery-server
     environment:
-      - DB_URL=jdbc:postgresql://postgres-bill:5432/bank_bill_db
-      - SPRING_RABBITMQ_HOST=rabbitmq
-      - EUREKA_URL=http://discovery-server:8761/eureka/
+      - DB_URL=${BILL_DB_URL}
+      - DB_USER=${BILL_DB_USER}
+      - DB_PASS=${BILL_DB_PASS}
+      - SPRING_RABBITMQ_HOST=${RMQ_HOST}
+      - SPRING_RABBITMQ_PORT=${RMQ_PORT}
+      - SPRING_RABBITMQ_USERNAME=${RMQ_USER}
+      - SPRING_RABBITMQ_PASSWORD=${RMQ_PASS}
+      - EUREKA_URL=${EUREKA_URL}
     ports:
       - "8084:8084"
     networks:
@@ -178,9 +191,14 @@ services:
       - rabbitmq
       - discovery-server
     environment:
-      - DB_URL=jdbc:postgresql://postgres-corporate:5432/bank_corporate_db
-      - SPRING_RABBITMQ_HOST=rabbitmq
-      - EUREKA_URL=http://discovery-server:8761/eureka/
+      - DB_URL=${CORP_DB_URL}
+      - DB_USER=${CORP_DB_USER}
+      - DB_PASS=${CORP_DB_PASS}
+      - SPRING_RABBITMQ_HOST=${RMQ_HOST}
+      - SPRING_RABBITMQ_PORT=${RMQ_PORT}
+      - SPRING_RABBITMQ_USERNAME=${RMQ_USER}
+      - SPRING_RABBITMQ_PASSWORD=${RMQ_PASS}
+      - EUREKA_URL=${EUREKA_URL}
     ports:
       - "8085:8085"
     networks:
@@ -198,12 +216,18 @@ services:
       - rabbitmq
       - discovery-server
     environment:
-      - DB_URL=jdbc:postgresql://postgres-auth:5432/bank_auth_db
-      - SPRING_RABBITMQ_HOST=rabbitmq
-      - SPRING_RABBITMQ_PORT=5672
-      - SPRING_RABBITMQ_USERNAME=admin
-      - SPRING_RABBITMQ_PASSWORD=123456
-      - EUREKA_URL=http://discovery-server:8761/eureka/
+      - DB_URL=${AUTH_DB_URL}
+      - DB_USER=${AUTH_DB_USER}
+      - DB_PASS=${AUTH_DB_PASS}
+      - SPRING_RABBITMQ_HOST=${RMQ_HOST}
+      - SPRING_RABBITMQ_PORT=${RMQ_PORT}
+      - SPRING_RABBITMQ_USERNAME=${RMQ_USER}
+      - SPRING_RABBITMQ_PASSWORD=${RMQ_PASS}
+      - EUREKA_URL=${EUREKA_URL}
+      - KEYCLOAK_CLIENT_SECRET=${KEYCLOAK_CLIENT_SECRET}
+      - JWT_SECRET=${JWT_SECRET}
+      - RECAPTCHA_SECRET=${RECAPTCHA_SECRET}
+      - KEYCLOAK_INTERNAL_URL=${KC_INTERNAL_URL}
     ports:
       - "8086:8086"
     networks:
@@ -218,12 +242,13 @@ services:
     depends_on:
       - api-gateway
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8081/api/v1
-      - NEXT_PUBLIC_KEYCLOAK_URL=http://localhost:9090
+      - NEXT_PUBLIC_API_URL=http://${KARARGAH_IP}:8081/api/v1
+      - NEXT_PUBLIC_KEYCLOAK_URL=http://${KARARGAH_IP}:9090
+      - NEXT_PUBLIC_FRONTEND_URL=${NEXT_PUBLIC_FRONTEND_URL}
       - KEYCLOAK_REALM=bank-realm
       - KEYCLOAK_CLIENT_ID=bank-auth-client
-      - KEYCLOAK_CLIENT_SECRET=PJqdHOdCoRbNe5dFNATs1kZxSrrYQTel
-      - KEYCLOAK_INTERNAL_URL=http://keycloak:8080
+      - KEYCLOAK_INTERNAL_URL=${KC_INTERNAL_URL}
+      - KEYCLOAK_CLIENT_SECRET=${KEYCLOAK_CLIENT_SECRET}
     ports:
       - "3000:3000"
     networks:
@@ -247,8 +272,8 @@ services:
     container_name: bank_keycloak_db
     environment:
       POSTGRES_DB: keycloak
-      POSTGRES_USER: keycloak
-      POSTGRES_PASSWORD: password
+      POSTGRES_USER: ${KC_DB_USER}
+      POSTGRES_PASSWORD: ${KC_DB_PASS}
     ports:
       - "5433:5432" 
     networks:
@@ -261,11 +286,11 @@ services:
     command: start-dev 
     environment:
       KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://keycloak-db:5432/keycloak
-      KC_DB_USERNAME: keycloak
-      KC_DB_PASSWORD: password
-      KEYCLOAK_ADMIN: admin 
-      KEYCLOAK_ADMIN_PASSWORD: admin 
+      KC_DB_URL: ${KC_DB_URL}
+      KC_DB_USERNAME: ${KC_DB_USER}
+      KC_DB_PASSWORD: ${KC_DB_PASS}
+      KEYCLOAK_ADMIN: ${KC_ADMIN_USER}
+      KEYCLOAK_ADMIN_PASSWORD: ${KC_ADMIN_PASS}
     ports:
       - "9090:8080" 
     depends_on:
@@ -308,7 +333,7 @@ services:
     ports:
       - "5601:5601"
     environment:
-      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - ELASTICSEARCH_HOSTS=${ES_URL}
     depends_on:
       - elasticsearch
     networks:
@@ -324,8 +349,8 @@ services:
       - "5672:5672"
       - "15672:15672"
     environment:
-      RABBITMQ_DEFAULT_USER: admin
-      RABBITMQ_DEFAULT_PASS: 123456
+      RABBITMQ_DEFAULT_USER: ${RMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RMQ_PASS}
     networks:
       - bank-network-micro
     restart: unless-stopped

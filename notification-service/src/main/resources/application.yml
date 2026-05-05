@@ -6,13 +6,14 @@ spring:
     name: notification-service
 
   rabbitmq:
-    host: localhost
-    port: 5672
-    username: admin
-    password: password
+    # 🚀 SADECE DEĞİŞKEN ADLARI:
+    host: ${SPRING_RABBITMQ_HOST}
+    port: ${SPRING_RABBITMQ_PORT}
+    username: ${SPRING_RABBITMQ_USERNAME}
+    password: ${SPRING_RABBITMQ_PASSWORD}
 
 eureka:
   client:
     service-url:
-      # 🚀 TİRELİ VE GÜVENLİ SERVİS ADI: discovery-server
-      defaultZone: http://discovery-server:8761/eureka/
+      # 🚀 SADECE DEĞİŞKEN ADI:
+      defaultZone: ${EUREKA_URL}

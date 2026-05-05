@@ -146,7 +146,14 @@ public class AdminUserServiceImpl implements IAdminUserService {
             return retailCustomerRepository.findByAppUser_IdentityNumber(appUser.getIdentityNumber())
                     .map(r -> r.getFirstName() + " " + r.getLastName()).orElse("Bilinmeyen Birey");
         } else if (appUser.getRole() == AppUser.Role.CORPORATE_MANAGER) {
-            return "Kurumsal Müşteri (" + appUser.getIdentityNumber() + ")";
+            // 🚀 DÜZELTİLDİ: Artık çakılı isim yok, Kurumsal Servisten GERÇEK ismi çekiyoruz!
+            try {
+                CompanySyncRequest company = companyServiceClient.getCompanyInfo(appUser.getIdentityNumber());
+                return company.getCompanyName() != null ? company.getCompanyName() : "İsimsiz Kurum";
+            } catch (Exception e) {
+                log.warn("Kurumsal firma ({}) bilgileri çekilemedi: {}", appUser.getIdentityNumber(), e.getMessage());
+                return "Kurumsal Müşteri (" + appUser.getIdentityNumber() + ")"; // Ağ koparsa yedek paraşüt
+            }
         }
         return "Sistem Yöneticisi";
     }
@@ -156,7 +163,13 @@ public class AdminUserServiceImpl implements IAdminUserService {
             return retailCustomerRepository.findByAppUser_IdentityNumber(appUser.getIdentityNumber())
                     .map(RetailCustomer::getEmail).orElse("");
         } else if (appUser.getRole() == AppUser.Role.CORPORATE_MANAGER) {
-            return "kurumsal@sistem.com";
+            // 🚀 DÜZELTİLDİ: Artık çakılı e-posta yok, Kurumsal Servisten GERÇEK e-posta!
+            try {
+                CompanySyncRequest company = companyServiceClient.getCompanyInfo(appUser.getIdentityNumber());
+                return company.getContactEmail() != null ? company.getContactEmail() : "email_yok@kurum.com";
+            } catch (Exception e) {
+                return "kurumsal@sistem.com"; // Ağ koparsa yedek paraşüt
+            }
         }
         return "admin@bank.com";
     }

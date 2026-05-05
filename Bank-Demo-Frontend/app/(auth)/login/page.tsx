@@ -16,8 +16,8 @@ export default function LoginPage() {
     const keycloakUrl = process.env.NEXT_PUBLIC_KEYCLOAK_URL;
     const realm = "bank-realm";
     const clientId = "bank-auth-client";
-    // Şimdilik dönüş adresi olarak bunu veriyoruz, 3. adımda burayı karşılayacağız
-    const redirectUri = encodeURIComponent("http://localhost:3000/api/auth/callback");
+    // 🚀 BUKALEMUN YAPI: Tarayıcının adres çubuğundaki kök adresi (localhost veya 192.x) otomatik alır!
+    const redirectUri = encodeURIComponent(window.location.origin + "/api/auth/callback");
 
     // 2. Müşteriyi Nüfus Müdürlüğüne Fırlat!
     const authUrl = `${keycloakUrl}/realms/${realm}/protocol/openid-connect/auth?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=openid`;

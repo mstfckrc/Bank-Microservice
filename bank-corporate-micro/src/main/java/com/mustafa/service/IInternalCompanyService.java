@@ -9,4 +9,6 @@ public interface IInternalCompanyService {
     void updateCompanyInfo(String identityNumber, CompanySyncRequest request);
 
     void deleteCompanyInfo(String identityNumber);
+
+    CompanySyncRequest getCompanyInfo(String identityNumber);
 }

@@ -15,8 +15,7 @@ public class CorsConfig {
     public CorsWebFilter corsWebFilter() {
         CorsConfiguration corsConfig = new CorsConfiguration();
 
-        // 🚀 Frontend'in adresine tam geçiş izni veriyoruz!
-        corsConfig.setAllowedOrigins(Arrays.asList("http://localhost:3000"));
+	    corsConfig.setAllowedOriginPatterns(Arrays.asList("*"));
 
         // Bütün HTTP taktiklerine (GET, POST, OPTIONS vb.) izin veriyoruz
         corsConfig.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
