@@ -1,67 +1,51 @@
-# 🖥️ ABSOLUTE BLUEPRINT: Bank-Demo-Frontend (Next.js 14)
+# 🖥️ ABSOLUTE BLUEPRINT: Bank-Demo-Frontend - "KULLANICI VİTRİNY"
 
-Bu belge, sistemin tek kullanıcı arayüzü olan Frontend klasörünün (React/Next.js) `src` veya projenin kök dizinindeki tüm kritik dosyalarının, statelerinin ve fonksiyon yapılarının tam bir haritasıdır.
-
----
-
-## 1. TEMEL YÖNLENDİRME (ROUTING / MIDDLEWARE)
-*   **`proxy.ts` (Next.js Middleware)**:
-    *   Tüm sayfa geçişleri tarayıcıda başlamadan önce Sunucu Tarafından (SSR) önce bu dosyaya takılır.
-    *   **İşlem**: Tarayıcının çerezlerindeki (Cookies) JWT token'ı alır, base64 payload kısmını kırar (decode eder) ve `preferred_username` ile `Realm_access: roles` bilgilerini okur.
-    *   **Yönlendirme**: Ziyaretçinin rolüne göre onu `/(user)`, `/(admin)` veya `/(corporate)` klasörlerine şutlar. Token yoksa login'e zorlar.
+### 1. Servisin Amacı
+Son kullanıcıların (Müşteri, Şirket Yöneticisi, Sistem Yöneticisi) banka sistemine eriştiği grafiksel arayüzdür. React ve Next.js (App Router) ile inşa edilmiştir. Verileri doğrudan API Gateway (`port: 8081`) üzerinden çeker. Kendi veritabanı yoktur.
 
 ---
 
-## 2. KLASÖR: `types` (TypeScript Arayüzleri)
-Backend'deki DTO'ların birebir Frontend karşılıklarıdır. Sayfalar renderlanırken `any` tipi kullanılmaz, hepsi `index.ts` içindeki bu şablonlardan türer.
-*   **`types/index.ts`**
-    *   `Role`: `"ADMIN" | "RETAIL_CUSTOMER" | "CORPORATE_MANAGER"`
-    *   `ApprovalStatus`, `TransactionStatus`, `TransactionType`.
-    *   **Auth DTOs**: `LoginRequest`, `RegisterRequest`, `AuthResponse`, `UserProfileResponse`, `ChangePasswordRequest`.
-    *   **Bank DTOs**: `AccountResponse`, `CreateAccountRequest`, `TransferRequest`, `DepositRequest`, `TransactionResponse`.
-    *   **Corporate DTOs**: `CompanyEmployeeResponse`, `HireEmployeeRequest`, `AutoPaymentSettingsRequest`.
-    *   **Bill DTOs**: `BillInstructionRequest`, `BillInstructionResponse`.
-    *   **Ortak**: `ApiErrorResponse` (Backend'in GlobalExceptionHandler'ından seken hatalar için), `ExchangeRateResponse`.
+### 2. Teknoloji Yığını (Tech Stack)
+*   **Framework:** Next.js (v14/v15 App Router Mimarisi)
+*   **Ağ Katmanı:** Axios (API Gateway ile iletişim)
+*   **Durum Yönetimi (State):** Zustand (`useAuthStore.ts`)
+*   **Tasarım Sistemi:** Tailwind CSS, Shadcn UI, Radix UI
+*   **Güvenlik (Captcha):** Google reCAPTCHA v2 (`react-google-recaptcha`)
+*   **Kimlik Doğrulama:** NextAuth.js kullanılmamış, tamamen manuel Cookie tabanlı JWT süzgeci tasarlanmıştır.
 
 ---
 
-## 3. KLASÖR: `services` (API Bağlantı Kancaları)
-Sadece bu klasör `axios` kullanır. Sayfaların doğrudan `axios.post` yapması yasaktır. Her servisin fonksiyonları buradadır:
-*   **`auth.service.ts`**: `login(data)`, `register(data)`.
-*   **`account.service.ts`**: `createAccount(data)`, `getUserAccounts()`, `deleteAccount(accountNumber)`.
-*   **`transaction.service.ts`**: `deposit(data)`, `transfer(data)`, `getTransactions(accountNumber)`.
-*   **`admin.service.ts`**: `getAllCustomers()`, `updateStatus(tc, status)`.
-*   **`company.service.ts`**: İK departmanı işlemleri, personel ekleme, `paySalaries()`.
-*   **`bill.service.ts`**: Otomatik ödeme talimatı API çağrıları.
-*   *(Not: Tüm istekler baseURL olarak Gateway'in `http://localhost:8081/api/v1/` adresine fırlatılır!)*
+### 3. Klasör ve Rota Yapısı (App Router)
+Görünümler ve paneller "Route Groups" özelliğiyle `( )` parantez içinde izole edilmiştir.
+
+*   **`(auth)`**: Giriş ve Kayıt olma ekranları. (`/login`, `/register`)
+*   **`(dashboard)`**: Sisteme giriş yapıldıktan sonraki ana paneller. Üç farklı dünyaya ayrılır:
+    *   `/user/dashboard` -> Bireysel Müşteriler (Havale, Fatura, Hesaplar).
+    *   `/company/dashboard` -> Kurumsal Yöneticiler (Personel ekleme, Toplu Maaş).
+    *   `/admin/dashboard` -> Sistem Yöneticileri (MASAK Onayları, Log izleme, Müşteri silme).
+*   **`services/`**: API Gateway uç noktalarına atılan tüm Axios isteklerinin toplandığı sınıf/fonksiyonlar dizini (`admin.service.ts`, `transaction.service.ts` vb.).
+*   **`store/`**: Zustand kullanılarak kullanıcının "Giriş Yapıldı" (Logged In) statüsünün RAM'de tutulduğu yer (`useAuthStore.ts`).
 
 ---
 
-## 4. KLASÖR: `store` (Global Durum Yönetimi - Zustand)
-*   **`useAuthStore.ts`**: Zustand kullanan merkezi State dosyası.
-    *   `interface AuthUser`: Sitede o an asılı duran adamı temsil eder.
-    *   `login(user, token)`: Çerezlere tokeni basar, UI'a "adam geldi" der.
-    *   `logout()`: Komple çerezleri siler, Zustand'i resetler ve login'e fırlatır.
+### 4. Güvenlik ve Kalkanlar (proxy.ts / Middleware)
+Sistemin en hayati Frontend kalkanı olan Middleware (`proxy.ts` veya `middleware.ts`) iki aşamalı bir duvar örer:
+
+1.  **Token Ölüm Kontrolü (Expiration Check):** Tarayıcıdaki `token` çerezini alır, Base64 ile decode edip (JWT'yi manuel parçalayarak) `exp` değerine bakar. Eğer süre dolmuşsa (`exp < Date.now()`), arka plana hiç istek atmadan doğrudan Keycloak'un Logout URL'sine (`/protocol/openid-connect/logout`) yönlendirme yapar ve çerezleri siler. Çıkış işlemini kusursuzlaştırmak için `id_token_hint` kullanır.
+2.  **Yetki Duvarları (Role-Based Access):**
+    *   `/admin` rotalarına girmek isteyenlerin token'ında `"ADMIN"` rolü yoksa `/login` ekranına atar.
+    *   `/company` rotalarına girmek isteyenlerin `"CORPORATE_MANAGER"` rolü yoksa bireysel panele atar.
+    *   Oturum açmış (Token'ı olan) birisi `/login` sayfasına gitmeye çalışırsa, onu sahip olduğu role göre kendi kontrol paneline (Dashboard) geri fırlatır.
 
 ---
 
-## 5. KLASÖR: `lib` (Yardımcı Araçlar)
-*   **`axios.ts`**: Projenin Axios Instance'ı. 
-    *   `interceptors.request.use(...)` ile her giden isteğin Header'ına "Authorization: Bearer [token]" yapıştırır.
-*   **`utils.ts`**: `cn(...)` gibi Tailwind CSS class birleştirici yardımcı fonksiyonlar.
+### 5. Çevre Değişkenleri (.env.local)
+*   `NEXT_PUBLIC_API_URL`: API Gateway adresi (`http://localhost:8081/api/v1`).
+*   `NEXT_PUBLIC_KEYCLOAK_URL`: Keycloak kimlik doğrulama ekranının ana urli (`http://localhost:9090`).
+*   `KEYCLOAK_CLIENT_ID` / `SECRET`: Frontend'in Keycloak'a kendini tanıtması için gerekli gizli anahtarlar.
 
 ---
 
-## 6. KLASÖR: `hooks` (React Özel Komponent Mantıkları)
-API Services ile UI arasındaki kör nokta. React hook kurallarıyla sayfada state tutar ve loading barları çizer.
-*   **`useUserDashboard.ts`**: Cüzdan ve İşlem geçmişinin eş zamanlı render edilmesini sağlar.
-*   **`useAccounts.ts`**: Kullanıcının kasalarını çeker, `isLoading` veya `error` flag'leriyle UI besler.
-*   **`useCompanyEmployees.ts` / `useBills.ts`**: Kurumsal ve Fatura sayfalarının hook denetleyicileri.
-
----
-
-## 7. KLASÖR: `components` (Görsel Parçalar)
-*   **`shared/StatusBadge.tsx`**: APPROVED, PENDING gibi statüleri okuyup ona göre Yeşil, Kırmızı, Sarı Tailwind arka planı atayan rozet (Badge).
-*   **`shared/PageHeader.tsx`**: Sayfa üstlerinde Geri Dön oku ve Title barındıran kalıp.
-*   **`dashboard/transaction-table.tsx`**: Backend'den gelen List<Transaction> listesinin map ile html `<table>... <tr>` bloklarına döküldüğü ve `convertedAmount` (Döviz var mı) var ise iki fiyatı alt alta gösteren hücre tablo.
-*   **`dashboard/modals/TransferModal.tsx`**: Açılır kapanır havale formu. `TransferRequest` toplar.
+### 6. Temel İş Kuralları
+1.  **Vitrin Kurları:** Ana sayfada veya döviz ekranında `currency-service`'in sunduğu `/api/v1/currencies/rates` uç noktasından alınan veriler gösterilir. Bu veriler Gateway üzerinden geçerken Auth gerektirmez (Sivil Bölge).
+2.  **Axios Interceptor Mantığı (Muhtemel):** Tüm hizmetler (`services/*.ts`), kullanıcı çerezindeki JWT'yi alıp Gateway'e `Authorization: Bearer <token>` başlığıyla göndermek zorundadır. Aksi takdirde Gateway'in Askeri Bölge filtresinden geçemezler.

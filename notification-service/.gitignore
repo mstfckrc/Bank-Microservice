@@ -31,3 +31,17 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### 🛡️ KARARGAH ÖZEL GÜVENLİK EKLENTİLERİ ###
+
+# OS Files (İşletim Sistemi Çöpleri)
+.DS_Store
+Thumbs.db
+
+# Logs (Kayıt Dosyaları)
+*.log
+
+# Çevre Değişkenleri (Yanlışlıkla klasör içine açılırsa diye)
+.env
+*.env
+!.env.example

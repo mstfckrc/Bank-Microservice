@@ -1,102 +1,90 @@
-# 🏦 ABSOLUTE BLUEPRINT: bank-demo-backend (PORT 8080)
+# 🏛️ ABSOLUTE BLUEPRINT: Bank-Demo-Backend (PORT 8080) - "KARARGAH"
 
-Bu belge, Core Backend Karargah servisinin src/main/java/com/mustafa altındaki TÜM klasörlerini, sınıflarını ve arayüzlerini istisnasız bir döküm halinde listeler. Bir IDE ağacını nasıl görüyorsanız, bu dosya da o şekildedir.
-
----
-
-## 1. PAKET: `entity` (Veritabanı Tabloları)
-*   **`Account.java`**: (Table: `account`)
-    *   **Fields**: `Long id`, `String accountNumber`, `String iban`, `BigDecimal balance`, `Currency currency`, `String ownerIdentityNumber` (Dikkat: AppUser objesi tutmaz, string referans tutar), `List<Transaction> sentTransactions`, `List<Transaction> receivedTransactions`, `boolean isActive`.
-    *   **Enums (İçinde)**: `Currency` (TRY, USD, EUR vb).
-*   **`Transaction.java`**: (Table: `transaction`)
-    *   **Fields**: `Long id`, `String referenceNo`, `Account senderAccount`, `Account receiverAccount`, `BigDecimal amount`, `BigDecimal convertedAmount`, `TransactionType transactionType`, `TransactionStatus status`, `String description`, `LocalDateTime transactionDate`.
-    *   **Enums (İçinde)**: `TransactionType` (DEPOSIT, WITHDRAWAL, TRANSFER, BILL_PAYMENT, SALARY_PAYMENT), `TransactionStatus` (COMPLETED, PENDING_APPROVAL, REJECTED).
-*   **`enums / BillType.java`**: `ELECTRICITY`, `WATER`, `GAS`, `INTERNET`.
+### 1. Servisin Amacı
+Projenin "Sistemin Kalbi" (Karargah) olan mikroservisidir. Hesap oluşturma, bakiye yönetimi, havale/EFT/yatırma gibi finansal transferler, MASAK onayları (limitli işlemler) ve sistem loglarının Elasticsearch üzerinden Admin paneline sunulması gibi kritik çekirdek operasyonları yönetir.
 
 ---
 
-## 2. PAKET: `dto` (Veri Transfer Objeleri)
-### `dto.request`
-*   **`CreateAccountRequest.java`**: `Currency currency`.
-*   **`OpenAccountRequest.java`**: `String identityNumber`, `Currency currency`.
-*   **`DepositRequest.java`**: `String iban`, `BigDecimal amount`.
-*   **`TransferRequest.java`**: `String senderIban`, `String receiverIban`, `BigDecimal amount`, `String description`.
-*   **`InternalPaymentRequest.java`**: `Long accountId`, `BigDecimal amount`, `String description`. (Bill Service tahsilat kancası).
-*   **`BulkSalaryRequest.java`**: `String senderIban`, `String companyName`, `List<SalaryPaymentItem> salaryItems`.
-*   **`SalaryPaymentItem.java`**: `String receiverIban`, `BigDecimal amount`.
-*(Not: RegisterRequest, LoginRequest gibi DTO'lar ölü koddur, yetkileri auth servisine geçmiştir).*
-### `dto.response`
-*   **`AccountResponse.java`**: `id`, `accountNumber`, `iban`, `balance`, `currency`, `isActive`, `ownerName`, `identityNumber`.
-*   **`TransactionResponse.java`**: `referenceNo`, `amount`, `convertedAmount`, `transactionType`, `status`, `description`, `transactionDate`, `receiverAccountId`, `senderAccountId`.
-*   **`AccountValidationResponse.java`**: `String ownerIdentityNumber`, `boolean isActive`.
-*   **`ExchangeRateResponse.java`**: `String base_code`, `Map<String, Double> rates`. (Dış servisten gelir).
-*   *(Diğer DTO'lar CustomerProfileResponse vs. iç çağrı standartları için barındırılır)*.
+### 2. Veritabanı ve Entity Modelleri
+*   **`Account`** (Tablo: `accounts`)
+    *   `id` (Long): Birincil anahtar.
+    *   `accountNumber` (String, 10): 10 Haneli rastgele numara.
+    *   `iban` (String, 26): TR ile başlayan 26 haneli IBAN.
+    *   `balance` (BigDecimal): Güncel para miktarı (Default 0).
+    *   `currency` (Enum): `TRY`, `USD`, `EUR`.
+    *   `ownerIdentityNumber` (String, 11): Sahibinin TC/Vergi Numarası.
+    *   `isActive` (boolean): Hesap açık/kapalı (Soft delete).
+    *   `sentTransactions` / `receivedTransactions` (OneToMany): Hesabın işlem geçmişi.
+*   **`Transaction`** (Tablo: `transactions`)
+    *   `id` (Long): Birincil anahtar.
+    *   `referenceNo` (String): Dekont Numarası (Tekil, Örn: TXN-58294A).
+    *   `senderAccount` / `receiverAccount` (ManyToOne): Çıkış ve Giriş yapan hesaplar (ATM'de null olabilir).
+    *   `amount` (BigDecimal): İşlem tutarı.
+    *   `convertedAmount` (BigDecimal): Döviz ise çevrilmiş tutar.
+    *   `transactionType` (Enum): `DEPOSIT`, `WITHDRAWAL`, `TRANSFER`, `SALARY`, `BILL_PAYMENT`.
+    *   `status` (Enum): `COMPLETED`, `PENDING_APPROVAL` (Onay bekliyor), `REJECTED`.
+    *   `description` (String): Dekont açıklaması.
+    *   `transactionDate` (LocalDateTime): Veritabanı tarafından atanan anlık tarih.
 
 ---
 
-## 3. PAKET: `controller` (API Uç Noktaları) ve `controller.impl`
-*   **`IAccountController.java` & `AccountControllerImpl.java`** (`/api/v1/accounts`)
-    *   `@PostMapping`: -> `ResponseEntity<AccountResponse> createAccount(@RequestBody CreateAccountRequest)`.
-    *   `@GetMapping`: -> `ResponseEntity<List<AccountResponse>> getUserAccounts()`.
-    *   `@GetMapping("/{accountNumber}")`: -> `ResponseEntity<AccountResponse> getAccount(...)`.
-    *   `@DeleteMapping("/{accountNumber}")`: -> `ResponseEntity<Void> deleteAccount(...)`.
-*   **`ITransactionController.java` & `TransactionControllerImpl.java`** (`/api/v1/transactions`)
-    *   `@PostMapping("/deposit")`: -> `ResponseEntity<TransactionResponse> deposit(...)`.
-    *   `@PostMapping("/transfer")`: -> `ResponseEntity<TransactionResponse> transfer(...)`.
-    *   `@GetMapping("/account/{accountNumber}")`: -> `ResponseEntity<List<TransactionResponse>> getAccountTransactions(...)`.
-*   **`IAdminController.java` & `AdminControllerImpl.java`** (`/api/v1/admin`)
-    *   `@GetMapping("/accounts")`: Tüm hesapları haritalar.
-    *   `@PostMapping("/customers/{tcNo}/accounts")`: Admin komutuyla hesap açılışı.
-    *   `@PutMapping("/transactions/{referenceNo}/approve")` / `reject`: 50 Bin üstü bekleyen işlemleri onayla/reddet.
-*   **`IInternalBankController.java` & `InternalBankControllerImpl.java`** (`/api/v1/internal`)
-    *   `@PostMapping("/transactions/bill-payment")`: -> `ResponseEntity<Void> processInternalPayment(...)`. (Sadece Feign).
-    *   `@PostMapping("/transactions/bulk-salary")`: Toplu maaş yatırma komutu.
-    *   `@GetMapping("/accounts/validate")`: IBAN'ın tc numarasını döndüren yeraltı doğrulama kapısı.
-    *   `@DeleteMapping("/accounts/customer/{identityNumber}")`: Ağır silim operasyonu başlar, `IInternalBankService` uyarılır.
+### 3. Girdi ve Çıktılar (DTO ve Return Types)
+En kritik veri transfer objeleri ve eksiksiz alanları:
+
+**Request (Gelen) DTO'lar:**
+*   `CreateAccountRequest` / `OpenAccountRequest`: Sadece `currency` (Enum / String: TRY, USD, EUR).
+*   `DepositRequest`: `iban`(String), `amount`(BigDecimal, min:1.0).
+*   `TransferRequest`: `senderIban`(String), `receiverIban`(String), `amount`(BigDecimal), `description`(String), `isSalaryPayment`(Boolean - Jackson Wrapper).
+*   `InternalPaymentRequest`: `accountId`(Long), `amount`(BigDecimal), `description`(String).
+*   `BulkSalaryRequest`: `senderIban`(String), `companyName`(String), `salaryItems`(List<SalaryPaymentItem> -> receiverIban, amount).
+
+**Response (Giden) Çıktılar:**
+*   `AccountResponse`: `id`(Long), `accountNumber`(String), `iban`(String), `balance`(BigDecimal), `currency`(Enum), `isActive`(boolean), `ownerName`(String), `identityNumber`(String).
+*   `TransactionResponse`: `referenceNo`(String), `amount`(BigDecimal), `convertedAmount`(BigDecimal), `transactionType`(Enum), `status`(Enum), `description`(String), `transactionDate`(LocalDateTime), `senderAccountId`(Long), `receiverAccountId`(Long).
+*   `AccountValidationResponse`: `ownerIdentityNumber`(String), `isActive`(boolean).
+*   `SystemLogResponse`: `timestamp`(String), `level`(String), `appName`(String), `threadName`(String), `loggerName`(String), `message`(String).
 
 ---
 
-## 4. PAKET: `service` (İş Mantığı Arayüzleri) ve `service.impl`
-*   **`IAccountService.java` & `AccountServiceImpl.java`**
-    *   Temel hesap açılışları ve `deleteAccount` gibi (içinde para varsa silme diyen) kontroller.
-*   **`ITransactionService.java` & `TransactionServiceImpl.java`**
-    *   `deposit`, `transfer` (Masak kuralı olan fonksiyon), `processInternalPayment`. Para hareketleri, döviz kuru çekimi.
-*   **`IAdminService.java` & `AdminServiceImpl.java`**
-    *   Limit aşan işlemlerin listelenmesi, `approveTransaction`, `rejectTransaction`.
-*   **`ICurrencyService.java` & `CurrencyServiceImpl.java`**
-    *   `BigDecimal convertCurrency(BigDecimal amount, Currency from, Currency to)`. Exchange servisine Feign atar.
-*   **`IInternalBankService.java` & `InternalBankServiceImpl.java`**
-    *   `deleteCustomerAccounts(String identityNumber)`: Tüm hesapları tarar, boş olanları soft delete (`isActive=false`) çeker veya tamamen siler. Bakiye varsa Exception fırlatıp Auth servisindeki işlemi Rollback attırır!
+### 4. Endpoints (Controller Uç Noktaları)
+
+**AccountController (`/api/v1/accounts`)**
+*   `[POST] /` -> `CreateAccountRequest` alır, `AccountResponse` döner (Kullanıcı kendine hesap açar).
+*   `[GET] /` -> `List<AccountResponse>` döner (Kendi hesaplarını listeler).
+*   `[GET] /{accountNumber}` -> `AccountResponse` döner (Tekil hesap detayı).
+*   `[DELETE] /{accountNumber}` -> Bakiye 0 ise hesabı kapatır (`isActive=false`), string mesaj döner.
+
+**TransactionController (`/api/v1/transactions`)**
+*   `[POST] /deposit` -> `DepositRequest` alır, ATM'den parayı yatırır `TransactionResponse` döner.
+*   `[POST] /transfer` -> `TransferRequest` alır, kendi parasını başkasına atar `TransactionResponse` döner.
+*   `[GET] /account/{accountNumber}` -> Hesap ekstresini (List<TransactionResponse>) döner. `type`, `startDate`, `endDate` parametreleri alabilir.
+
+**AdminController (`/api/v1/admin`)** *(Sadece ADMIN Rolü)*
+*   `[GET] /accounts` -> Sistemdeki tüm hesaplar.
+*   `[GET] /customers/{tcNo}/accounts` -> Belirli müşterinin hesapları.
+*   `[GET] /accounts/{accountNumber}/transactions` -> Belirli hesabın geçmişi.
+*   `[POST] /customers/{tcNo}/accounts` -> Admine, müşteri adına zorla hesap açma yetkisi.
+*   `[GET] /transactions?status=` -> Tüm transferleri durumuna göre listeler.
+*   `[PUT] /transactions/{referenceNo}/approve` -> PENDING (MASAK limitine takılan) işlemleri Onaylar.
+*   `[PUT] /transactions/{referenceNo}/reject` -> PENDING işlemleri Reddeder ve iade eder.
+*   `[GET] /logs?limit=&level=` -> **ELASTICSEARCH**'ten sistem loglarını (SystemLogResponse) çeker.
+
+**InternalBankController (`/api/v1/internal`)** *(Dışarıya Kapalı Telsiz Hatları)*
+*   `[GET] /accounts/validate?iban=` -> Fatura vb. servisler iban doğru mu ve kime ait diye sorar.
+*   `[POST] /transactions/bulk-salary` -> Kurumsal servisten gelen toplu maaş listesini tek Transaction'da dağıtır.
+*   `[DELETE] /accounts/customer/{identityNumber}` -> Auth servisinden "Müşteriyi Sil" emri gelirse içindeki tüm hesapları yok eder (Bakiye varsa hata fırlatıp Auth'u durdurur).
+*   `[POST] /transactions/bill-payment` -> Fatura servisinden otomatik fatura ödeme emri gelirse bakiyeden keser.
 
 ---
 
-## 5. PAKET: `client` (Feign İletişimleri)
-*   **`CurrencyServiceClient.java`**: `@FeignClient(name = "currency-service")`
-    *   `@GetMapping("/api/v1/currencies/rates") ExchangeRateResponse getRates(@RequestParam("base") String base);`
-*   **`AuthServiceClient.java`**: `@FeignClient(name = "bank-auth-micro")`
-    *   İç istihbarat iletişimleri.
+### 5. Dış Bağlantılar (İletişim)
+*   **RabbitMQ Publisher:** İşlem (Deposit/Transfer), hesap açılışı veya hesaba maaş/fatura kesintisi yansıdığında `BANK_EXCHANGE` üzerinden `NOTIFICATION_ROUTING_KEY` ile kullanıcılara anlık dekont ve bildirim emaili gönderir.
+*   **FeignClient - `CurrencyServiceClient`:** Transfer esnasında çapraz döviz (TRY->USD) yapılıyorsa `bank-currency-micro/api/v1/currencies/rates` uç noktasından güncel kurları çeker.
+*   **FeignClient - `ElasticsearchClient`:** Admin logları izlemek istediğinde, doğrudan `http://elasticsearch:9200/bank-logs-*/_search` tüneline saf JSON fırlatarak Logstash üzerinden Elastic verisini çeker.
 
 ---
 
-## 6. PAKET: `repository` (Veritabanı Arayüzleri)
-*   **`IAccountRepository.java`**: `List<Account> findByOwnerIdentityNumberAndIsActiveTrue(...)`, `Optional<Account> findByAccountNumber(...)`.
-*   **`ITransactionRepository.java`**: `List<Transaction> findBySenderAccountOrReceiverAccount(...)`.
-
----
-
-## 7. PAKET: `security` (Güvenlik Kalkanları)
-*   **`InternalHeaderFilter.java`**: Gateway'den veya Feign'den gelen `X-Identity-Number` ve `X-Internal-Identity` headerlarını Security Context'e diker.
-*   **`SecurityConfig.java`**: API kalkanı.
-*   **`JwtService`**, **`JwtAuthenticationFilter`**: Ölü (Kullanılmayan) sınıflar.
-
----
-
-## 8. PAKET: `exception` & `util`
-*   **`GlobalExceptionHandler.java`**: Kontrolcü.
-*   **`BankOperationException.java`**: Yetersiz Bakiye vs. hataları.
-*   **`AccountUtils.java`**: Rastgele 10 haneli Kasa Numarası (AccountNumber) üreticisi ve Random IBAN creator.
-
----
-
-## 9. PAKET: `messaging.publisher`
-*   **`RabbitMQPublisher.java`**: `rabbitTemplate.convertAndSend` kullanarak transfer işlemlerinden sonra Dekont Fişini ve Mail bildirimi için `NotificationMessage` fırlatır.
+### 6. İş Kuralları (Business Logic)
+1.  **MASAK Kuralı (Onay Sistemi):** 50.000 TL ve üzeri `Transfer` işlemleri anında gerçekleşmez. Bakiyeden para düşer ama Alıcıya geçmez. İşlem `PENDING_APPROVAL` statüsünde beklemeye alınır. Sadece Admin onaylarsa alıcıya geçer, reddederse para geri iade edilir.
+2.  **Yıkım (Hesap Kapatma):** Bir hesabın kapatılabilmesi için (`isActive=false` yapılması) veya bir müşterinin tüm sistemden silinebilmesi için (`Internal /accounts/customer/{tc}`) mutlak kural: **Hesap Bakiyesi 0 (Sıfır) olmalıdır.** Bakiye 1 kuruş bile olsa `BankOperationException` fırlatarak tüm silme işlemlerini engeller.
+3.  **Çapraz Döviz Hesabı:** Eğer gönderen USD, alıcı TRY hesabına sahipse, Backend önce işlemi Currency Service'e sorar, aldığı kura göre `convertedAmount` hesaplar ve alıcıya o miktarı yükler. Dekont numarasına `referenceNo` işlenir.

@@ -1,29 +1,46 @@
-# 📯 ABSOLUTE BLUEPRINT: notification-service (PORT 8082)
+# 🔔 ABSOLUTE BLUEPRINT: notification-service (PORT 8087) - "POSTA GÜVERCİNİ"
 
-Bu belge, mesajlaşma ve bildirim kuyruklarını dinleyip mail/sms atan pasif dinleyici (Subscriber) servisin src/main/java/com/mustafa altındaki sınıflarını listeler. (Veritabanı yoktur).
-
----
-
-## 1. PAKET: `starter`
-*   **`NotificationServiceApplication.java`**: Uygulamayı ayağa kaldırır (`@EnableDiscoveryClient`).
+### 1. Servisin Amacı
+Banka sistemindeki tüm asenkron iletişim trafiğini (E-Posta, SMS, Mobil Bildirim, Sistem Uyarıları) tek bir merkezden yönetmektir. Diğer servisleri bekleterek yavaşlatmamak için doğrudan HTTP istekleri almaz. Sadece RabbitMQ mesaj kuyruğunu dinler (Consumer).
 
 ---
 
-## 2. PAKET: `config` (RabbitMQ Bağlantıları)
-*   **`RabbitMQConfig.java`**: 
-    *   RabbitMQ sunucusundaki yapılandırmaları tanır.
-    *   Gelen byte array payload'ları anlayabilmek için `MessageConverter jsonMessageConverter()` bean'ini `Jackson2JsonMessageConverter` formatına uygun çevirir.
+### 2. Veritabanı ve Entity Modelleri
+*   **Fiziksel Veritabanı Yoktur.** Tüm mesajlar anlık olarak işlenir ve imha edilir.
 
 ---
 
-## 3. PAKET: `dto.message` (Zarf Kodlaması)
-*   **`NotificationMessage.java`**: Sistemin beyni. Bütün mikroservislerin (Auth, Core, Corporate) fırlatabileceği ortak dil.
-    *   **Fields**: `String destination` (Mail adresi veya telefon no), `String subject` (Mesaj konusu), `String content` (Gövde metni), `String identityNumber`, `NotificationType notificationType`.
-    *   **Enums (İçinde)**: `NotificationType` (EMAIL, SMS, PUSH).
+### 3. Girdi ve Çıktılar (DTO ve Return Types)
+Bu servis "Tüketici (Consumer)" olduğu için dışarıya Response dönmez, sadece kuyruktan şu JSON yapısını emer:
+
+*   **`NotificationMessage`**
+    *   `destination` (String): Gidecek adres (Email, Telefon Numarası vb.)
+    *   `subject` (String): Bildirim başlığı.
+    *   `content` (String): Bildirim içeriği.
+    *   `identityNumber` (String): Güvenlik ve loglama için müşterinin kimlik numarası.
+    *   `notificationType` (Enum): Gönderim kanalı.
+        *   `EMAIL`: E-posta
+        *   `SMS`: Kısa mesaj
+        *   `PUSH_NOTIFICATION`: Mobil uygulama
+        *   `SYSTEM_ALERT`: Admin konsoluna düşen kırmızı uarılar.
+
+*(Not: Kuyruk üzerinden gönderilen nesnelerin Java tarafından "Byte" formatında alınıp verilebilmesi için nesne `Serializable` arayüzünü uygular.)*
 
 ---
 
-## 4. PAKET: `listener` (Dinleyici Kancalar)
-*   **`NotificationListener.java`**:
-    *   `@RabbitListener(queues = "${rabbitmq.queue.notification.name}")` anatasyonuyla kuyruğun ağzında pusuya yatar.
-    *   `public void consumeMessage(NotificationMessage message)`: Kuyruğa bir JSON düştüğü an devreye girip consol'a yazar. Mimaride ileride SMTP veya Twilio SMS kütüphaneleri dökülürse, gerçek mail atma servisleri direkt bu bloğun içine işlenecektir.
+### 4. Endpoints (Controller Uç Noktaları)
+**HTTP Controller Yoktur!**
+Bu servis "Kapalı Kutu" mantığıyla çalışır. Hiçbir mikroservis bu servise POST veya GET atamaz. Tek bağlantı noktası RabbitMQ tünelidir.
+
+---
+
+### 5. İç Bağlantılar ve Dinleyiciler (Listeners)
+*   **`NotificationListener` (`@RabbitListener`)**
+    *   Spring Boot ayağa kalktığı anda `notification_queue` kuyruğunda nöbet tutmaya başlar.
+    *   Kuyruğa yeni bir JSON zarfı düştüğünde, onu uyku modundan (Idle) çıkıp anında kapar.
+
+---
+
+### 6. İş Kuralları (Business Logic)
+1.  **Asenkron Bağımsızlık (Fire-and-Forget):** Bir müşteri para transferi yaptığında Backend servisi, "Bildirim Gönder" emrini RabbitMQ'ya bırakıp hemen müşteriye "Paranız gitti" yanıtını döner (10-20ms). E-posta veya SMS atmak bazen 2-3 saniye sürebildiği için, bu ağır işçilik (`Thread.sleep(2000)` ile simüle ediliyor) `notification-service` içinde izole edilir. Böylece ana sistem hızdan taviz vermez.
+2.  **Yönlendirme Santrali (Switch/Case):** Kuyruktan düşen `NotificationMessage` nesnesinin içindeki `notificationType` Enum değerine bakarak hangi dış kütüphanenin (Örn: Twilio, SendGrid vb.) tetikleneceğine karar verir. (Şu an simülasyon olarak log basmaktadır).

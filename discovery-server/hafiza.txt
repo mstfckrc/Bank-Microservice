@@ -1,11 +1,19 @@
-# 🔍 ABSOLUTE BLUEPRINT: discovery-server (PORT 8761)
+# 🧭 ABSOLUTE BLUEPRINT: discovery-server (PORT 8761) - "EUREKA SANTRALİ"
 
-Bu belge, Spring Cloud Netflix Eureka sunucusunun src/main/java/com/mustafa altındaki sınıfını listeler. Tüm mikroservisleri barındıran rehberdir. (Sadece tek bir sınıfa hitap eder).
+### 1. Servisin Amacı
+Projedeki mikroservislerin birbirlerini IP adresleriyle değil, isimleriyle (Örn: `bank-demo-backend`) bulabilmesini sağlayan "Netflix Eureka" tabanlı servis kayıt (Registry) merkezidir.
 
 ---
 
-## 1. PAKET: `starter`
-*   **`DiscoveryServerApplication.java`**: 
-    *   `@SpringBootApplication`
-    *   `@EnableEurekaServer`
-    *   Ayağa kalktığında `bank-auth-micro`, `Bank-Demo-Backend` vs. gibi client'ların `/eureka/apps` adresine yaptıkları kayıtları hafızaya alır, loadbalancer işlemlerini organize eder. Kodun devamı tamamen `pom.xml` ve `application.yml` bağımlılığına yataral işlenir.
+### 2. Yapı ve Konfigürasyon
+Çok basit ve standart bir Spring Cloud Eureka Server yapısına sahiptir. Kendi başına bir iş kuralı işletmez.
+
+*   `@EnableEurekaServer` anotasyonu ile çalışır.
+*   `port: 8761` üzerinde dinler.
+*   `register-with-eureka: false` ve `fetch-registry: false` ayarları ile kendisini tekrar kendine kaydetmesi (Sonsuz döngü) engellenmiştir.
+
+---
+
+### 3. Çalışma Mantığı
+1.  Banka sistemindeki her mikroservis (Auth, Backend, Corporate, Gateway vb.) ayağa kalktığında bu santrale "Ben Buradayım" der ve adını/IP'sini kaydettirir.
+2.  Gateway veya diğer servisler (Örn: FeignClient ile) birbirine ulaşmak istediğinde, sabit IP yazmak yerine sadece "Bana *bank-auth-micro* servisini bağla" der. Eureka bu ismi IP adresine çözümler.

@@ -32,3 +32,8 @@ local.properties
 .env
 *.env
 .env.*
+
+# 🛡️ 6. İSTİSNALAR (VİZE ALAN DOSYALAR)
+# Üstteki kurallara rağmen example dosyalarının Git'e gitmesine kesin izin ver!
+!.env.example
+!.env.local.example

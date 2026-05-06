@@ -1,28 +1,53 @@
-# 🚪 ABSOLUTE BLUEPRINT: api-gateway (PORT 8081)
+# 🛡️ ABSOLUTE BLUEPRINT: api-gateway (PORT 8081) - "SİBER KALKAN"
 
-Bu belge, API Gateway (Trafik Yönlendirici) servisinin src/main/java/com/mustafa altındaki TÜM klasörlerini ve sınıflarını listeler. Bu mikroservis MVC (Veritabanı, Entity, Service) taşımaz, sadece konfigürasyon ve filtrelerden oluşur.
-
----
-
-## 1. PAKET: `starter`
-*   **`ApiGatewayApplication.java`**: `@SpringBootApplication`, `@EnableDiscoveryClient`. Sistemin ana giriş kapısını ayağa kaldırır.
+### 1. Servisin Amacı
+Tüm sistemin dış dünyaya açılan tek kapısıdır. Dışarıdan gelen her isteği karşılar, Keycloak (JWT) doğrulamasını yapar, token'ı parçalar ve arka plandaki mikroservislere sadece saf kimlik bilgisi aktararak (Zero-Trust) rotalama yapar. Ayrıca aşırı yüklenmelere karşı Redis tabanlı hız sınırı (Rate Limiting) uygular.
 
 ---
 
-## 2. PAKET: `config` (Altyapı Ayarları)
-*   **`GatewayRoutingConfig.java`**: Spring Cloud Gateway'ın `RouteLocator` bean'ini tanımlar. Hangi yolun hangi servise düşeceğini kod üzerinden (`.route(p -> p.path("/api/v1/auth/**").uri("lb://auth-service"))`) hardcoded veya `.yml` olarak bağlar.
-*   **`CorsConfig.java`**: Front-end'den (React/Next.js) gelen tarayıcı erişim engellerini kaldırmak için `CorsWebFilter` tanımlar (Tüm Originlere, Headerlara, Metotlara izin verilir `*`).
-*   **`SecurityConfig.java`**: Spring Security WebFlux konfigürasyonudur (`ServerHttpSecurity`).
-    *   OAuth2 Resource Server modunda çalışır (`jwt()`).
-    *   `/api/v1/auth/**` dışa açılır (`permitAll()`).
-    *   Geri kalan her şey zorunlu kimlik doğrulamasına tabidir (`authenticated()`).
+### 2. Güvenlik Bölgeleri (SecurityConfig)
+Spring WebFlux tabanlı güvenlik kalkanı, sistemi iki farklı geçiş bölgesine ayırır:
+
+*   **Sivil Bölge (Public Filter - Order 1):** Kimlik kartı sormaz. Herkese açıktır.
+    *   `OPTIONS /**` (CORS Taramaları)
+    *   `/api/v1/auth/**` (Giriş / Kayıt olma)
+    *   `/api/v1/currencies/**` (Canlı döviz kurları - Vitrin)
+    *   `/eureka/**` (Servis keşfi)
+*   **Askeri Bölge (Secured Filter - Order 2):** Yukarıdakiler haricindeki tüm linkler buraya düşer. İstisnasız herkesten geçerli bir JWT Token (`Bearer Token`) bekler. Token'ın geçerliliği `application.yml` içindeki Keycloak Certs URL'si üzerinden teyit edilir.
 
 ---
 
-## 3. PAKET: `filter` (Trafik Kalkanları)
-*   **`KeycloakHeaderFilter.java`**: (`implements GlobalFilter, Ordered`) **EN KRİTİK SINIF**.
-    *   Gateway'den arka servislere geçen her HTTP isteğini havada yakalar.
-    *   İsteğin içindeki OAuth2 / JWT kılıfından Keycloak bilgilerini parçalar.
-    *   Token içindeki `preferred_username` id'sini yakalar ve arkaya giden yeni isteğin `X-Identity-Number` kutusuna çakar!
-    *   Aynı şekilde Token'da dönen rolleri `X-User-Role` string'i olarak yapıştırır.
-    *   Dışarıdan gelen ana `Authorization` token bilgisini arkaya göndermemek için **SİLER/TEMİZLER (Zero-Trust Bypass).** Çünkü JWT çözümleme yükü sadece Gateway'e aittir, arka mikroservisler güvende olacak.
+### 3. Keycloak Tercümanı ve Zero-Trust Filtresi (KeycloakHeaderFilter)
+Gateway'in en önemli donanımıdır.
+1.  **Parçalama:** Askeri Bölge'den geçen JWT'nin içini açar. `preferred_username` alanındaki TC Kimlik numarasını ve `realm_access.roles` içindeki yetkileri (Admin, Müşteri vb.) okur.
+2.  **Damgalama (Header Mutation):** Bu bilgileri isteğin başlığına `X-Identity-Number` ve `X-User-Role` olarak zımbalar.
+3.  **İmha (Zero-Trust):** Orijinal `Authorization: Bearer <TOKEN>` başlığını tamamen SİLER.
+4.  **Sonuç:** Arka plandaki hiçbir mikroservis Keycloak bilmez, token doğrulamaz. Sadece Gateway'in bastığı `X-Identity-Number` başlığına körü körüne güvenir.
+
+---
+
+### 4. Rota Haritası (GatewayRoutingConfig)
+Banka içerisindeki trafik akışı kod üzerinden dinamik olarak şu şekilde ayarlanmıştır:
+
+*   `/api/v1/currencies/**` -> `currency-service:8083`
+*   `/api/v1/bills/**` -> `bill-service:8084`
+*   `/api/v1/companies/employees/**` -> `corporate-service:8085`
+*   `/api/v1/admin/customers/*/accounts` -> `backend:8080` *(Özel İstisna)*
+*   `/api/v1/admin/customers/**` -> `auth-service:8086`
+*   `/api/v1/auth/register` -> `auth-service:8086` **[REDİS KALKANLI]**
+*   `/api/v1/auth/**` & `/api/v1/customers/**` -> `auth-service:8086`
+*   `/api/v1/**` (Yukarıdakilerden seken her şey) -> `backend:8080` (Ana Karargah Monoliti)
+
+---
+
+### 5. Siber Savunma (RedisRateLimiter)
+Kötü niyetli kişilerin sistemi çökertmesini veya bot hesap açmasını engellemek için `RateLimitConfig` kullanılarak bir kalkan inşa edilmiştir.
+
+*   **Hedef:** Şu an sadece en kritik olan `auth-register-route` (Hesap Açma) uç noktasına bağlanmıştır.
+*   **Limit:** `replenishRate=1`, `burstCapacity=2`. Yani bir IP adresi saniyede sadece 1 kez kayıt isteği atabilir, ani yüklenmelerde 2'ye kadar tolere edilir. Üstünü atarsa Gateway doğrudan HTTP 429 (Too Many Requests) hatası keser ve isteği içeri almaz.
+*   **İzleme:** Engelleme mekanizması Redis (`SPRING_REDIS_HOST`) üzerinden IP adresi (`ipKeyResolver`) bazlı takip edilir.
+
+---
+
+### 6. CORS Politikası (CorsConfig)
+Frontend'in (Next.js) sorunsuz iletişim kurabilmesi için tüm HTTP metotlarına (`GET, POST, PUT, DELETE, OPTIONS`), tüm Origin'lere (`*`) ve en önemlisi kimliklerin (Credentials/Cookies) taşınabilmesine izin verecek şekilde konfigüre edilmiştir. Yıkıcı tarayıcı engelleri (CORS hataları) bu noktada bertaraf edilir.

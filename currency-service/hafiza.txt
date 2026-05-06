@@ -1,42 +1,50 @@
-# 💶 ABSOLUTE BLUEPRINT: currency-service (PORT 8083)
+# 💱 ABSOLUTE BLUEPRINT: currency-service (PORT 8086) - "DÖVİZ VE ÇEVİRİ MERKEZİ"
 
-Bu belge, döviz kuru sağlayan ve diğer servislere veri atan servisin src/main/java/com/mustafa altındaki tüm klasörlerini listeler. (Veritabanına ihtiyaç duymaz, memcached/redis mimarisi vardır).
-
----
-
-## 1. PAKET: `starter`
-*   **`CurrencyServiceApplication.java`**: `@EnableCaching` ve `@EnableDiscoveryClient` etiketlerini taşır.
+### 1. Servisin Amacı
+Banka içerisindeki çapraz döviz transferlerinde (`TRY` -> `USD` vb.) anlık kurları sağlamak ve Frontend (Next.js) tarafında kullanıcılara güncel döviz tabelasını göstermekle görevlidir. Kendi veritabanı yoktur, açık kaynaklı bir kur sağlayıcı API'si kullanır. En önemli özelliği "Redis Cache Bypass" (Karargah İstisnası) mimarisine sahip olmasıdır.
 
 ---
 
-## 2. PAKET: `dto.response`
-*   **`ExchangeRateResponse.java`**: 
-    *   `String base_code` (Hangi kurdan çekildi. Örn: TRY)
-    *   `Map<String, Double> rates` (Çapraz kurların devasa Hash eşleşmesi. TRY -> USD, EUR vb.)
-    *(Not: Bu DTO, dış internet kaynağının (ExchangeRate-API vb.) geri döndürdüğü birebir JSON fırçasına uyumludur).*
+### 2. Veritabanı ve Entity Modelleri
+*   **Fiziksel Veritabanı Yoktur.** Tüm veriler dış servisten anlık olarak çekilir veya Redis Cache üzerinde (RAM) geçici olarak tutulur.
 
 ---
 
-## 3. PAKET: `controller` ve `controller.impl`
-*   **`ICurrencyController.java` & `CurrencyControllerImpl.java`**
-    *   `@GetMapping("/api/v1/currencies/rates")`: -> `ResponseEntity<ExchangeRateResponse> getRates(@RequestParam("base") String base)` (Örn: `?base=TRY`).
+### 3. Girdi ve Çıktılar (DTO ve Return Types)
+En kritik veri transfer objeleri ve alanları:
+
+**Response (Giden) Çıktılar:**
+*   `ExchangeRateResponse`:
+    *   `base_code` (String): Temel para birimi (Örn: `TRY`).
+    *   `rates` (Map<String, Double>): Diğer para birimlerine karşı değerleri. (Örn: `{"USD": 0.03, "EUR": 0.028}`)
+    *   *Kritik Detay:* Bu nesne Redis'e (Byte olarak) yazılabilmesi için `Serializable` arayüzünü uygular ve `serialVersionUID = 1L` kalkanına sahiptir.
 
 ---
 
-## 4. PAKET: `service` (İş Mantığı Arayüzleri) ve `service.impl`
-*   **`ICurrencyService.java` & `CurrencyServiceImpl.java`**
-    *   **ÖNEMLİ MİMARİ NOTU**: Birbirini doğrudan çağıran önbellek (Cache Bypass) operasyonları için Spring hileleri (`@Lazy self`) tamamen YOK EDİLDİ. Yerine temiz iki bölmeli kurgu getirildi:
-    *   `getLiveRates(String baseCurrency)`: **VİTRİN.** Sadece Frontend/müşteri kullanır. `@Cacheable(value = "rates", key = "#baseCurrency")` etiketiyle 10 dakikalık Redis RAM kopyasını saklar. Dış API'ye sürekli yüklenmez.
-    *   `convertAmount(amount, from, to)`: **KARARGAH CANLI İŞLEMİ.** Arka plandaki muhasebe/para havaleleri sırasında (Feign üzerinden) çalışır. Asla Redis önbelleğine düşmez, Cache'i bilinçli şekilde aşarak (bypass) her seferinde %100 güncel dış kur çeker.
-    *   `fetchRatesFromExternalApi(baseCurrency)`: (Private YARDIMCI). Dış RestTemplate bağlantısını ve `ExchangeRateResponse` parselamasını yapan asıl arka metot.
+### 4. Endpoints (Controller Uç Noktaları)
+
+**CurrencyController (`/api/v1/currencies`)**
+*   `[GET] /rates?base={baseCurrency}` -> `ExchangeRateResponse` döner. Query parametresi olarak `TRY`, `USD` veya `EUR` alır. Boş bırakılırsa `TRY` default olarak kabul edilir.
+
+*(Not: `convertAmount` metodu Controller üzerinden dışarıya açık değildir. Karargah (Backend) bu servise FeignClient ile `/rates` üzerinden bağlanıp kurları çeker, hesabı kendisi yapar veya doğrudan bu servisi lokal kütüphane gibi içten çağırır. Demo yapısında Backend `/rates` i çekiyor.)*
 
 ---
 
-## 5. PAKET: `config` (Önbellek)
-*   **`RedisCacheConfig.java`**: Spring Boot'un Standart Cache altyapısını Redis üzerine monte eder.
-    *   Verilerin memory'de (RAM'de) ne kadar yaşayacağını (`Duration.ofMinutes(10)` vs) TTL olarak confguration manager ile derler.
+### 5. Dış Bağlantılar (İletişim)
+*   **External API (Açık Kaynak Kur Sağlayıcı):** Anlık kurları çekmek için `RestTemplate` kullanarak `https://open.er-api.com/v6/latest/{baseCurrency}` adresine HTTP GET isteği atar.
+*   **Redis Sunucusu:** Frontend vitrini için çekilen kurları belirli bir süre (TTL - Time to Live) RAM üzerinde önbellekler.
 
 ---
 
-## 6. PAKET: `exception`
-*   **`BankOperationException.java`**: Dış API'nin (Kur API'si) çökmesi, Timeout yemesi durumlarında yakalanıp fırlatılacak zırh.
+### 6. İş Kuralları (Business Logic)
+Mimarinin en kritik iki yüzlü (Two-Faced) çalışma prensibi:
+
+1.  **Vitrin Operasyonu (Frontend Cache - @Cacheable):**
+    *   Kullanıcılar Next.js web sitesine girdiğinde döviz kurlarını görmek ister.
+    *   Binlerce kişinin aynı anda sayfayı yenilemesi dış API'nin limiti aşmasına (Rate Limit) sebep olur.
+    *   Bu yüzden `getLiveRates(baseCurrency)` metodu `@Cacheable(value = "rates", key = "#baseCurrency")` anotasyonuna sahiptir. Dış API'den veriyi bir kez çeker ve Redis'e yazar. Sonraki 10 dakika boyunca gelen tüm Frontend isteklerine Redis'ten (RAM) yanıt verir. Hız 1ms'ye düşer.
+
+2.  **Karargah Operasyonu (Cache Bypass - Canlı Çevirim):**
+    *   Kullanıcı kendi `TRY` hesabından, başkasının `USD` hesabına gerçek bir havale yapmak istediğinde, Backend servisi `convertAmount(amount, from, to)` metodunu devreye sokar.
+    *   *GÜVENLİK KURALI:* Finansal işlem sırasında önbellekteki (belki 9 dakika önceki eski) kur **ASLA KULLANILMAZ.** Arbitraj ve kur farkı zararlarını engellemek için `convertAmount` metodu, `@Cacheable` anotasyonlu metodu baypas eder ve doğrudan `fetchRatesFromExternalApi` isimli gizli metoda (`private`) iner.
+    *   Böylece finansal işlemler %100 canlı ve o saniyenin gerçek kuru üzerinden hesaplanarak Karargah'a (Backend) teslim edilir.
