@@ -276,6 +276,8 @@ services:
       POSTGRES_PASSWORD: ${KC_DB_PASS}
     ports:
       - "5433:5432" 
+    volumes: # 🚀 EKLENDİ: Sadece Keycloak kalıcı!
+      - pgdata_keycloak:/var/lib/postgresql/data
     networks:
       - bank-network-micro
 
@@ -372,6 +374,7 @@ volumes:
   pgdata_auth:
   pgdata_bill:
   pgdata_corporate:
+  pgdata_keycloak:
 
 networks:
   bank-network-micro:
