@@ -142,36 +142,38 @@ public class AdminUserServiceImpl implements IAdminUserService {
     }
 
     private String getOwnerName(AppUser appUser) {
-        if (appUser.getRole() == AppUser.Role.RETAIL_CUSTOMER) {
+        // 🚀 DÜZELTİLDİ: Admin de olsan Bireysel Müşteri de olsan, profilin Retail tablosundaysa oradan çekecek!
+        if (appUser.getRole() == AppUser.Role.RETAIL_CUSTOMER || appUser.getRole() == AppUser.Role.ADMIN) {
             return retailCustomerRepository.findByAppUser_IdentityNumber(appUser.getIdentityNumber())
-                    .map(r -> r.getFirstName() + " " + r.getLastName()).orElse("Bilinmeyen Birey");
+                    .map(r -> r.getFirstName() + " " + r.getLastName())
+                    .orElse(appUser.getRole() == AppUser.Role.ADMIN ? "Sistem Yöneticisi" : "Bilinmeyen Birey");
         } else if (appUser.getRole() == AppUser.Role.CORPORATE_MANAGER) {
-            // 🚀 DÜZELTİLDİ: Artık çakılı isim yok, Kurumsal Servisten GERÇEK ismi çekiyoruz!
             try {
                 CompanySyncRequest company = companyServiceClient.getCompanyInfo(appUser.getIdentityNumber());
                 return company.getCompanyName() != null ? company.getCompanyName() : "İsimsiz Kurum";
             } catch (Exception e) {
                 log.warn("Kurumsal firma ({}) bilgileri çekilemedi: {}", appUser.getIdentityNumber(), e.getMessage());
-                return "Kurumsal Müşteri (" + appUser.getIdentityNumber() + ")"; // Ağ koparsa yedek paraşüt
+                return "Kurumsal Müşteri (" + appUser.getIdentityNumber() + ")";
             }
         }
-        return "Sistem Yöneticisi";
+        return "Bilinmeyen Kullanıcı";
     }
 
     private String getOwnerEmail(AppUser appUser) {
-        if (appUser.getRole() == AppUser.Role.RETAIL_CUSTOMER) {
+        // 🚀 DÜZELTİLDİ: Adminin e-postası da artık uydurma değil, kendi gerçek Retail profilinden geliyor!
+        if (appUser.getRole() == AppUser.Role.RETAIL_CUSTOMER || appUser.getRole() == AppUser.Role.ADMIN) {
             return retailCustomerRepository.findByAppUser_IdentityNumber(appUser.getIdentityNumber())
-                    .map(RetailCustomer::getEmail).orElse("");
+                    .map(RetailCustomer::getEmail)
+                    .orElse(appUser.getRole() == AppUser.Role.ADMIN ? "admin@bank.com" : "");
         } else if (appUser.getRole() == AppUser.Role.CORPORATE_MANAGER) {
-            // 🚀 DÜZELTİLDİ: Artık çakılı e-posta yok, Kurumsal Servisten GERÇEK e-posta!
             try {
                 CompanySyncRequest company = companyServiceClient.getCompanyInfo(appUser.getIdentityNumber());
                 return company.getContactEmail() != null ? company.getContactEmail() : "email_yok@kurum.com";
             } catch (Exception e) {
-                return "kurumsal@sistem.com"; // Ağ koparsa yedek paraşüt
+                return "kurumsal@sistem.com"; 
             }
         }
-        return "admin@bank.com";
+        return "bilinmeyen@bank.com";
     }
 
     private UserProfileResponse mapToUserProfileResponse(AppUser appUser) {
