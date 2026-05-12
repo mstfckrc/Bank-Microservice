@@ -17,7 +17,7 @@
 .DS_Store
 Thumbs.db
 
-# 3. Docker ve Veritabanı Kalıntıları (Eğer Dışarıya Volume Çıkardıysan)
+# 3. Docker ve Veritabanı Kalıntıları
 **/pgdata/
 **/.docker-data/
 
@@ -33,7 +33,16 @@ local.properties
 *.env
 .env.*
 
-# 🛡️ 6. İSTİSNALAR (VİZE ALAN DOSYALAR)
+# 🛡️ 6. SSL SERTİFİKALARI VE KRİPTOGRAFİK DOSYALAR (GENİŞ ÇAPLI ENGEL)
+# Projenin neresinde olursa olsun hiçbir sertifika Git'e sızamaz!
+certs/
+**/*.pem
+**/*.key
+**/*.crt
+**/*.csr
+**/*.ext
+
+# 🛡️ 7. İSTİSNALAR (VİZE ALAN DOSYALAR)
 # Üstteki kurallara rağmen example dosyalarının Git'e gitmesine kesin izin ver!
 !.env.example
 !.env.local.example

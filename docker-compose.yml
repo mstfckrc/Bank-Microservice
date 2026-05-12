@@ -110,11 +110,13 @@ services:
     environment:
       - SPRING_REDIS_HOST=${REDIS_HOST}
       - SPRING_REDIS_PORT=${REDIS_PORT}
-      - OAUTH_ISSUER_URI=http://${KARARGAH_IP}:9090/realms/bank-realm
+      # 🚀 YENİ EKLENDİ: Artık IP değil, tertemiz Domain okuyacak!
+      - OAUTH_ISSUER_URI=${OAUTH_ISSUER_URI}
       - KEYCLOAK_INTERNAL_URL=${KC_INTERNAL_URL}
       - EUREKA_URL=${EUREKA_URL}
-    ports:
-      - "8081:8081" 
+    # 🚀 NGINX OPERASYONU: Gateway'in körlüğünü çözen fısıltı
+    extra_hosts:
+      - "auth.bank.local:host-gateway"
     networks:
       - bank-network-micro
 
@@ -241,16 +243,16 @@ services:
     container_name: bank_frontend_micro
     depends_on:
       - api-gateway
-    environment:
-      - NEXT_PUBLIC_API_URL=http://${KARARGAH_IP}:8081/api/v1
-      - NEXT_PUBLIC_KEYCLOAK_URL=http://${KARARGAH_IP}:9090
-      - NEXT_PUBLIC_FRONTEND_URL=${NEXT_PUBLIC_FRONTEND_URL}
-      - KEYCLOAK_REALM=bank-realm
-      - KEYCLOAK_CLIENT_ID=bank-auth-client
-      - KEYCLOAK_INTERNAL_URL=${KC_INTERNAL_URL}
-      - KEYCLOAK_CLIENT_SECRET=${KEYCLOAK_CLIENT_SECRET}
-    ports:
-      - "3000:3000"
+    env_file:
+      - ./Bank-Demo-Frontend/.env.local
+    # 🚀 NGINX OPERASYONU: Dış dünyaya kapatıldı
+    # ports:
+    #   - "3000:3000"
+    # 🚀 NGINX OPERASYONU: Docker'ın DNS körlüğünü çözen sihirli komutlar!
+    extra_hosts:
+      - "app.bank.local:host-gateway"
+      - "api.bank.local:host-gateway"
+      - "auth.bank.local:host-gateway"
     networks:
       - bank-network-micro
 
@@ -261,8 +263,9 @@ services:
       dockerfile: Dockerfile
     container_name: bank_discovery_server_micro
     restart: on-failure
-    ports:
-      - "8761:8761"
+    # 🚀 NGINX OPERASYONU: Sadece Nginx (eureka.bank.local) üzerinden girilecek
+    # ports:
+    #  - "8761:8761"
     networks:
       - bank-network-micro
 
@@ -276,7 +279,7 @@ services:
       POSTGRES_PASSWORD: ${KC_DB_PASS}
     ports:
       - "5433:5432" 
-    volumes: # 🚀 EKLENDİ: Sadece Keycloak kalıcı!
+    volumes: 
       - pgdata_keycloak:/var/lib/postgresql/data
     networks:
       - bank-network-micro
@@ -293,6 +296,13 @@ services:
       KC_DB_PASSWORD: ${KC_DB_PASS}
       KEYCLOAK_ADMIN: ${KC_ADMIN_USER}
       KEYCLOAK_ADMIN_PASSWORD: ${KC_ADMIN_PASS}
+      # 🚀 YENİ EKLENEN SİHİRLİ KOMUTLAR
+      KC_PROXY_HEADERS: xforwarded    # Nginx'in yolladığı orijinal domainleri oku
+      KC_HOSTNAME_STRICT: "false"     # Hardcode domain bekleme, .env esnekliğine uyum sağla
+      KC_HOSTNAME: auth.bank.local
+      KC_HOSTNAME_STRICT_HTTPS: "false"
+    
+    # 🚀 NGINX OPERASYONU: Dış dünyaya kapatıldı
     ports:
       - "9090:8080" 
     depends_on:
@@ -365,6 +375,26 @@ services:
     container_name: bank_redis_micro
     ports:
       - "6379:6379"
+    networks:
+      - bank-network-micro
+
+  # ==========================================
+  # 🚦 NGINX TERS VEKİL (YENİ EKLENDİ)
+  # ==========================================
+  nginx-proxy:
+    image: nginx:alpine
+    container_name: bank_nginx_proxy
+    ports:
+      - "80:80" 
+      - "443:443" # 🚀 EKSİK OLAN HTTPS KAPISI EKLENDİ!
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro 
+      - ./certs:/etc/nginx/certs:ro # 🚀 EKSİK OLAN SERTİFİKA YOLU EKLENDİ!
+    depends_on:
+      - frontend
+      - api-gateway
+      - keycloak
+      - discovery-server
     networks:
       - bank-network-micro
 
