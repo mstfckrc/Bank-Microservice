@@ -1,5 +1,7 @@
 server:
   port: 8081
+  # 🚀 YENİ EKLENDİ: Nginx'in fısıldadığı X-Forwarded başlıklarına GÜVEN!
+  forward-headers-strategy: framework
 
 spring:
   application:
@@ -8,12 +10,11 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          # SADECE DEĞİŞKEN ADLARI:
           issuer-uri: ${OAUTH_ISSUER_URI}
+          # Gateway Keycloak'a HTTPS ile değil, doğrudan iç ağdan şifresiz gidecek!
           jwk-set-uri: ${KEYCLOAK_INTERNAL_URL}/realms/bank-realm/protocol/openid-connect/certs
   data:
     redis:
-      # SADECE DEĞİŞKEN ADLARI:
       host: ${SPRING_REDIS_HOST}
       port: ${SPRING_REDIS_PORT}
   cloud:
@@ -30,5 +31,4 @@ spring:
 eureka:
   client:
     service-url:
-      # İŞTE SENİN İSTEDİĞİN O TEMİZ YAPI:
       defaultZone: ${EUREKA_URL}
