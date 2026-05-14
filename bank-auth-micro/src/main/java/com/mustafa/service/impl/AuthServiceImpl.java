@@ -19,6 +19,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import org.keycloak.admin.client.Keycloak;
 import org.keycloak.representations.idm.CredentialRepresentation;
+import org.keycloak.representations.idm.RoleRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
 import jakarta.ws.rs.core.Response;
 import org.springframework.beans.factory.annotation.Value;
@@ -173,7 +174,7 @@ public class AuthServiceImpl implements IAuthService {
 
         // 🚀 DÜZELTME: Middleware'in (Frontend) doğru yönlendirme yapabilmesi için Rol/Rütbe Ataması!
         try {
-            org.keycloak.representations.idm.RoleRepresentation realmRole = 
+            RoleRepresentation realmRole =
                     keycloak.realm(realm).roles().get(request.getRole()).toRepresentation();
             
             keycloak.realm(realm).users().get(keycloakUserId).roles().realmLevel()
