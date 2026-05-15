@@ -398,6 +398,55 @@ services:
     networks:
       - bank-network-micro
 
+  # ==========================================
+  # 🔭 RADAR VE GÖZLEM MERKEZİ (MONITORING)
+  # ==========================================
+
+  # 1. Biyolojik Sensör (cAdvisor)
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.47.2
+    container_name: bank_cadvisor_micro
+    restart: unless-stopped
+    volumes:
+      - /:/rootfs:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    networks:
+      - bank-network-micro
+    # 🛡️ GÜVENLİK: Host portu açılmadı. Backend (8080) ile çakışma önlendi!
+
+  # 2. İstihbarat Arşivi (Prometheus)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: bank_prometheus_micro
+    restart: unless-stopped
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=3d' # Senin emrin: 3 Günlük arşiv!
+    networks:
+      - bank-network-micro
+    # 🛡️ GÜVENLİK: Host portu açılmadı. Keycloak (9090) ile çakışma önlendi!
+
+  # 3. Başkomutanın Holo-Ekranı (Grafana)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: bank_grafana_micro
+    restart: unless-stopped
+    environment:
+      # Değişkenleri senin mimarine uygun olarak .env'den çekeceğiz
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASS}
+    volumes:
+      - grafana_data:/var/lib/grafana
+    networks:
+      - bank-network-micro
+
 # 📦 YENİ MÜSTAKİL VERİ DEPOLARI
 volumes:
   pgdata_core:
@@ -405,6 +454,8 @@ volumes:
   pgdata_bill:
   pgdata_corporate:
   pgdata_keycloak:
+  prometheus_data:
+  grafana_data:
 
 networks:
   bank-network-micro:

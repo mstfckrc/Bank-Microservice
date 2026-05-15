@@ -1,0 +1,15 @@
+global:
+  scrape_interval: 15s # İstihbarat toplama sıklığı: Her 15 saniyede bir git veri al.
+  evaluation_interval: 15s
+
+scrape_configs:
+  # 1. İstihbarat Merkezinin Kendi Sağlığı (Prometheus kendini izler)
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # 2. Biyolojik Radarımız (cAdvisor - Konteyner Verileri)
+  - job_name: 'cadvisor'
+    static_configs:
+      # DİKKAT: Container adını ve içerideki 8080 portunu veriyoruz!
+      - targets: ['bank_cadvisor_micro:8080']
