@@ -1,79 +1,219 @@
-# 🏢 ABSOLUTE BLUEPRINT: bank-corporate-micro (PORT 8085) - "ŞİRKET YÖNETİMİ VE MAAŞLAR"
+# ============================================================
+# 🏢 ABSOLUTE BLUEPRINT: bank-corporate-micro (PORT 8083)
+# KURUMSAL YÖNETİM MERKEZİ - V9.0
+# ============================================================
+# Son Güncelleme: 2026-05-18
+# ============================================================
 
-### 1. Servisin Amacı
-Kurumsal şirketlerin (Maaş ödeyen tüzel kişiliklerin) ve o şirketlerde çalışan personellerin verilerini yönetir. Manuel "Toplu Maaş Dağıtımı" yapabildiği gibi, şirketlerin ayarladığı gün geldiğinde **Gece Yarısı CRON (Zamanlanmış Görev)** çalıştırarak otomatik maaş ödemelerini tetikler. Hiçbir hesap/para verisi tutmaz; işlemi hazırlayıp Karargah'a (Backend) fırlatır.
+## 1. SERVİSİN AMACI
+Kurumsal müşterilerin (CORPORATE_MANAGER) personel yönetimini ve maaş
+ödemelerini yürüten servistir. Personel işe alma, çıkarma, maaş/IBAN
+güncelleme, manuel toplu maaş dağıtımı ve otomatik maaş çizelgesi
+(Scheduler) işlevleri bu serviste merkezi olarak çalışır. Şirket profil
+kaydı ise Auth Service tarafından senkronize edilir (Internal endpoint).
+Tüm finansal operasyonlar Feign ile Bank-Demo-Backend'e devredilir.
 
----
+## 2. VERİTABANI VE ENTITY MODELLERİ
+Veritabanı: bank_corporate_db (PostgreSQL 15, Port: 5435)
 
-### 2. Veritabanı ve Entity Modelleri
-*   **`Company`** (Tablo: `companies`)
-    *   `id` (Long): Birincil anahtar.
-    *   `companyIdentityNumber` (String, 11): Şirketin TC veya Vergi Numarası (Tekil).
-    *   `companyName` (String, 150): Şirket unvanı.
-    *   `taxOffice` (String, 100): Vergi dairesi.
-    *   `contactEmail` (String, 100): İletişim e-postası.
-    *   `autoSalaryPaymentEnabled` (Boolean): Otomatik maaş ödemesi açık mı? (Default: false)
-    *   `salaryPaymentDay` (Integer): Ayın kaçıncı günü maaş yatacak? (1-31)
-    *   `defaultSalaryIban` (String, 34): Maaşların otomatik çekileceği şirketin ana kasası.
-*   **`CompanyEmployee`** (Tablo: `company_employees`)
-    *   `id` (Long): Birincil anahtar.
-    *   `firstName` (String, 50) / `lastName` (String, 50): Personel adı soyadı.
-    *   `company` (ManyToOne): Çalıştığı şirketin referansı.
-    *   `employeeIdentityNumber` (String, 11): Personelin TC Kimlik numarası.
-    *   `salaryAmount` (BigDecimal): Alacağı net maaş.
-    *   `salaryIban` (String, 26): Maaşın yatacağı personelin kendi kasası.
+### Tablo: companies
+| Kolon                     | Tip             | Kısıtlamalar                              |
+|---------------------------|-----------------|-------------------------------------------|
+| id                        | Long (IDENTITY) | PK, Auto-increment                        |
+| company_identity_number   | String(11)      | UNIQUE, NOT NULL (TC veya Vergi No)       |
+| companyName               | String(150)     | NOT NULL                                  |
+| taxOffice                 | String(100)     | NOT NULL                                  |
+| contactEmail              | String(100)     | UNIQUE, NOT NULL                          |
+| auto_salary_payment_enabled | Boolean       | DEFAULT=false                             |
+| salary_payment_day        | Integer         | nullable (1-31 arası gün)                 |
+| default_salary_iban       | String(34)      | nullable (otomatik ödeme çıkış IBAN'ı)   |
 
-*(Not: Bu servis AppUser veya RetailCustomer tablosu barındırmaz. Müşteriler Auth servisindedir. Bu servis sadece şirket-personel bağını kurar.)*
+NOT: AppUser entity referansı yoktur. Bağlantı sadece companyIdentityNumber
+(String) üzerinden kurulur. Bu "Zero Foreign Key" mimarisinin bir gereğidir.
 
----
+### Tablo: company_employees
+| Kolon                   | Tip             | Kısıtlamalar                              |
+|-------------------------|-----------------|-------------------------------------------|
+| id                      | Long (IDENTITY) | PK, Auto-increment                        |
+| firstName               | String(50)      | NOT NULL                                  |
+| lastName                | String(50)      | NOT NULL                                  |
+| company_id              | Long            | FK -> companies.id, NOT NULL (LAZY)       |
+| employee_identity_number| String(11)      | NOT NULL (TC No)                          |
+| salaryAmount            | BigDecimal      | NOT NULL                                  |
+| salaryIban              | String(26)      | NOT NULL                                  |
 
-### 3. Girdi ve Çıktılar (DTO ve Return Types)
-En kritik veri transfer objeleri ve alanları:
+İlişki: CompanyEmployee -> Company (ManyToOne, LAZY)
+NOT: RetailCustomer nesnesi YOK. Bağlantı sadece employeeIdentityNumber
+(String) üzerinden kurulur.
 
-**Request (Gelen) DTO'lar:**
-*   `HireEmployeeRequest`: `identityNumber`(String), `salaryIban`(String), `salaryAmount`(BigDecimal).
-*   `UpdateEmployeeRequest`: `salaryIban`(String), `salaryAmount`(BigDecimal).
-*   `SalaryPaymentRequest`: `senderIban`(String - Maaşların hangi kasadan dağıtılacağı).
-*   `AutoPaymentSettingsRequest`: `autoPaymentEnabled`(boolean), `paymentDay`(Integer), `defaultSalaryIban`(String).
-*   `CompanySyncRequest`: `companyIdentityNumber`(String), `companyName`(String), `contactEmail`(String), `taxOffice`(String).
+## 3. ENDPOINTS (CONTROLLER UÇ NOKTALARI)
 
-**Response (Giden) Çıktılar:**
-*   `CompanyEmployeeResponse`: `id`(Long), `identityNumber`(String), `firstName`(String), `lastName`(String), `salaryIban`(String), `salaryAmount`(BigDecimal).
-*   `AutoPaymentSettingsResponse`: `autoPaymentEnabled`(boolean), `paymentDay`(Integer), `defaultSalaryIban`(String), `message`(String).
+### 3.1 CompanyEmployeeController (/api/v1/companies/employees)
+| HTTP   | Endpoint                    | Girdi                           | Çıktı                           | Açıklama                        |
+|--------|-----------------------------|---------------------------------|---------------------------------|---------------------------------|
+| POST   | /                           | HireEmployeeRequest (Body)      | CompanyEmployeeResponse (201)   | Personel işe al                  |
+| GET    | /                           | - (Principal)                   | List<CompanyEmployeeResponse>   | Kendi personel listesi           |
+| PUT    | /{employeeIdentityNumber}   | UpdateEmployeeRequest (Body)    | CompanyEmployeeResponse         | Personel maaş/IBAN güncelle     |
+| DELETE | /{employeeIdentityNumber}   | employeeIdentityNumber (Path)   | Map<String,String>              | Personeli işten çıkar           |
+| POST   | /pay-salaries               | SalaryPaymentRequest (Body)     | List<TransactionResponse>       | Manuel toplu maaş dağıt         |
+| PUT    | /auto-payment-settings      | AutoPaymentSettingsRequest (Body)| AutoPaymentSettingsResponse    | Otomatik ödeme ayarlarını güncelle|
+| GET    | /auto-payment-settings      | - (Principal)                   | AutoPaymentSettingsResponse     | Otomatik ödeme ayarlarını getir  |
 
-*(Not: `BulkSalaryRequest`, `SalaryPaymentItem`, `CustomerProfileResponse`, `TransactionResponse`, `AccountValidationResponse` gibi sınıflar Dış Servislerden veri alıp/vermek için kullanılan köprü nesnelerdir.)*
+NOT: Tüm endpoint'lerde `Principal principal` ile JWT'den kimlik okunur.
 
----
+### 3.2 InternalCompanyController (/api/v1/internal/companies)
+| HTTP   | Endpoint               | Girdi                          | Çıktı             | Açıklama                          |
+|--------|------------------------|--------------------------------|-------------------|-----------------------------------|
+| POST   | /sync                  | CompanySyncRequest (Body)      | void (200 OK)     | Yeni şirket kaydı (Auth'tan gelir)|
+| PUT    | /sync/{identityNumber} | CompanySyncRequest (Body)      | void (200 OK)     | Şirket bilgisi güncelle           |
+| DELETE | /sync/{identityNumber} | identityNumber (Path)          | void (200 OK)     | Şirket kaydını sil                |
+| GET    | /sync/{identityNumber} | identityNumber (Path)          | CompanySyncRequest| Şirket bilgisini getir            |
 
-### 4. Endpoints (Controller Uç Noktaları)
+## 4. GİRDİ VE ÇIKTILAR (DTO İÇERİKLERİ)
 
-**CompanyEmployeeController (`/api/v1/companies/employees`)** *(Sadece Kurumsal Yetkililer)*
-*   `[POST] /` -> `HireEmployeeRequest` alır, `CompanyEmployeeResponse` döner. Şirkete yeni personel ekler.
-*   `[GET] /` -> `List<CompanyEmployeeResponse>` döner. Şirketin tüm personellerini listeler.
-*   `[PUT] /{employeeIdentityNumber}` -> `UpdateEmployeeRequest` alır. Personelin maaş/IBAN bilgisini günceller.
-*   `[DELETE] /{employeeIdentityNumber}` -> Personeli şirketten kovar (Siler). `Map<String,String>` döner.
-*   `[POST] /pay-salaries` -> `SalaryPaymentRequest` alır. Şirketteki herkese anında maaş dağıtır. `List<TransactionResponse>` döner.
-*   `[PUT] /auto-payment-settings` -> `AutoPaymentSettingsRequest` alır. Otomatik maaş ayarlarını günceller.
-*   `[GET] /auto-payment-settings` -> Şirketin otomatik maaş ödeme kurallarını döner.
+### Request DTO'ları
+HireEmployeeRequest:
+  - identityNumber : String (personelin TC No)
+  - salaryAmount   : BigDecimal (TRY cinsinden aylık maaş)
+  - salaryIban     : String (maaşın yatırılacağı IBAN)
 
-**InternalCompanyController (`/api/v1/internal/companies`)** *(Sadece Auth Servisine Açık)*
-*   `[POST] /sync` -> `CompanySyncRequest` alır. Auth tarafında şirket kayıt olunca burada Company tablosunu açar.
-*   `[PUT] /sync/{identityNumber}` -> Şirket profilini (ad, email) günceller.
-*   `[DELETE] /sync/{identityNumber}` -> Auth servisi şirketi silerse, buradaki Company'i yok eder.
-*   `[GET] /sync/{identityNumber}` -> Şirket bilgilerini çeker.
+UpdateEmployeeRequest:
+  - salaryAmount : BigDecimal
+  - salaryIban   : String
 
----
+SalaryPaymentRequest:
+  - senderIban : String (şirketin çıkış kasası IBAN'ı)
 
-### 5. Dış Bağlantılar (İletişim)
-*   **RabbitMQ Publisher:** Personele işe alındığına veya maaşının yattığına dair emailler için `bank_exchange` -> `notification_route` kanalına `NotificationMessage` JSON'ı atar.
-*   **FeignClient - `IAuthServiceClient`:** İşe yeni personel alınacağı zaman `GET /api/v1/internal/users/profile/{identityNumber}` uç noktasına gidip personelin gerçek kimliğini çeker (Adamın bankada kaydı yoksa işe alamaz).
-*   **FeignClient - `IBackendServiceClient`:** 
-    1. İşe alımda `GET /api/v1/internal/accounts/validate?iban=` ile kasanın o kişiye ait olup olmadığını kontrol eder.
-    2. Maaş ödemesinde yüzlerce kişilik listeyi `BulkSalaryRequest` olarak paketleyip `POST /api/v1/internal/transactions/bulk-salary` uç noktasına fırlatır. Tüm ödeme Backend'de tek Transaction'da gerçekleşir.
+AutoPaymentSettingsRequest:
+  - autoPaymentEnabled   : boolean
+  - paymentDay           : Integer (1-31, zorunlu eğer enabled=true)
+  - defaultSalaryIban    : String (çıkış kasası, zorunlu eğer enabled=true)
 
----
+CompanySyncRequest (Internal - Auth'tan gelir):
+  - companyIdentityNumber : String
+  - companyName           : String
+  - contactEmail          : String
+  - taxOffice             : String
 
-### 6. İş Kuralları (Business Logic)
-1.  **Doğrulama Zinciri (Validation Chain):** Bir personel işe alınırken (`HireEmployeeRequest`), Corporate Servis önce Feign ile Auth'a bağlanıp bu TC'nin sistemde var olup olmadığına bakar. Ardından verilen IBAN'ı Backend servise gönderip kasanın açık olup olmadığına ve gerçekten bu TC numarasına mı ait olduğuna (`AccountValidationResponse`) bakar. Eğer uyumsuzsa işe alımı reddeder.
-2.  **Toplu Ödeme Kutusu (Bulk Payment):** Maaş ödemeleri döngü içinde 100 defa tekil transfer isteği atmak yerine, Backend'e tek bir paket (`BulkSalaryRequest`) gönderilir. Backend, parayı şirketten tek seferde kesip personellere dağıtır. Bu ağ trafiğini 100 kat düşürür.
-3.  **Otomatik Maaş Cron Job'u:** Spring `@Scheduled` mekanizması gece çalışır. `autoSalaryPaymentEnabled = true` olan ve bugünün günü `salaryPaymentDay` değerine uyan şirketleri bulur. `defaultSalaryIban` üzerinden otomatik Bulk Salary işlemi başlatarak maaşları tıkır tıkır yatırır.
+BulkSalaryRequest (Backend'e gönderilir - Internal):
+  - senderIban  : String
+  - companyName : String
+  - salaryItems : List<SalaryPaymentItem>
+
+SalaryPaymentItem:
+  - receiverIban : String
+  - amount       : BigDecimal
+
+### Response DTO'ları
+CompanyEmployeeResponse:
+  - id             : Long
+  - identityNumber : String
+  - firstName      : String
+  - lastName       : String
+  - salaryIban     : String
+  - salaryAmount   : BigDecimal
+
+AutoPaymentSettingsResponse:
+  - autoPaymentEnabled : boolean
+  - paymentDay         : Integer
+  - defaultSalaryIban  : String
+  - message            : String
+
+TransactionResponse (Backend'den gelen - proxy olarak döner):
+  - referenceNo       : String
+  - amount            : BigDecimal
+  - convertedAmount   : BigDecimal
+  - transactionType   : TransactionType
+  - status            : TransactionStatus
+  - description       : String
+  - transactionDate   : LocalDateTime
+  - senderAccountId   : Long
+  - receiverAccountId : Long
+
+CustomerProfileResponse (Auth'tan Feign ile alınır):
+  - identityNumber : String
+  - firstName      : String
+  - lastName       : String
+  - email          : String
+
+AccountValidationResponse (Backend'den Feign ile alınır):
+  - ownerIdentityNumber : String
+  - isActive            : boolean
+
+## 5. DIŞ BAĞLANTILAR (İLETİŞİM)
+
+### FeignClient Bağlantıları (Giden İstekler)
+| Hedef Servis      | FeignClient Adı       | Endpoint                                       | Amaç                           |
+|-------------------|-----------------------|------------------------------------------------|--------------------------------|
+| bank-auth-micro   | IAuthServiceClient    | GET /api/v1/internal/users/profile/{id}        | Personel kimlik doğrulama      |
+| Bank-Demo-Backend | IBackendServiceClient | GET /api/v1/internal/accounts/validate?iban=.. | IBAN sahibi ve aktiflik kontrolu|
+|                   |                       | POST /api/v1/internal/transactions/bulk-salary | Toplu maaş dağıtımı            |
+
+NOT: Her iki client da Eureka üzerinden servis adıyla bulunur
+(auth-service / bank-demo-backend).
+
+### RabbitMQ (Asenkron Mesajlaşma)
+Rol      : ÜRETİCİ (Producer)
+Exchange : bank_exchange
+Queue    : notification_queue
+Routing  : notification_routing_key
+Mesaj Tipi: EMAIL
+  Tetikleyiciler:
+  - Personel işe alındığında    -> Yöneticiye EMAIL
+  - Personel çıkarıldığında     -> Yöneticiye EMAIL
+  - Toplu maaş tamamlandığında  -> Yöneticiye EMAIL
+
+## 6. İŞ KURALLARI (BUSINESS LOGIC)
+
+### Personel İşe Alma (hireEmployee) - 4 Aşamalı Doğrulama
+1. Yöneticinin şirket kaydı DB'de bulunur (managerIdentityNumber -> Company)
+2. Aynı personel aynı şirkete zaten kayıtlı mı? -> BankOperationException
+3. FEIGN 1 - Auth Service'e personelin kimliği sorulur:
+   - Bulunamazsa: "Personel sisteme kayıtlı değil!" (FeignException.NotFound)
+   - Bulunan profil firstName/lastName DB'ye kaydedilir
+4. FEIGN 2 - Backend'e IBAN doğrulaması sorulur:
+   - IBAN sahibi, işe alınmak istenen kişi ile aynı mı? (sahiplik kontrolü)
+   - Hesap aktif mi?
+
+### Personel Güncelleme (updateEmployee)
+- IBAN değişiyorsa FEIGN 3 ile yeni IBAN tekrar doğrulanır
+- Sahiplik ve aktiflik kontrolü tekrar yapılır
+- Sadece salaryAmount ve salaryIban güncellenebilir
+
+### Personel Çıkarma (removeEmployee)
+- Hard Delete: companyEmployeeRepository.delete(employeeRecord)
+- Geçmiş işlem kaydı transaction tablosunda kalır (Backend'de)
+
+### Toplu Maaş Dağıtımı - Mimari Devretme Prensibi
+1. Şirket DB'den bulunur
+2. Gönderen IBAN sahibi doğrulanır (validateSenderAccount -> FEIGN)
+3. Tüm personel listesi SalaryPaymentItem[] olarak paketlenir
+4. FEIGN 4: BulkSalaryRequest Backend'e gönderilir
+   - Bakiye, döviz çevirimi, MASAK bypass - TÜMÜ Backend'de yapılır
+   - Bu servis sadece "komut" verir, "işlem" yapmaz
+
+### Otomatik Maaş Scheduler (CorporateScheduledTasks)
+Cron: "0 0 0 * * *" (Her gün gece yarısı 00:00:00)
+1. companyRepository.findByAutoSalaryPaymentEnabledTrueAndSalaryPaymentDay(bugün)
+   ile bugün ödeme yapılacak şirketler çekilir
+2. Her şirket için "Ghost Identity" tekniği uygulanır:
+   - UsernamePasswordAuthenticationToken oluşturulur
+   - Kimlik: company.getCompanyIdentityNumber()
+   - Rol: ROLE_CORPORATE_MANAGER
+   - SecurityContextHolder'a set edilir
+3. paySalariesAutomatically() çağrılır (Backend'e Feign ile maaş emri)
+4. finally bloğunda SecurityContextHolder.clearContext() ile kimlik TEMİZLENİR
+   (Şirketler arası kimlik sızıntısı önlenir)
+5. Hata durumunda try-catch ile tek şirkete ait hata diğerlerini etkilemez
+
+### Otomatik Ödeme Ayarları (updateAutoPaymentSettings)
+- autoPaymentEnabled=true ise paymentDay (1-31) ve defaultSalaryIban zorunlu
+- defaultSalaryIban sahiplik kontrolü yapılır (validateSenderAccount)
+- Ayarlar Company entity'sine yazılır
+
+### Güvenlik
+- HeaderAuthenticationFilter: Tüm isteklerde X-Identity-Number header kontrolü
+- Principal.getName(): Controller katmanında kimlik yönetimi
+- SecurityConfig: Endpoint erişim kurallarını belirler
+- FeignIdentityInterceptor: Feign isteklerinde X-Internal-Identity header'ını otomatik ekler
+  (Scheduler'ın Ghost Identity'si bu sayede Backend'e iletilir)

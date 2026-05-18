@@ -1,46 +1,90 @@
-# 🔔 ABSOLUTE BLUEPRINT: notification-service (PORT 8087) - "POSTA GÜVERCİNİ"
+# ============================================================
+# 📬 ABSOLUTE BLUEPRINT: notification-service (PORT 8087)
+# BİLDİRİM POSTANE MERKEZİ - V9.0
+# ============================================================
+# Son Güncelleme: 2026-05-18
+# ============================================================
 
-### 1. Servisin Amacı
-Banka sistemindeki tüm asenkron iletişim trafiğini (E-Posta, SMS, Mobil Bildirim, Sistem Uyarıları) tek bir merkezden yönetmektir. Diğer servisleri bekleterek yavaşlatmamak için doğrudan HTTP istekleri almaz. Sadece RabbitMQ mesaj kuyruğunu dinler (Consumer).
+## 1. SERVİSİN AMACI
+Sistemdeki tüm servislerin asenkron bildirim ihtiyacını karşılayan
+merkezi postane servisidir. REST API endpoint'i yoktur. Sadece RabbitMQ
+kuyruğunu dinler ve gelen mesajları tipine göre işler.
 
----
+Mimarideki diğer servisler (auth, backend, corporate, bill) RabbitMQ'ya
+NotificationMessage göndererek bu servisi tetikler. Bu sayede bildirim
+göndermek isteyen servis işlemini bitirmeden beklemek zorunda kalmaz —
+asenkron, decoupled (bağımsız) mesajlaşma.
 
-### 2. Veritabanı ve Entity Modelleri
-*   **Fiziksel Veritabanı Yoktur.** Tüm mesajlar anlık olarak işlenir ve imha edilir.
+Veritabanı yoktur. HTTP endpoint'i yoktur.
 
----
+## 2. VERİTABANI
+YOK — Bu servisin veritabanı yoktur.
+Eureka üzerinde kayıtlıdır ancak REST API sunmaz.
 
-### 3. Girdi ve Çıktılar (DTO ve Return Types)
-Bu servis "Tüketici (Consumer)" olduğu için dışarıya Response dönmez, sadece kuyruktan şu JSON yapısını emer:
+## 3. ENDPOINTS
+YOK — Bu servis dışarıya HTTP endpoint sunmaz.
+Tek giriş noktası RabbitMQ kuyruğudur.
 
-*   **`NotificationMessage`**
-    *   `destination` (String): Gidecek adres (Email, Telefon Numarası vb.)
-    *   `subject` (String): Bildirim başlığı.
-    *   `content` (String): Bildirim içeriği.
-    *   `identityNumber` (String): Güvenlik ve loglama için müşterinin kimlik numarası.
-    *   `notificationType` (Enum): Gönderim kanalı.
-        *   `EMAIL`: E-posta
-        *   `SMS`: Kısa mesaj
-        *   `PUSH_NOTIFICATION`: Mobil uygulama
-        *   `SYSTEM_ALERT`: Admin konsoluna düşen kırmızı uarılar.
+## 4. RABBITMQ KONFİGÜRASYONU (RabbitMQConfig)
 
-*(Not: Kuyruk üzerinden gönderilen nesnelerin Java tarafından "Byte" formatında alınıp verilebilmesi için nesne `Serializable` arayüzünü uygular.)*
+```
+Queue Adı  : notification_queue
+Dayanıklılık: durable = true (sunucu çökse mesajlar silinmez)
+Converter  : Jackson2JsonMessageConverter (JSON byte -> NotificationMessage DTO)
+```
 
----
+## 5. GİRDİ VE ÇIKTILAR (MESAJ DTO)
 
-### 4. Endpoints (Controller Uç Noktaları)
-**HTTP Controller Yoktur!**
-Bu servis "Kapalı Kutu" mantığıyla çalışır. Hiçbir mikroservis bu servise POST veya GET atamaz. Tek bağlantı noktası RabbitMQ tünelidir.
+### NotificationMessage (implements Serializable)
+| Alan            | Tip              | Açıklama                                      |
+|-----------------|------------------|-----------------------------------------------|
+| destination     | String           | Kime gidecek (e-posta, telefon, kimlik no)    |
+| subject         | String           | Mesaj başlığı / konusu                        |
+| content         | String           | Asıl mesaj metni                              |
+| identityNumber  | String           | Maskeli TC (log/trace için)                   |
+| notificationType| NotificationType | EMAIL / SMS / PUSH_NOTIFICATION / SYSTEM_ALERT|
 
----
+NotificationType Enum:
+  - EMAIL             : E-posta bildirimi
+  - SMS               : SMS bildirimi
+  - PUSH_NOTIFICATION : Mobil uygulama push bildirimi
+  - SYSTEM_ALERT      : Admin paneline veya loglara kritik uyarı
 
-### 5. İç Bağlantılar ve Dinleyiciler (Listeners)
-*   **`NotificationListener` (`@RabbitListener`)**
-    *   Spring Boot ayağa kalktığı anda `notification_queue` kuyruğunda nöbet tutmaya başlar.
-    *   Kuyruğa yeni bir JSON zarfı düştüğünde, onu uyku modundan (Idle) çıkıp anında kapar.
+## 6. İŞ KURALLARI (BUSINESS LOGIC)
 
----
+### Mesaj Alım Akışı (NotificationListener)
+@RabbitListener(queues = "notification_queue")
+1. RabbitMQ'dan JSON mesaj alınır
+2. Jackson2JsonMessageConverter, JSON'ı NotificationMessage DTO'ya dönüştürür
+3. notificationType değerine göre switch-case dağıtım yapılır:
 
-### 6. İş Kuralları (Business Logic)
-1.  **Asenkron Bağımsızlık (Fire-and-Forget):** Bir müşteri para transferi yaptığında Backend servisi, "Bildirim Gönder" emrini RabbitMQ'ya bırakıp hemen müşteriye "Paranız gitti" yanıtını döner (10-20ms). E-posta veya SMS atmak bazen 2-3 saniye sürebildiği için, bu ağır işçilik (`Thread.sleep(2000)` ile simüle ediliyor) `notification-service` içinde izole edilir. Böylece ana sistem hızdan taviz vermez.
-2.  **Yönlendirme Santrali (Switch/Case):** Kuyruktan düşen `NotificationMessage` nesnesinin içindeki `notificationType` Enum değerine bakarak hangi dış kütüphanenin (Örn: Twilio, SendGrid vb.) tetikleneceğine karar verir. (Şu an simülasyon olarak log basmaktadır).
+| Tip                | Eylem                                             |
+|--------------------|---------------------------------------------------|
+| EMAIL              | E-posta gönderim simülasyonu (log atılır)         |
+| SMS                | SMS gönderim simülasyonu (log atılır)             |
+| PUSH_NOTIFICATION  | Mobil push bildirim simülasyonu (log atılır)      |
+| SYSTEM_ALERT       | Kritik uyarı log simülasyonu (log atılır)         |
+
+4. Thread.sleep(2000) ile gönderim süresi simüle edilir
+5. "Bildirim iletildi. Zarf imha edildi!" logu atılır
+
+NOT: Şu an tüm bildirim tipleri sadece LOG'a yazılır (simülasyon).
+Gerçek sistemde buradaki switch-case içine JavaMailSender (email),
+Twilio (SMS), Firebase (push), PagerDuty (alert) entegrasyonları eklenir.
+
+### Bu Servise Mesaj Gönderen Üreticiler (Producers)
+| Servis               | Mesaj Tipi        | Tetikleyici Olay                              |
+|----------------------|-------------------|-----------------------------------------------|
+| bank-auth-micro      | EMAIL             | Kayıt, profil güncelleme, itiraz talebi       |
+| bank-auth-micro      | SYSTEM_ALERT      | Admin'e itiraz bildirimi                      |
+| Bank-Demo-Backend    | EMAIL             | Hesap aç/kapat, transfer başarılı             |
+| Bank-Demo-Backend    | PUSH_NOTIFICATION | Para yatırma                                  |
+| Bank-Demo-Backend    | SYSTEM_ALERT      | MASAK limiti aşıldı                           |
+| bank-corporate-micro | EMAIL             | Personel işe al/çıkar, maaş dağıtımı          |
+| bill-service         | EMAIL             | Talimat oluştur/sil, fatura ödendi            |
+
+### Ortak RabbitMQ Parametreleri (Tüm Üretici Servisler)
+Exchange    : bank_exchange
+Queue       : notification_queue
+Routing Key : notification_routing_key
+Mesaj Format: JSON (Jackson2JsonMessageConverter)

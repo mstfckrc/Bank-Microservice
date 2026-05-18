@@ -1,53 +1,140 @@
-# 🧾 ABSOLUTE BLUEPRINT: bill-service (PORT 8084) - "FATURA MERKEZİ"
+# ============================================================
+# 🧾 ABSOLUTE BLUEPRINT: bill-service (PORT 8084)
+# FATURA OTOMASYON MERKEZİ - V9.0
+# ============================================================
+# Son Güncelleme: 2026-05-18
+# ============================================================
 
-### 1. Servisin Amacı
-Kullanıcıların elektrik, su, doğalgaz ve internet aboneliklerine dair **otomatik ödeme talimatlarını** saklayan ve yöneten servistir. Dış kurumlara (Mock/Sahte) bağlanarak rastgele borç tutarı çeker ve zamanı geldiğinde Backend (Karargah) üzerinden parayı kestirir. Kendi içinde gerçek para veya bakiye tutmaz.
+## 1. SERVİSİN AMACI
+Müşterilerin fatura otomatik ödeme talimatlarını yöneten servistir.
+Kullanıcı bir kez talimat tanımlar (hangi hesaptan, hangi abone no,
+hangi gün); scheduler her gece 00:00'da tetiklenerek o güne ait aktif
+talimatları işler, dış fatura kurumuna borcu sorar (Mock), ardından
+Feign ile Bank-Demo-Backend'e para kesme emri verir.
 
----
+Çifte Ödeme Kalkanı: Aynı ay içinde aynı abonelik için ikinci kez
+ödeme yapılmaz (lastPaymentDate kontrolü).
 
-### 2. Veritabanı ve Entity Modelleri
-*   **`BillPaymentInstruction`** (Tablo: `bill_payment_instructions`)
-    *   `id` (Long): Birincil anahtar.
-    *   `identityNumber` (String, 11): Talimatı veren müşterinin kimliği.
-    *   `accountId` (Long): Karargahtaki kasanın sadece ID numarası.
-    *   `iban` (String, 26): Ekranlarda göstermek için maskeli veya normal IBAN.
-    *   `billType` (Enum): `ELECTRICITY`, `WATER`, `INTERNET`, `GAS`.
-    *   `subscriberNo` (String, 50): Kurum abonelik numarası.
-    *   `paymentDay` (Integer): Ayın hangi günü otomatik ödenecek?
-    *   `lastPaymentDate` (LocalDate): En son ne zaman ödendiği (Çifte ödemeyi engellemek için).
-    *   `isActive` (boolean): Talimatın açık/kapalı durumu.
+## 2. VERİTABANI VE ENTITY MODELLERİ
+Veritabanı: bank_bill_db (PostgreSQL 15, Port: 5433)
 
----
+### Tablo: bill_payment_instructions
+| Kolon            | Tip             | Kısıtlamalar                                       |
+|------------------|-----------------|----------------------------------------------------|
+| id               | Long (IDENTITY) | PK, Auto-increment                                 |
+| identity_number  | String(11)      | NOT NULL (TC/Vergi No - fiziksel FK yoktur)        |
+| account_id       | Long            | NOT NULL (Backend'deki kasanın ID'si, FK değil)    |
+| iban             | String(26)      | NOT NULL (Gösterim için tutulur, "TR******************" maskeli)|
+| bill_type        | Enum (STRING)   | NOT NULL (ELECTRICITY/WATER/INTERNET/GAS)          |
+| subscriber_no    | String(50)      | NOT NULL (Abone numarası)                          |
+| payment_day      | Integer         | NOT NULL (1-31 arası ödeme günü)                   |
+| last_payment_date| LocalDate       | nullable (Son ödeme tarihi - çifte ödeme kontrolü) |
+| is_active        | boolean         | NOT NULL, DEFAULT=true                             |
 
-### 3. Girdi ve Çıktılar (DTO ve Return Types)
-En kritik veri transfer objeleri ve alanları:
+BillType Enum: ELECTRICITY, WATER, INTERNET, GAS
 
-**Request (Gelen) DTO'lar:**
-*   `BillInstructionRequest`: `accountId`(Long), `billType`(String), `subscriberNo`(String), `paymentDay`(Integer).
-*   `InternalPaymentRequest`: `accountId`(Long), `amount`(BigDecimal), `description`(String). *(Backend'e giden telsiz emri)*
+NOT: Bu tabloda Account veya AppUser'a fiziksel FK (Foreign Key) yoktur.
+"Zero Foreign Key" prensibi: Bağlantı sadece kimlik string'i üzerinden kurulur.
 
-**Response (Giden) Çıktılar:**
-*   `BillInstructionResponse`: `id`(Long), `identityNumber`(String), `accountId`(Long), `iban`(String), `billType`(String), `subscriberNo`(String), `paymentDay`(Integer), `lastPaymentDate`(LocalDate), `isActive`(boolean).
+## 3. ENDPOINTS (CONTROLLER UÇ NOKTALARI)
 
----
+### BillPaymentController (/api/v1/bills/instructions)
+| HTTP   | Endpoint | Girdi                                                     | Çıktı                       | Açıklama                      |
+|--------|----------|-----------------------------------------------------------|-----------------------------|-------------------------------|
+| POST   | /        | X-Identity-Number (Header) + BillInstructionRequest (Body)| BillInstructionResponse (201)| Yeni otomatik ödeme talimatı |
+| GET    | /        | X-Identity-Number (Header)                                | List<BillInstructionResponse>| Kendi talimatlarını listele  |
+| DELETE | /{id}    | X-Identity-Number (Header) + id (Path)                   | Map<String,String> (200 OK) | Talimatı iptal et             |
 
-### 4. Endpoints (Controller Uç Noktaları)
+GÜVENLİK NOTU: Her endpoint'te validateIdentityNumber() çağrılır.
+TC/Vergi No tam 11 haneli rakamlardan oluşmak zorundadır.
+Gateway aşılsa bile içeride ikinci koruma katmanı bu şekilde sağlanır.
 
-**BillPaymentController (`/api/v1/bills/instructions`)**
-*   `[POST] /` -> Header'dan `X-Identity-Number` ve Body'den `BillInstructionRequest` alır. Yeni talimat kaydeder ve `BillInstructionResponse` döner.
-*   `[GET] /` -> Sadece Header'dan kimlik alır. O kişiye ait talimat listesini `List<BillInstructionResponse>` olarak döner.
-*   `[DELETE] /{id}` -> Header'dan kimlik alır. Verilen id numaralı talimatı siler. `Map<String, String>` (Başarı mesajı) döner.
+## 4. GİRDİ VE ÇIKTILAR (DTO İÇERİKLERİ)
 
----
+### Request DTO'ları
+BillInstructionRequest:
+  - accountId    : Long    (@NotNull - Backend'deki hesap ID'si)
+  - billType     : String  (@NotBlank - ELECTRICITY/WATER/INTERNET/GAS)
+  - subscriberNo : String  (@NotBlank - Abone numarası)
+  - paymentDay   : Integer (@NotNull, @Min=1, @Max=31 - Ödeme günü)
 
-### 5. Dış Bağlantılar (İletişim)
-*   **RabbitMQ Publisher:** Yeni talimat verildiğinde, silindiğinde veya faturanın parası kesildiğinde kullanıcıya haber vermek için `bank_exchange` santraline `notification_routing_key` ile anlık `NotificationMessage` JSON'ı atar.
-*   **FeignClient - `BackendServiceClient`:** Zamanı gelmiş faturaların parasını tahsil etmek için Karargahın `POST /api/v1/internal/transactions/bill-payment` uç noktasına `InternalPaymentRequest` fırlatır.
-*   **Mock Service - `ExternalBillMockServiceImpl`:** Dış dünyadaki elektrik/su idarelerini taklit eder. Girilen aboneye anlık 100 TL ile 1000 TL arası rastgele borç yazar (Simülasyon).
+InternalPaymentRequest (Backend'e Feign ile gönderilir):
+  - accountId   : Long
+  - amount      : BigDecimal (TRY cinsinden borç tutarı)
+  - description : String ("ELECTRICITY Faturası (Abone: 12345678)")
 
----
+### Response DTO'ları
+BillInstructionResponse:
+  - id              : Long
+  - identityNumber  : String
+  - accountId       : Long
+  - iban            : String (maskeli: "TR******************")
+  - billType        : String
+  - subscriberNo    : String
+  - paymentDay      : Integer
+  - lastPaymentDate : LocalDate (nullable)
+  - isActive        : boolean
 
-### 6. İş Kuralları (Business Logic)
-1.  **Çifte Ödeme Kalkanı (Double Payment Check):** Bir faturanın otomatik ödenmesi `payBillAutomatically` fonksiyonuyla tetiklendiğinde; ilk iş olarak `lastPaymentDate` alanının mevcut ay ve yıla eşit olup olmadığına bakılır. Eşitse "Bu ay zaten ödenmiş" diyerek işlemi durdurur.
-2.  **Karargah Onayı ve Hata Yönetimi:** Fatura borcu çekilip Karargaha fırlatıldığında; Karargah hesabın kapalı olduğunu veya yeterli bakiye olmadığını söylerse (Hata fırlatırsa), Fatura servisi işlemi `Rollback` yapar ve ödeme tarihini (`lastPaymentDate`) GÜNCELLEMEZ. Başarılıysa günceller ve RabbitMQ'ya mesaj basar.
-3.  **Ağ Güvenliği (Kalkan):** Gateway zaten kimlik süzgeci yapsa da, `BillPaymentController` içeride gelen `identityNumber` değerini Regex (`"^[0-9]{11}$"`) ile teyit eder. Kuralsız girişleri içeri bile almaz.
+## 5. DIŞ BAĞLANTILAR (İLETİŞİM)
+
+### FeignClient Bağlantıları (Giden İstekler)
+| Hedef Servis      | FeignClient Adı      | Endpoint                                          | Amaç                  |
+|-------------------|----------------------|---------------------------------------------------|-----------------------|
+| Bank-Demo-Backend | BackendServiceClient | POST /api/v1/internal/transactions/bill-payment   | Hesaptan para kesme   |
+
+Header: X-Identity-Number (müşterinin kimliği Backend'e iletilir)
+Body  : InternalPaymentRequest (accountId, amount, description)
+
+NOT: BackendServiceClient Eureka üzerinden "bank-demo-backend" adıyla bulunur.
+
+### RabbitMQ (Asenkron Mesajlaşma)
+Rol      : ÜRETİCİ (Producer)
+Exchange : bank_exchange
+Queue    : notification_queue
+Routing  : notification_routing_key
+Mesaj Tipi: EMAIL
+  Tetikleyiciler:
+  - Talimat oluşturulduğunda  -> Müşteriye EMAIL
+  - Otomatik ödeme başarılıysa-> Müşteriye EMAIL
+  - Talimat silindiğinde      -> Müşteriye EMAIL
+
+## 6. İŞ KURALLARI (BUSINESS LOGIC)
+
+### Otomatik Fatura Ödeme Akışı (payBillAutomatically)
+1. Talimat DB'den bulunur (id ile)
+2. ÇİFTE ÖDEME KONTROL (Kalkan):
+   - lastPaymentDate != null VE aynı ay VE aynı yıl ise
+   - "Bu ay zaten ödenmiş" logu atılır ve metot ÇIKILIR (erken return)
+3. Dış Kurum Borç Sorgusu (ExternalBillMockServiceImpl):
+   - Gerçek entegrasyon YOK, Mock: 100-1000 TRY arası rastgele tutar döner
+   - Gerçek sistemde buraya TEDAŞ, İSKİ vb. API çağrısı gelecek
+4. FEIGN - Backend'e para kesme emri:
+   - BackendServiceClient.deductBillPayment(identityNumber, paymentRequest)
+   - Backend: hesap sahibi kontrolü + bakiye yeterliliği + transaction kaydı
+   - Hata durumunda: "Kasa yetersiz veya Karargah işlemi reddetti!" exception
+5. Başarı durumunda lastPaymentDate = LocalDate.now() set edilir
+6. RabbitMQ ile müşteriye EMAIL bildirimi gönderilir
+
+### Talimat Oluşturma (createInstruction)
+- Müşterinin kimliği, seçtiği hesap ID'si ve abone bilgileri kaydedilir
+- IBAN maskeli "TR******************" olarak saklanır
+- Başarı sonrası RabbitMQ ile EMAIL bildirimi gönderilir
+
+### Talimat Silme (deleteInstruction)
+- Talimat sahibi X-Identity-Number ile doğrulanır
+- Hard Delete: instructionRepository.delete(instruction)
+- RabbitMQ ile EMAIL bildirimi gönderilir
+
+### Scheduler (BillScheduledTasks)
+Cron: "0 0 0 * * *" (Her gece gece yarısı 00:00:00)
+1. findByIsActiveTrueAndPaymentDay(today) ile günün talimatları çekilir
+2. Her talimat için payBillAutomatically() çağrılır
+3. try-catch: Tek talimatın hatası diğerlerini etkilemez
+4. Corporate scheduler'dan farklı olarak Ghost Identity yoktur;
+   identityNumber doğrudan instruction.getIdentityNumber()'dan alınır
+
+### Güvenlik Katmanı
+- X-Identity-Number Header: Gateway tarafından set edilir
+- validateIdentityNumber(): Controller'da ^[0-9]{11}$ regex kontrolü
+  Gateway aşılsa bile 11 haneli sayısal TC/Vergi No zorunluluğu kalır
+- Talimat sahipliği: deleteInstruction'da identityNumber karşılaştırması

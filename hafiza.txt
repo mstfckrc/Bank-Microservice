@@ -1,33 +1,116 @@
-# 🚀 SEC-DEMO MİKROSERVİS MİMARİSİ ANA HAFIZA (MASTER KÖK DOSYA)
+# ============================================================
+# 🏛️ PROJE ANA HAFIZA DOSYASI (KUŞBAKIŞI HARİTA) - V9.0
+# ============================================================
+# Son Güncelleme: 2026-05-18
+# Bu dosya, sisteme ilk kez bakan birinin tüm mimariyi
+# tek seferde anlamasını sağlamak için tasarlanmıştır.
+# ============================================================
 
-## 🎯 Projenin Amacı ve Genel Mimarisi
-Bu proje, monolitik bir yapıdan modern **Multi-Microservice (Spring Cloud)** mimarisine geçirilmiş kapsamlı bir bankacılık ve finans yönetim sistemidir. Sistem, API Gateway üzerinden dış dünyaya açılırken, arka planda farklı görevlere odaklanmış (kimlik doğrulama, ana bankacılık işlemleri, kurumsal ödemeler, fatura, döviz kurları) mikroservislerin birbirleriyle iletişim kurduğu dağıtık bir ağ sunar. Frontend (kullanıcı arayüzü) Next.js ile geliştirilmiştir.
+## 1. PROJENİN AMACI VE GENEL MİMARİSİ
+Tam kapsamlı bir dijital bankacılık platformudur. Bireysel müşteriler
+hesap açabilir, para transferi yapabilir, fatura otomatik ödeme talimatı
+verebilir; kurumsal müşteriler personellerini yönetip toplu maaş
+dağıtabilir; admin kullanıcıları ise tüm sistemi (MASAK onayları, müşteri
+yönetimi, log izleme) kontrol edebilir.
 
-## 🛠️ Kullanılan Teknolojiler (Tech Stack)
-*   **Backend Servisleri:** Java 17, Spring Boot, Spring Cloud (Netflix Eureka, API Gateway, OpenFeign).
-*   **Frontend (Vitrin):** Next.js 14 (React), TailwindCSS, Zustand (State Management), Axios.
-*   **Veritabanı İzole Altyapısı:** PostgreSQL 15 (Her bir servisin kendi bağımsız fiziksel veritabanı vardır).
-*   **Önbellek (Caching & Rate Limiting):** Redis.
-*   **Asenkron İletişim:** RabbitMQ Broker.
-*   **Kimlik Doğrulama (Auth/Güvenlik):** Keycloak OAuth2 Identity Server (Docker üzerinde müstakil).
-*   **Merkezi Loglama ve İstihbarat:** Elasticsearch (Log verisi), Logstash (Log toplama), Kibana (ELK Stack).
+Mimari Tarz  : Spring Cloud tabanlı Mikroservis Mimarisi
+API Yönetimi : API Gateway (Tek giriş noktası, JWT parçalama, rate limiting)
+Keşif        : Netflix Eureka (Servis kayıt ve keşif)
+Proxy        : Nginx Reverse Proxy (SSL Terminasyonu, Domain Yönlendirme)
+Güvenlik     : Zero-Trust (Gateway JWT'yi parçalar, arkaya sadece header gönderir)
 
-## 🧩 Mikroservisler ve Görevleri
-*   **`api-gateway` (Port 8081):** Dışarıdan gelen trafiği yönlendirir, Keycloak üzerinden gelen JWT tokenları yakalayıp parçalar ve Redis ile Rate Limiting (Hız Sınırı) uygular.
-*   **`Bank-Demo-Backend` (Port 8080):** Sistemin kalbidir. Hesaplar, havaleler, transferler ve ELK loglarının yönetiminden sorumludur.
-*   **`bank-auth-micro` (Port 8086):** Keycloak ile entegre çalışarak kullanıcı kayıt, profil ve yetkilendirme (Role) işlerini yönetir.
-*   **`bank-corporate-micro` (Port 8085):** Şirket profilleri, çalışan hesapları ve gece yarısı çalışan otomatik Toplu Maaş (Bulk Salary) ödemelerini koordine eder.
-*   **`bill-service` (Port 8084):** Fatura abonelik talimatlarını saklar ve geceleri dış kurum (Mock) fatura borçlarını hesaplayıp Backend'e otomatik ödetir.
-*   **`currency-service` (Port 8083):** Redis önbelleğini kullanarak dış API'den döviz kurlarını çeker ve anlık kur dönüştürme hizmeti sunar.
-*   **`notification-service` (Port 8082):** RabbitMQ kuyruklarını dinleyerek sistemdeki olaylara (Kayıt, Transfer, Fatura ödemesi) göre kullanıcılara e-posta veya SMS bildirimleri atılmasını sağlar.
-*   **`discovery-server` (Port 8761):** Eureka sunucusudur. Diğer tüm mikroservislerin ağda birbirini bulmasını (Service Registry) sağlar.
-*   **`Bank-Demo-Frontend` (Port 3000):** Kullanıcıların sisteme giriş yaptığı tek görsel Next.js arayüzüdür.
+## 2. KULLANILAN TEKNOLOJİLER (TECH STACK)
+| Katman               | Teknoloji                                         |
+|----------------------|---------------------------------------------------|
+| Backend Framework    | Spring Boot 3.x, Spring Cloud                     |
+| Frontend Framework   | Next.js (App Router), React, TypeScript            |
+| Veritabanları        | PostgreSQL 15 (Her servise ayrı izole DB)          |
+| Kimlik Doğrulama     | Keycloak 24.0.4 (OAuth2 / OpenID Connect)          |
+| Mesaj Kuyruğu        | RabbitMQ 3.13 (Asenkron bildirimler)               |
+| Önbellek             | Redis 7 (Rate Limiting + Döviz Kur Cache)          |
+| Loglama              | ELK Stack (Elasticsearch 8.12 + Logstash + Kibana) |
+| Monitoring           | Prometheus + Grafana + cAdvisor                    |
+| Reverse Proxy / SSL  | Nginx Alpine (HTTPS, TLS 1.2/1.3, .bank.local)    |
+| Konteyner            | Docker Compose 3.8                                 |
 
-## 📡 Ağ ve İletişim Altyapısı
-1.  **Gateway ve Token Kalkanı (Zero-Trust):** İstekler önce `api-gateway`'e çarpar. Gateway, JWT'yi süzer ve iç ağdaki servislere sadece `X-Identity-Number` ve `X-User-Role` stringleri gönderir. İç servisler birbirine körü körüne güvenir.
-2.  **Senkron İletişim (FeignClient):** Servisler arası anlık veri alışverişi (Örn: Auth'un Şirket hesabını Corporate'a haber vermesi) Spring Cloud OpenFeign üzerinden yapılır.
-3.  **Asenkron İletişim (RabbitMQ):** Bir servisin acil cevap beklemediği işlemler (Örn: Mail atma emirleri) `NotificationMessage` formatında RabbitMQ'ya atılır ve unutulur.
-4.  **Log Ağı:** Core Backend servisindeki `ElasticsearchClient`, diğer ağları yormadan doğrudan `elasticsearch:9200` adresine bağlanıp logları toplar.
+## 3. DOMAIN MİMARİSİ (NGINX REVERSE PROXY)
+Tüm bileşenler *.bank.local alt alan adları üzerinden erişilir.
+| Domain              | Hedef Container              | İç Port |
+|---------------------|------------------------------|---------|
+| app.bank.local      | Frontend (Next.js)           | 3000    |
+| api.bank.local      | API Gateway                  | 8081    |
+| auth.bank.local     | Keycloak                     | 8080    |
+| eureka.bank.local   | Discovery Server             | 8761    |
+| monitor.bank.local  | Grafana                      | 3000    |
 
----
-> ⚠️ **ÖNEMLİ NOT:** Bu dosya projenin kuşbakışı özetidir. Controller, Endpoint, DTO, veritabanı tabloları ve fonksiyon gibi derin teknik detaylar için ilgili mikroservisin kendi içindeki `hafiza.txt` dosyasına bakınız.
+Tüm HTTP (80) trafiği otomatik olarak HTTPS (443)'e yönlendirilir.
+SSL sertifikaları ./certs dizininden okunur.
+
+## 4. MİKROSERVİSLER VE GÖREVLERİ
+| Servis                | Port  | Görev                                                         |
+|-----------------------|-------|---------------------------------------------------------------|
+| api-gateway           | 8081  | Tek giriş noktası; JWT parçalama, rota yönlendirme, rate limit|
+| bank-auth-micro       | 8086  | Kullanıcı kayıt/profil, Keycloak entegrasyonu, admin CRUD     |
+| Bank-Demo-Backend     | 8080  | Hesap, transfer, MASAK onayları, Elasticsearch log sorgusu    |
+| bank-corporate-micro  | 8085  | Şirket yönetimi, personel CRUD, toplu maaş, otomatik CRON    |
+| bill-service          | 8084  | Fatura otomatik ödeme talimatları, dış kurum borç sorgulama   |
+| currency-service      | 8083  | Döviz kur sorgulama (Redis cache vitrin / canlı bypass havale)|
+| notification-service  | 8082  | RabbitMQ dinleyici; e-posta/SMS/push bildirim gönderimi       |
+| discovery-server      | 8761  | Eureka servis kaydı ve keşfi                                  |
+| Bank-Demo-Frontend    | 3000  | Next.js kullanıcı arayüzü (Müşteri/Şirket/Admin panelleri)   |
+
+## 5. VERİTABANI İZOLASYONU
+Her mikroservisin kendi bağımsız PostgreSQL 15 veritabanı vardır:
+| Veritabanı           | Servis              | Host Port |
+|----------------------|---------------------|-----------|
+| bank_core_db         | Bank-Demo-Backend   | 5432      |
+| bank_auth_db         | bank-auth-micro     | 5434      |
+| bank_bill_db         | bill-service        | 5435      |
+| bank_corporate_db    | bank-corporate-micro| 5436      |
+| keycloak             | Keycloak            | 5433      |
+
+## 6. AĞ VE İLETİŞİM ALTYAPISI
+
+### 6.1 Senkron İletişim (FeignClient - REST)
+| Kaynak           | Hedef            | Endpoint Yolu                             | Amaç                        |
+|------------------|------------------|-------------------------------------------|------------------------------|
+| Auth             | Backend          | DELETE /api/v1/internal/accounts/customer/ | Müşteri hesaplarını silme    |
+| Auth             | Corporate        | POST /api/v1/internal/companies/sync       | Yeni şirket senkronizasyonu  |
+| Corporate        | Auth             | GET /api/v1/internal/users/profile/        | Personel kimlik doğrulama    |
+| Corporate        | Backend          | POST /api/v1/internal/transactions/bulk-salary | Toplu maaş ödemesi       |
+| Corporate        | Backend          | GET /api/v1/internal/accounts/validate     | IBAN doğrulama               |
+| Bill             | Backend          | POST /api/v1/internal/transactions/bill-payment | Fatura borcu tahsilat   |
+| Backend          | Elasticsearch    | POST /bank-logs-*/_search                  | Admin log sorgusu            |
+
+### 6.2 Asenkron İletişim (RabbitMQ)
+Exchange : bank_exchange
+Queue    : notification_queue
+Routing  : notification_routing_key
+Üretici  : Auth, Backend, Corporate, Bill (NotificationMessage JSON)
+Tüketici : notification-service (tek dinleyici)
+
+### 6.3 Servis Keşfi (Eureka)
+Tüm mikroservisler Eureka'ya (discovery-server:8761) kayıt olur.
+FeignClient isimlendirmeleri: auth-service, bank-demo-backend,
+bank-corporate-micro, bill-service, bank-currency-micro
+
+## 7. GÜVENLİK MİMARİSİ (ZERO-TRUST)
+1. Frontend, JWT token'ı cookie'de saklar ve her isteğe Authorization header ekler.
+2. API Gateway, Keycloak'tan Public Key ile token'ı doğrular.
+3. Gateway, token içinden TC No (preferred_username) ve Rolleri (realm_access.roles) çıkarır.
+4. Bu bilgileri X-Identity-Number ve X-User-Role header'larına yazar.
+5. Orijinal Authorization header'ını SİLER.
+6. Arka plandaki servisler Keycloak bilmez, sadece X-Identity-Number'a güvenir.
+
+## 8. MONITORING ALTYAPISI
+| Bileşen     | Görev                                               |
+|-------------|-----------------------------------------------------|
+| cAdvisor    | Docker container metriklerini toplar                 |
+| Prometheus  | Metrikleri çeker ve 3 gün boyunca arşivler           |
+| Grafana     | Metrikleri görselleştirir (monitor.bank.local)       |
+| ELK Stack   | Uygulama loglarını toplar, arar, görselleştirir      |
+
+# ⚠️ ÖNEMLİ NOT:
+# Bu dosya projenin kuşbakışı özetidir. Controller, Endpoint, DTO,
+# veritabanı tabloları ve fonksiyon gibi derin teknik detaylar için
+# ilgili mikroservisin kendi içindeki 'hafiza.txt' dosyasına bakınız.

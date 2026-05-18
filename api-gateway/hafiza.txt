@@ -1,53 +1,112 @@
-# 🛡️ ABSOLUTE BLUEPRINT: api-gateway (PORT 8081) - "SİBER KALKAN"
+# ============================================================
+# 🚪 ABSOLUTE BLUEPRINT: api-gateway (PORT 8082)
+# MERKEZ KONTROL KAPISI - V9.0
+# ============================================================
+# Son Güncelleme: 2026-05-18
+# ============================================================
 
-### 1. Servisin Amacı
-Tüm sistemin dış dünyaya açılan tek kapısıdır. Dışarıdan gelen her isteği karşılar, Keycloak (JWT) doğrulamasını yapar, token'ı parçalar ve arka plandaki mikroservislere sadece saf kimlik bilgisi aktararak (Zero-Trust) rotalama yapar. Ayrıca aşırı yüklenmelere karşı Redis tabanlı hız sınırı (Rate Limiting) uygular.
+## 1. SERVİSİN AMACI
+Tüm dış trafiğin tek geçiş noktasıdır. Spring Cloud Gateway (reactive /
+WebFlux tabanlı) üzerinde çalışır. Üç temel görevi vardır:
+1. JWT Token doğrulaması (Keycloak ile OAuth2 Resource Server)
+2. İstekleri arkadaki mikro servislere yönlendirme (Routing)
+3. JWT claim'lerini mikroservislerin anlayacağı header'lara dönüştürme
+   (X-Identity-Number, X-User-Role) ve Authorization header'ını silme
 
----
+Veritabanı yoktur. Redis sadece Rate Limiter için kullanılır.
 
-### 2. Güvenlik Bölgeleri (SecurityConfig)
-Spring WebFlux tabanlı güvenlik kalkanı, sistemi iki farklı geçiş bölgesine ayırır:
+## 2. GÜVENLİK MİMARİSİ — İKİ KAPILI SİSTEM (SecurityConfig)
 
-*   **Sivil Bölge (Public Filter - Order 1):** Kimlik kartı sormaz. Herkese açıktır.
-    *   `OPTIONS /**` (CORS Taramaları)
-    *   `/api/v1/auth/**` (Giriş / Kayıt olma)
-    *   `/api/v1/currencies/**` (Canlı döviz kurları - Vitrin)
-    *   `/eureka/**` (Servis keşfi)
-*   **Askeri Bölge (Secured Filter - Order 2):** Yukarıdakiler haricindeki tüm linkler buraya düşer. İstisnasız herkesten geçerli bir JWT Token (`Bearer Token`) bekler. Token'ın geçerliliği `application.yml` içindeki Keycloak Certs URL'si üzerinden teyit edilir.
+### 🟢 Kapı 1: SİVİL BÖLGE (@Order(1) — Öncelik 1)
+Token doğrulaması YAPILMAZ. Aşağıdaki pattern'lar bu kapıdan geçer:
 
----
+| Pattern                     | Yöntem    | Açıklama                    |
+|-----------------------------|-----------|---------------------------  |
+| /**                         | OPTIONS   | CORS Preflight serbest geçiş|
+| /api/v1/auth/**             | Tümü      | Kayıt, giriş, captcha       |
+| /api/v1/currencies/**       | Tümü      | Kur vitrin endpoint'i       |
+| /eureka/**                  | Tümü      | Servis keşif UI'ı           |
 
-### 3. Keycloak Tercümanı ve Zero-Trust Filtresi (KeycloakHeaderFilter)
-Gateway'in en önemli donanımıdır.
-1.  **Parçalama:** Askeri Bölge'den geçen JWT'nin içini açar. `preferred_username` alanındaki TC Kimlik numarasını ve `realm_access.roles` içindeki yetkileri (Admin, Müşteri vb.) okur.
-2.  **Damgalama (Header Mutation):** Bu bilgileri isteğin başlığına `X-Identity-Number` ve `X-User-Role` olarak zımbalar.
-3.  **İmha (Zero-Trust):** Orijinal `Authorization: Bearer <TOKEN>` başlığını tamamen SİLER.
-4.  **Sonuç:** Arka plandaki hiçbir mikroservis Keycloak bilmez, token doğrulamaz. Sadece Gateway'in bastığı `X-Identity-Number` başlığına körü körüne güvenir.
+Kritik NOT: Bu kapıda `.oauth2ResourceServer()` YOKTUR.
+Böylece süresi dolmuş token ile gelen istek hata vermez —
+sadece token doğrulanmaz.
 
----
+### 🔴 Kapı 2: ASKERİ BÖLGE (@Order(2) — Varsayılan Kapı)
+Sivil bölgeye giremeyen her istek buraya düşer. Token ZORUNLUDUR.
+- `.authorizeExchange -> anyExchange().authenticated()`
+- `.oauth2ResourceServer -> jwt -> grantedAuthoritiesExtractor()`
 
-### 4. Rota Haritası (GatewayRoutingConfig)
-Banka içerisindeki trafik akışı kod üzerinden dinamik olarak şu şekilde ayarlanmıştır:
+### 🕵️ Keycloak Tercümanı (grantedAuthoritiesExtractor)
+JWT'nin `realm_access.roles` claim'ini Spring Security Authority formatına çevirir:
+- "ADMIN"           → "ROLE_ADMIN"
+- "RETAIL_CUSTOMER" → "ROLE_RETAIL_CUSTOMER"
+- "CORPORATE_MANAGER" → "ROLE_CORPORATE_MANAGER"
+Claim yoksa veya boşsa Collections.emptyList() döner (yetkisiz).
 
-*   `/api/v1/currencies/**` -> `currency-service:8083`
-*   `/api/v1/bills/**` -> `bill-service:8084`
-*   `/api/v1/companies/employees/**` -> `corporate-service:8085`
-*   `/api/v1/admin/customers/*/accounts` -> `backend:8080` *(Özel İstisna)*
-*   `/api/v1/admin/customers/**` -> `auth-service:8086`
-*   `/api/v1/auth/register` -> `auth-service:8086` **[REDİS KALKANLI]**
-*   `/api/v1/auth/**` & `/api/v1/customers/**` -> `auth-service:8086`
-*   `/api/v1/**` (Yukarıdakilerden seken her şey) -> `backend:8080` (Ana Karargah Monoliti)
+## 3. YÖNLENDIRME KURALLARI (GatewayRoutingConfig)
+Sıra önemlidir — ilk eşleşen kural uygulanır.
 
----
+| Öncelik | Route ID                              | Path Pattern                         | Hedef Servis          | Port  |
+|---------|---------------------------------------|--------------------------------------|-----------------------|-------|
+| 1       | currency-service-route                | /api/v1/currencies/**                | currency-service      | 8083  |
+| 2       | bill-service-route                    | /api/v1/bills/**                     | bill-service          | 8084  |
+| 3       | corporate-service-route               | /api/v1/companies/employees/**       | corporate-service     | 8085  |
+| 4       | backend-admin-customer-accounts-route | /api/v1/admin/customers/*/accounts   | backend               | 8080  |
+| 5       | auth-admin-route                      | /api/v1/admin/customers/**           | auth-service          | 8086  |
+| 6       | auth-register-route                   | /api/v1/auth/register                | auth-service + RateLimit| 8086 |
+| 7       | auth-service-route                    | /api/v1/auth/**, /api/v1/customers/**| auth-service          | 8086  |
+| 8       | java-monolith-route                   | /api/v1/** (Catch-All)               | backend               | 8080  |
 
-### 5. Siber Savunma (RedisRateLimiter)
-Kötü niyetli kişilerin sistemi çökertmesini veya bot hesap açmasını engellemek için `RateLimitConfig` kullanılarak bir kalkan inşa edilmiştir.
+ÖNEMLI NOT: Route 4 (admin customer accounts) Route 5'ten ÖNCE
+tanımlanır çünkü `/api/v1/admin/customers/*/accounts` Backend'e
+(8080) giderken `/api/v1/admin/customers/**` Auth Service'e (8086)
+gitmektedir. Öncelik sırası kritiktir.
 
-*   **Hedef:** Şu an sadece en kritik olan `auth-register-route` (Hesap Açma) uç noktasına bağlanmıştır.
-*   **Limit:** `replenishRate=1`, `burstCapacity=2`. Yani bir IP adresi saniyede sadece 1 kez kayıt isteği atabilir, ani yüklenmelerde 2'ye kadar tolere edilir. Üstünü atarsa Gateway doğrudan HTTP 429 (Too Many Requests) hatası keser ve isteği içeri almaz.
-*   **İzleme:** Engelleme mekanizması Redis (`SPRING_REDIS_HOST`) üzerinden IP adresi (`ipKeyResolver`) bazlı takip edilir.
+## 4. JWT → HEADER DÖNÜŞÜM FİLTRESİ (KeycloakHeaderFilter)
+implements GlobalFilter, Ordered (order = -1, yetki kontrolünden hemen sonra)
 
----
+Akış:
+1. ReactiveSecurityContextHolder'dan JWT alınır
+2. jwt.getClaimAsString("preferred_username") → identityNumber (TC/Vergi No)
+3. authentication.getAuthorities() → roller "," ile birleştirilir
+4. İstek mutate edilir:
+   - headers.set("X-Identity-Number", identityNumber)  ← EKLENİR
+   - headers.set("X-User-Role", roles)                 ← EKLENİR
+   - headers.remove("Authorization")                   ← SİLİNİR ‼️
 
-### 6. CORS Politikası (CorsConfig)
-Frontend'in (Next.js) sorunsuz iletişim kurabilmesi için tüm HTTP metotlarına (`GET, POST, PUT, DELETE, OPTIONS`), tüm Origin'lere (`*`) ve en önemlisi kimliklerin (Credentials/Cookies) taşınabilmesine izin verecek şekilde konfigüre edilmiştir. Yıkıcı tarayıcı engelleri (CORS hataları) bu noktada bertaraf edilir.
+KRİTİK: Authorization header'ı (JWT) arkadaki servise ASLA iletilmez.
+Arkadaki servisler sadece sade header'ları (X-Identity-Number) görür.
+Bu sayede mikroservisler Keycloak'a bağımlı olmaz.
+
+## 5. HIZLANMA LİMİTİ (RateLimitConfig — Kayıt Bombalamasına Karşı Kalkan)
+
+Sadece `/api/v1/auth/register` endpoint'ine uygulanır.
+
+| Parametre       | Değer   | Açıklama                                       |
+|-----------------|---------|------------------------------------------------|
+| replenishRate   | 1       | Saniyede 1 token üretilir (sürekli akış hızı)  |
+| burstCapacity   | 2       | Anlık en fazla 2 istek patlamasına izin verilir|
+| KeyResolver     | IP Adresi| Her IP adresi ayrı sayaç tutar (Redis'te)      |
+
+İmplementasyon: `RedisRateLimiter(1, 2)` — Redis tabanlı, dağıtık sayaç
+KeyResolver: `exchange.getRequest().getRemoteAddress().getAddress().getHostAddress()`
+IP alınamazsa "unknown" anahtarı kullanılır.
+
+## 6. CORS KONFİGÜRASYONU (CorsConfig)
+CorsWebFilter ile tüm /** path'lerine uygulanır.
+
+| Ayar                  | Değer                              |
+|-----------------------|------------------------------------|
+| AllowedOriginPatterns | * (tüm origin'ler)                 |
+| AllowedMethods        | GET, POST, PUT, DELETE, OPTIONS    |
+| AllowedHeaders        | * (tüm header'lar)                 |
+| AllowCredentials      | true (Token ve Cookie taşınabilir) |
+
+## 7. MİMARİ BÜTÜNLÜK NOTU
+Gateway, Nginx'in arkasındadır. Trafik akışı:
+  İnternet → Nginx (HTTPS/SSL, 443) → api-gateway (8082) → Mikroservisler
+
+Gateway'in Eureka'ya kaydı vardır, ancak servisler Gateway adını
+Eureka üzerinden bulmak yerine Docker servis adlarıyla (hostname) haberleşir.
+Routing'de `lb://` (Load Balancer) yerine doğrudan `http://servis-adı:port`
+kullanılır — bu Docker ağı içindeki DNS çözümlemesini sağlar.

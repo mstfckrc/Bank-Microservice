@@ -1,79 +1,196 @@
-# 🔐 ABSOLUTE BLUEPRINT: bank-auth-micro (PORT 8086)
+# ============================================================
+# 🛂 ABSOLUTE BLUEPRINT: bank-auth-micro (PORT 8086)
+# KİMLİK VE YETKİLENDİRME ÜSSÜ - V9.0
+# ============================================================
+# Son Güncelleme: 2026-05-18
+# ============================================================
 
-### 1. Servisin Amacı
-Bu servis sistemin "Nüfus Dairesi" ve "Pasaport Kontrolü" merkezidir. Kullanıcıların (Bireysel veya Kurumsal) sisteme kayıt olması, Keycloak ile senkronizasyonu, profil güncellemeleri ve Admin onayından geçme süreçlerini yönetir. Hiçbir hesap veya bakiye (para) bilgisi tutmaz.
+## 1. SERVİSİN AMACI
+Kullanıcı kayıt (Register), profil yönetimi ve Admin tarafından müşteri
+CRUD işlemlerinin yapıldığı kimlik servisidir. Keycloak ile entegre
+çalışır; kayıt sırasında Keycloak'a kullanıcı oluşturur, rol atar ve
+üretilen keycloakId'yi kendi veritabanında saklar. Giriş (Login) işlemi
+doğrudan Keycloak tarafından yönetilir, bu serviste Login endpoint'i yoktur.
 
----
+## 2. VERİTABANI VE ENTITY MODELLERİ
+Veritabanı: bank_auth_db (PostgreSQL 15, Port: 5434)
 
-### 2. Veritabanı ve Entity Modelleri
-*   **`AppUser`** (Tablo: `app_users`)
-    *   `id` (Long): Birincil anahtar.
-    *   `identityNumber` (String, length=11): TC No veya Vergi No (Tekil).
-    *   `keycloakId` (String): Keycloak yetkilendirme sunucusundaki kullanıcı UUID'si.
-    *   `role` (Enum): `ADMIN`, `RETAIL_CUSTOMER`, `CORPORATE_MANAGER`.
-    *   `status` (Enum): `PENDING`, `APPROVED`, `REJECTED`.
-*   **`RetailCustomer`** (Tablo: `retail_customers`)
-    *   `id` (Long): Birincil anahtar.
-    *   `appUser` (AppUser): Foreign Key (OneToOne).
-    *   `firstName` (String)
-    *   `lastName` (String)
-    *   `email` (String)
+### Tablo: app_users
+| Kolon          | Tip                  | Kısıtlamalar                        |
+|----------------|----------------------|-------------------------------------|
+| id             | Long (IDENTITY)      | PK, Auto-increment                  |
+| identityNumber | String(11)           | UNIQUE, NOT NULL (TC veya Vergi No) |
+| keycloakId     | String               | UNIQUE (Keycloak UUID köprüsü)      |
+| role           | Enum (STRING)        | NOT NULL                            |
+| status         | Enum (STRING)        | NOT NULL, DEFAULT='PENDING'         |
 
-*(Not: Kurumsal şirket bilgileri `bank-corporate-micro` veritabanında tutulur, buraya sadece AppUser olarak kimlik ve rol bırakılır.)*
+Role Enum Değerleri   : ADMIN, RETAIL_CUSTOMER, CORPORATE_MANAGER
+Status Enum Değerleri : PENDING, APPROVED, REJECTED
 
----
+### Tablo: retail_customers
+| Kolon      | Tip          | Kısıtlamalar                              |
+|------------|--------------|-------------------------------------------|
+| id         | Long (IDENTITY) | PK, Auto-increment                     |
+| app_user_id| Long         | FK -> app_users.id, UNIQUE, NOT NULL       |
+| firstName  | String(100)  | NOT NULL                                   |
+| lastName   | String(100)  | NOT NULL                                   |
+| email      | String(100)  | UNIQUE, NOT NULL                           |
 
-### 3. Girdi ve Çıktılar (DTO ve Return Types)
-En kritik veri transfer objeleri (Request/Response) ve alanları şöyledir:
+İlişki: RetailCustomer -> AppUser (OneToOne, LAZY, CASCADE ALL)
+Not: Kurumsal müşterilerin profil bilgileri bu serviste tutulmaz,
+bank-corporate-micro servisindeki Company tablosunda tutulur.
 
-**Request (Gelen) DTO'lar:**
-*   `RegisterRequest`: `identityNumber`(String), `password`(String), `role`(String), `email`(String), `firstName`(String), `lastName`(String), `companyName`(String), `taxOffice`(String), `captchaToken`(String).
-*   `LoginRequest`: `identityNumber`(String), `password`(String).
-*   `UpdateProfileRequest`: `email`(String), `profileName`(String).
-*   `ChangePasswordRequest`: `oldPassword`(String), `newPassword`(String).
-*   `CompanySyncRequest`: `companyIdentityNumber`(String), `companyName`(String), `contactEmail`(String), `taxOffice`(String).
+## 3. ENDPOINTS (CONTROLLER UÇ NOKTALARI)
 
-**Response (Giden) Çıktılar:**
-*   `AuthResponse`: `token`(String), `message`(String).
-*   `UserProfileResponse`: `identityNumber`(String), `profileName`(String), `email`(String), `role`(String), `status`(String).
-*   `CustomerProfileResponse`: `identityNumber`(String), `firstName`(String), `lastName`(String), `email`(String).
-*   `CustomerResponse`: `tcNo`(String), `fullName`(String), `email`(String), `role`(String), `status`(String).
-*   `ErrorResponse`: `timestamp`(LocalDateTime), `message`(String), `details`(String).
+### 3.1 AuthController (/api/v1/auth)
+| HTTP   | Endpoint    | Girdi            | Çıktı        | Açıklama                    |
+|--------|-------------|------------------|--------------|-----------------------------|
+| POST   | /register   | RegisterRequest  | AuthResponse | Yeni kullanıcı kaydı oluştur|
 
-**Mesaj (Kuyruk) DTO:**
-*   `NotificationMessage`: `destination`(String), `subject`(String), `content`(String), `identityNumber`(String), `notificationType`(Enum: EMAIL, SMS, PUSH_NOTIFICATION, SYSTEM_ALERT).
+### 3.2 CustomerController (/api/v1/customers)
+| HTTP   | Endpoint    | Girdi                | Çıktı              | Açıklama                      |
+|--------|-------------|----------------------|---------------------|-------------------------------|
+| GET    | /profile    | - (Header: X-Identity-Number) | UserProfileResponse | Kendi profilini getir |
+| PUT    | /profile    | UpdateProfileRequest | UserProfileResponse | Kendi profilini güncelle       |
+| POST   | /appeal     | - (Header: X-Identity-Number) | Map<String,String>  | Red durumunda itiraz talebi   |
 
----
+### 3.3 AdminUserController (/api/v1/admin/customers)
+| HTTP   | Endpoint                    | Girdi                       | Çıktı                  | Açıklama                   |
+|--------|-----------------------------|-----------------------------|-------------------------|----------------------------|
+| GET    | /                           | -                           | List<UserProfileResponse>| Tüm müşterileri listele   |
+| PUT    | /{identityNumber}           | UpdateProfileRequest (Body) | UserProfileResponse     | Müşteri profilini güncelle |
+| PUT    | /{identityNumber}/status    | status (Query Param)        | void (200 OK)           | Müşteri statüsünü değiştir |
+| DELETE | /{identityNumber}           | -                           | void (200 OK)           | Müşteriyi sistemden sil    |
 
-### 4. Endpoints (Controller Uç Noktaları)
+### 3.4 InternalUserController (/api/v1/internal/users)
+| HTTP   | Endpoint                     | Girdi                | Çıktı                   | Açıklama                        |
+|--------|------------------------------|----------------------|-------------------------|---------------------------------|
+| GET    | /profile/{identityNumber}    | identityNumber (Path)| CustomerProfileResponse | Diğer servislere profil bilgisi |
 
-**AuthController (`/api/v1/auth`)**
-*   `[POST] /api/v1/auth/register` -> `RegisterRequest` alır, `AuthResponse` döner. Yeni müşteri kaydı açar.
+## 4. GİRDİ VE ÇIKTILAR (DTO İÇERİKLERİ)
 
-**CustomerController (`/api/v1/customers`)**
-*   `[GET] /api/v1/customers/profile` -> Hiçbir şey almaz, token'dan tespit edip `UserProfileResponse` döner.
-*   `[PUT] /api/v1/customers/profile` -> `UpdateProfileRequest` alır, `UserProfileResponse` döner. Kendi profilini günceller.
-*   `[POST] /api/v1/customers/appeal` -> Reddedilen başvurular için itiraz oluşturur. `Map<String, String>` döner.
+### Request DTO'ları (Gelen Veri)
+RegisterRequest:
+  - identityNumber : String (@NotBlank, 10-11 hane)
+  - password       : String (@NotBlank, min 6 karakter)
+  - role           : String (@NotBlank, "RETAIL_CUSTOMER" veya "CORPORATE_MANAGER")
+  - email          : String (@Email, @NotBlank)
+  - firstName      : String (Bireysel müşteri için)
+  - lastName       : String (Bireysel müşteri için)
+  - companyName    : String (Kurumsal müşteri için)
+  - taxOffice      : String (Kurumsal müşteri için)
+  - captchaToken   : String (@NotBlank, Google reCAPTCHA token)
 
-**AdminUserController (`/api/v1/admin/customers`)**
-*   `[GET] /api/v1/admin/customers` -> Sistemdeki herkesi listeler. `List<UserProfileResponse>` döner.
-*   `[PUT] /api/v1/admin/customers/{identityNumber}` -> `UpdateProfileRequest` alır, müşterinin bilgilerini zorla günceller.
-*   `[PUT] /api/v1/admin/customers/{identityNumber}/status` -> Parametre olarak `status` alır (Örn: `?status=APPROVED`), müşteriyi onaylar veya reddeder.
-*   `[DELETE] /api/v1/admin/customers/{identityNumber}` -> Müşteriyi sistemden tamamen (Yıkım) siler.
+LoginRequest:
+  - identityNumber : String (@NotBlank, 10-11 hane)
+  - password       : String (@NotBlank)
+  Not: Bu DTO mevcut ama Login işlemi artık Keycloak üzerinden yapıldığı
+  için Controller'da aktif kullanılmıyor.
 
-**InternalUserController (`/api/v1/internal/users`)** *(Sadece İç Ağ)*
-*   `[GET] /api/v1/internal/users/profile/{identityNumber}` -> Dışarıya kapalıdır. Kurumsal servis veya diğerleri bu müşterinin kim olduğunu öğrenmek için kullanır. `CustomerProfileResponse` döner.
+UpdateProfileRequest:
+  - email       : String
+  - profileName : String (Bireyler: Ad Soyad, Şirketler: Şirket Adı)
 
----
+ChangePasswordRequest:
+  - oldPassword : String
+  - newPassword : String
+  Not: Şifre değiştirme Keycloak'a devredildi, Service'te metod yok.
 
-### 5. Dış Bağlantılar (İletişim)
-*   **RabbitMQ Publisher:** Kayıt vb. işlemleri bitince `BANK_EXCHANGE` santraline `NOTIFICATION_ROUTING_KEY` etiketiyle `NotificationMessage` JSON'ı fırlatır (Asenkron).
-*   **FeignClient - `BackendServiceClient`:** Kapsamlı yıkım operasyonunda `[DELETE] /api/v1/internal/accounts/customer/{identityNumber}` uç noktasına istek atarak Backend'deki paraları/hesapları silmesini emreder.
-*   **FeignClient - `CompanyServiceClient`:** Kurumsal müşteri kayıt olduğunda, onaylandığında veya silindiğinde `[POST, PUT, DELETE] /api/v1/internal/companies/sync` hatlarına `CompanySyncRequest` atarak Corporate servisteki şirket veritabanını güncel tutar.
+CompanySyncRequest:
+  - companyIdentityNumber : String
+  - companyName           : String
+  - contactEmail          : String
+  - taxOffice             : String
 
----
+### Response DTO'ları (Dönen Veri)
+AuthResponse:
+  - token   : String (Şu an boş döner, token Keycloak'tan alınır)
+  - message : String
 
-### 6. İş Kuralları (Business Logic)
-1.  **Mutual Check (Yıkım Prensibi):** Admin bir müşteriyi sildiğinde (`deleteCustomer`); Auth servisi doğrudan veritabanından silmek yerine, önce `BackendServiceClient`'a gider. Eğer müşterinin içi para dolu bir hesabı varsa Backend hata fırlatır ve silme işlemi **Rollback** olur. Hesaplar boşaltılıp silinebildiyse Auth servisi de kendi AppUser kaydını yok eder.
-2.  **Kurumsal Senkronizasyon:** Eğer kayıt olan kişi `CORPORATE_MANAGER` ise, RetailCustomer tablosuna yazılmaz. Sadece AppUser'a kimlik atılır ve derhal `CompanyServiceClient` üzerinden Kurumsal Servise haber verilerek orada bir Company tablosu açtırılır.
-3.  **Güvenlik Zırhı:** Kayıt (`register`) isteğinde Captcha Token'ı doğrulanmadan ve Keycloak üzerinde kullanıcı başarıyla oluşturulmadan veritabanına hiçbir şey yazılmaz. Kayıt olan kullanıcı default olarak `PENDING` (Beklemede) statüsüne düşer, Admin onayına muhtaçtır.
+UserProfileResponse:
+  - identityNumber : String
+  - profileName    : String (Bireysel: Ad Soyad, Kurumsal: Şirket Adı)
+  - email          : String
+  - role           : String (ADMIN / RETAIL_CUSTOMER / CORPORATE_MANAGER)
+  - status         : String (PENDING / APPROVED / REJECTED)
+
+CustomerProfileResponse (Internal - Diğer servisler için):
+  - identityNumber : String
+  - firstName      : String
+  - lastName       : String
+  - email          : String
+
+CustomerResponse:
+  - tcNo     : String
+  - fullName : String
+  - email    : String
+  - role     : String
+  - status   : String
+
+## 5. DIŞ BAĞLANTILAR (İLETİŞİM)
+
+### FeignClient Bağlantıları (Giden İstekler)
+| Hedef Servis         | FeignClient Adı       | Endpoint                                     | Amaç                           |
+|----------------------|-----------------------|----------------------------------------------|--------------------------------|
+| Bank-Demo-Backend    | BackendServiceClient  | DELETE /api/v1/internal/accounts/customer/{id}| Müşteri hesaplarını silme      |
+| bank-corporate-micro | CompanyServiceClient  | POST /api/v1/internal/companies/sync          | Yeni şirket oluşturma          |
+|                      |                       | PUT /api/v1/internal/companies/sync/{id}      | Şirket bilgisi güncelleme      |
+|                      |                       | DELETE /api/v1/internal/companies/sync/{id}   | Şirket bilgisi silme           |
+|                      |                       | GET /api/v1/internal/companies/sync/{id}      | Şirket bilgisi sorgulama       |
+
+### RabbitMQ (Asenkron Mesajlaşma)
+Rol      : ÜRETİCİ (Producer)
+Exchange : bank_exchange
+Queue    : notification_queue
+Routing  : notification_routing_key
+Mesaj DTO: NotificationMessage (JSON)
+  - destination       : String (e-posta/telefon)
+  - subject           : String (bildirim başlığı)
+  - content           : String (bildirim içeriği)
+  - identityNumber    : String (maskeli TC No)
+  - notificationType  : Enum (EMAIL, SMS, PUSH_NOTIFICATION, SYSTEM_ALERT)
+
+### Keycloak Entegrasyonu
+- Kayıt sırasında Keycloak Admin Client ile kullanıcı oluşturulur
+- Keycloak'tan üretilen UUID, AppUser.keycloakId alanına kaydedilir
+- Keycloak'ta Realm Role ataması yapılır (RETAIL_CUSTOMER veya CORPORATE_MANAGER)
+
+## 6. İŞ KURALLARI (BUSINESS LOGIC)
+
+### Kayıt (Register) Akışı
+1. Google reCAPTCHA doğrulaması yapılır (fail-fast: DB'ye gitmeden önce)
+2. identityNumber tekrarı kontrolü (app_users tablosunda UNIQUE)
+3. Keycloak'a kullanıcı kaydı oluşturulur ve UUID alınır
+4. AppUser kaydı oluşturulur (status = PENDING)
+5. Role göre dallanma:
+   - RETAIL_CUSTOMER: RetailCustomer tablosuna profil kaydedilir (email tekrarı kontrol edilir)
+   - CORPORATE_MANAGER: CompanyServiceClient üzerinden şirket senkronize edilir
+6. RabbitMQ üzerinden hoşgeldin e-postası gönderilir
+7. AuthResponse döner (token boş, mesaj başarılı)
+
+### Müşteri Silme (Admin Delete) Akışı - "Karşılıklı Kontrol Prensibi"
+1. AppUser bulunur
+2. Role göre ilgili profil silinir:
+   - RETAIL: RetailCustomer silinir
+   - CORPORATE: CompanyServiceClient.deleteCompanyInfo() çağrılır
+3. BackendServiceClient.deleteCustomerAccounts() çağrılır
+   - Backend, hesaplarında bakiye varsa HATA fırlatır -> Silme iptal edilir (Rollback)
+4. Her şey başarılıysa AppUser silinir
+
+### Profil Güncelleme (Customer Update)
+- Kullanıcı kimliği SecurityContextHolder üzerinden X-Identity-Number ile alınır
+- Bireysel müşteri: firstName/lastName ve email güncellenebilir
+- Kurumsal müşteri: Profil güncellemesi REDDEDILIR (BankOperationException)
+  "Kurumsal profil sadece Kurumsal Yönetim modülünden güncellenebilir!"
+- Güncelleme sonrası RabbitMQ ile bildirim gönderilir
+
+### Appeal (İtiraz) Mekanizması
+- Sadece REJECTED statüsündeki kullanıcılar itiraz edebilir
+- İtiraz edildiğinde statü tekrar PENDING yapılır
+- Admin'e SYSTEM_ALERT tipinde bildirim gönderilir
+
+### Güvenlik Katmanı
+- JwtAuthenticationFilter: X-Identity-Number header'ından kimlik çözümler
+- InternalHeaderFilter: Servisler arası iç iletişimde header doğrulaması
+- SecurityConfig: Endpoint erişim kurallarını belirler
+- ICaptchaService: Google reCAPTCHA v2 token doğrulaması (Backend Secret Key ile)

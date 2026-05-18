@@ -1,19 +1,97 @@
-# 🧭 ABSOLUTE BLUEPRINT: discovery-server (PORT 8761) - "EUREKA SANTRALİ"
+# ============================================================
+# 🗺️ ABSOLUTE BLUEPRINT: discovery-server (PORT 8761)
+# EUREKA SERVİS KAYIT VE KEŞİF MERKEZİ - V9.0
+# ============================================================
+# Son Güncelleme: 2026-05-18
+# ============================================================
 
-### 1. Servisin Amacı
-Projedeki mikroservislerin birbirlerini IP adresleriyle değil, isimleriyle (Örn: `bank-demo-backend`) bulabilmesini sağlayan "Netflix Eureka" tabanlı servis kayıt (Registry) merkezidir.
+## 1. SERVİSİN AMACI
+Spring Cloud Netflix Eureka sunucusudur. Tüm mikroservislerin
+birbirini ismiyle bulabilmesi için "Nüfus Müdürlüğü" görevini üstlenir.
+Her servis başladığında Eureka'ya kendi adını ve adresini kaydeder.
+Diğer servisler FeignClient veya RestTemplate ile bir servisi çağırmak
+istediklerinde Eureka'ya sorarak o servisin anlık IP/portunu bulurlar.
 
----
+HTTP endpoint'i yoktur (sadece Eureka Dashboard UI: http://localhost:8761).
+Veritabanı yoktur. Kod içermez — sadece konfigürasyondan ibarettir.
 
-### 2. Yapı ve Konfigürasyon
-Çok basit ve standart bir Spring Cloud Eureka Server yapısına sahiptir. Kendi başına bir iş kuralı işletmez.
+## 2. KONFİGÜRASYON (application.yml)
 
-*   `@EnableEurekaServer` anotasyonu ile çalışır.
-*   `port: 8761` üzerinde dinler.
-*   `register-with-eureka: false` ve `fetch-registry: false` ayarları ile kendisini tekrar kendine kaydetmesi (Sonsuz döngü) engellenmiştir.
+```yaml
+server:
+  port: 8761
 
----
+spring:
+  application:
+    name: discovery-server
 
-### 3. Çalışma Mantığı
-1.  Banka sistemindeki her mikroservis (Auth, Backend, Corporate, Gateway vb.) ayağa kalktığında bu santrale "Ben Buradayım" der ve adını/IP'sini kaydettirir.
-2.  Gateway veya diğer servisler (Örn: FeignClient ile) birbirine ulaşmak istediğinde, sabit IP yazmak yerine sadece "Bana *bank-auth-micro* servisini bağla" der. Eureka bu ismi IP adresine çözümler.
+eureka:
+  instance:
+    hostname: localhost
+  client:
+    register-with-eureka: false   # Kendini kendine kaydetme
+    fetch-registry: false          # Başka Eureka sunucusundan kayıt çekme
+```
+
+Kritik ayarlar:
+- `register-with-eureka: false` → Eureka sunucusu kendi kendini kaydetmez
+- `fetch-registry: false`       → Peer Eureka sunucusundan kayıt çekmez
+  (Cluster modunda bu true olurdu, biz single-node çalışıyoruz)
+
+## 3. KAYITLI SERVİSLER VE EUREKA İSİMLERİ
+
+Her mikroservis kendi `application.yml` dosyasındaki `spring.application.name`
+değeriyle Eureka'ya kaydolur. FeignClient'lar bu ismi kullanır.
+
+| Servis               | Eureka Kayıt Adı     | Port | EUREKA_URL Env Değişkeni         |
+|----------------------|----------------------|------|----------------------------------|
+| bank-auth-micro      | auth-service         | 8086 | ${EUREKA_URL}                    |
+| Bank-Demo-Backend    | bank-demo-backend    | 8080 | ${EUREKA_URL}                    |
+| bank-corporate-micro | corporate-service    | 8085 | ${EUREKA_URL}                    |
+| bill-service         | bill-service         | 8084 | ${EUREKA_URL}                    |
+| currency-service     | bank-currency-micro  | 8083 | ${EUREKA_URL}                    |
+| api-gateway          | api-gateway          | 8082 | ${EUREKA_URL}                    |
+| notification-service | notification-service | 8087 | ${EUREKA_URL}                    |
+
+Tüm servislerde Eureka bağlantısı:
+```yaml
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URL}
+  instance:
+    prefer-ip-address: true
+```
+EUREKA_URL Docker Compose ortam değişkeniyle enjekte edilir.
+Örn: http://discovery-server:8761/eureka/
+
+## 4. EUREKA VE DOCKER AĞININ BİRLİKTE ÇALIŞMASI
+
+### Feign vs. Docker DNS
+- api-gateway routing'inde `lb://` (Eureka load balancer) YERİNE
+  `http://servis-adı:port` (Docker iç DNS) kullanılır
+- Bu bir tasarım tercihi: Docker Compose kendi DNS çözümlemesini zaten yapar
+- Ancak Corporate servisindeki FeignClient'lar `name = "bank-demo-backend"`
+  ile Eureka üzerinden load balancer'a yönlendirilir
+
+### Neden Eureka Hala Var?
+- FeignClient'lar için servis keşfi (Corporate → Backend, Corporate → Auth)
+- Eureka Dashboard üzerinden tüm servislerin sağlık durumu görüntüleme
+- Gelecekte load balancing senaryosu için altyapı hazır
+
+## 5. MİMARİ BAĞLAM — SİSTEMDEKİ YERİ
+
+```
+Docker Compose Ağı (bank-network)
+  ├── discovery-server   :8761  ← Bu Servis (Referans Merkezi)
+  ├── api-gateway        :8082  ← Eureka'ya kayıtlı
+  ├── auth-service       :8086  ← Eureka'ya kayıtlı
+  ├── bank-demo-backend  :8080  ← Eureka'ya kayıtlı
+  ├── corporate-service  :8085  ← Eureka'ya kayıtlı
+  ├── bill-service       :8084  ← Eureka'ya kayıtlı
+  ├── currency-service   :8083  ← Eureka'ya kayıtlı
+  └── notification-service:8087 ← Eureka'ya kayıtlı
+```
+
+Eureka Dashboard URL: http://localhost:8761
+(Nginx konfigürasyonuna göre dışarıdan erişilebilir olabilir)
