@@ -39,3 +39,19 @@ eureka:
       defaultZone: ${EUREKA_URL}
   instance:
     prefer-ip-address: true
+
+# ==========================================
+# 🔭 YENİ EKLENDİ: ACTUATOR (İSTİHBARAT) AYARLARI
+# ==========================================
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  endpoint:
+    health:
+      show-details: always
+  prometheus:
+    metrics:
+      export:
+        enabled: true

@@ -32,3 +32,19 @@ eureka:
   client:
     service-url:
       defaultZone: ${EUREKA_URL}
+
+# ==========================================
+# 🔭 YENİ EKLENDİ: ACTUATOR (İSTİHBARAT) AYARLARI
+# ==========================================
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus # Sadece sağlık ve metrik kapılarını aç
+  endpoint:
+    health:
+      show-details: always # Veritabanı ve Redis durumlarını da rapora dahil et
+  prometheus:
+    metrics:
+      export:
+        enabled: true

@@ -1,0 +1,29 @@
+groups:
+  - name: KarargahAlarmlari
+    rules:
+      - alert: KonteynerCoktu
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Kritik Hata: Konteyner kapandı!"
+          description: "Karargahtaki '{{ $labels.instance }}' isimli servis 1 dakikadır çevrimdışı."
+
+      - alert: YuksekCpuKullanimi
+        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 90
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Uyarı: Yüksek CPU Kullanımı!"
+          description: "Ubuntu VM işlemci yükü 5 dakikadır %90'ın üzerinde (Şu an: {{ $value }}%)."
+
+      - alert: KritikRamSeviyesi
+        expr: (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes * 100 > 95
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Kritik Hata: RAM Tükeniyor!"
+          description: "Ubuntu VM bellek doluluğu 3 dakikadır %95'in üzerinde (Şu an: {{ $value }}%)."

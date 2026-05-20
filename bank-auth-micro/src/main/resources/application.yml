@@ -48,3 +48,19 @@ keycloak:
 
 recaptcha:
   secret: ${RECAPTCHA_SECRET}
+
+# ==========================================
+# 🔭 YENİ EKLENDİ: ACTUATOR (İSTİHBARAT) AYARLARI
+# ==========================================
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  endpoint:
+    health:
+      show-details: always
+  prometheus:
+    metrics:
+      export:
+        enabled: true

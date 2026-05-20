@@ -2,6 +2,18 @@ global:
   scrape_interval: 15s # İstihbarat toplama sıklığı: Her 15 saniyede bir git veri al.
   evaluation_interval: 15s
 
+# 🚀 YENİ EKLENEN: Alarm Merkezi Bağlantısı
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          # Alertmanager konteyner adı ve portu
+          - 'bank_alertmanager:9093'
+
+# 🚀 YENİ EKLENEN: Alarm Kuralları Dosyasının Yolu
+rule_files:
+  - "alert.rules.yml"
+
 scrape_configs:
   # 1. İstihbarat Merkezinin Kendi Sağlığı (Prometheus kendini izler)
   - job_name: 'prometheus'
@@ -13,3 +25,24 @@ scrape_configs:
     static_configs:
       # DİKKAT: Container adını ve içerideki 8080 portunu veriyoruz!
       - targets: ['bank_cadvisor_micro:8080']
+
+  # 3. 🚀 YENİ EKLENEN: Fiziksel Radarımız (Node Exporter - Sunucu VM Verileri)
+  - job_name: 'node_exporter'
+    static_configs:
+      # Node Exporter konteyner adı ve portu
+      - targets: ['bank_node_exporter:9100']
+
+  # 4. 🚀 YENİ EKLENEN: Docker-Native Mikroservis Keşfi (Servis İsimleriyle)
+  - job_name: 'bank_microservices'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets:
+        # Alt tireli container_name YERİNE tireli servis isimlerini kullanıyoruz!
+        - 'backend:8080'
+        - 'auth-service:8086'
+        - 'bill-service:8084'
+        - 'corporate-service:8085'
+        - 'currency-service:8083'
+        - 'notification-service:8082'
+        - 'api-gateway:8081'
+        - 'discovery-server:8761'

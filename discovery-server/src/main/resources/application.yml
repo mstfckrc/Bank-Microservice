@@ -11,3 +11,19 @@ eureka:
   client:
     register-with-eureka: false
     fetch-registry: false
+
+# ==========================================
+# 🔭 YENİ EKLENDİ: ACTUATOR (İSTİHBARAT) AYARLARI
+# ==========================================
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  endpoint:
+    health:
+      show-details: always
+  prometheus:
+    metrics:
+      export:
+        enabled: true

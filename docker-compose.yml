@@ -425,13 +425,15 @@ services:
     image: prom/prometheus:latest
     container_name: bank_prometheus_micro
     restart: unless-stopped
+    # 🛡️ GÜVENLİK: Host portu açılmadı. İzole çalışıyor!
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alert.rules.yml:/etc/prometheus/alert.rules.yml:ro
       - prometheus_data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
-      - '--storage.tsdb.retention.time=3d' # Senin emrin: 3 Günlük arşiv!
+      - '--storage.tsdb.retention.time=3d'
     networks:
       - bank-network-micro
     # 🛡️ GÜVENLİK: Host portu açılmadı. Keycloak (9090) ile çakışma önlendi!
@@ -447,6 +449,31 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASS}
     volumes:
       - grafana_data:/var/lib/grafana
+    networks:
+      - bank-network-micro
+
+  node-exporter:
+    image: quay.io/prometheus/node-exporter:v1.8.0
+    container_name: bank_node_exporter
+    restart: unless-stopped
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    networks:
+      - bank-network-micro
+
+  alertmanager:
+    image: quay.io/prometheus/alertmanager:v0.27.0
+    container_name: bank_alertmanager
+    restart: unless-stopped
+    volumes:
+      - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
     networks:
       - bank-network-micro
 

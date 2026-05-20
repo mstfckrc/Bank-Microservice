@@ -41,7 +41,8 @@ public class SecurityConfig {
                         ServerWebExchangeMatchers.pathMatchers(
                                 "/api/v1/auth/**",
                                 "/api/v1/currencies/**",
-                                "/eureka/**"
+                                "/eureka/**",
+                                "/actuator/**"
                         )
                 ))
                 .csrf(ServerHttpSecurity.CsrfSpec::disable)

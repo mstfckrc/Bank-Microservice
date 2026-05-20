@@ -33,6 +33,7 @@ public class SecurityConfig {
                         .requestMatchers("/swagger-ui/**").permitAll()
                         .requestMatchers("/swagger-ui.html").permitAll()
                         .requestMatchers("/api/v1/currencies/rates").permitAll()
+                        .requestMatchers("/actuator/**").permitAll()
 
                         // Admin yetkileri gerektiren kapılar
                         .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
