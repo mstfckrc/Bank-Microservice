@@ -1,8 +1,8 @@
 # ============================================================
-# 🚪 ABSOLUTE BLUEPRINT: api-gateway (PORT 8082)
-# MERKEZ KONTROL KAPISI - V9.0
+# 🚪 ABSOLUTE BLUEPRINT: api-gateway (PORT 8081)
+# MERKEZ KONTROL KAPISI - V10.0
 # ============================================================
-# Son Güncelleme: 2026-05-18
+# Son Güncelleme: 2026-05-20
 # ============================================================
 
 ## 1. SERVİSİN AMACI
@@ -21,11 +21,12 @@ Veritabanı yoktur. Redis sadece Rate Limiter için kullanılır.
 Token doğrulaması YAPILMAZ. Aşağıdaki pattern'lar bu kapıdan geçer:
 
 | Pattern                     | Yöntem    | Açıklama                    |
-|-----------------------------|-----------|---------------------------  |
+|-----------------------------|-----------|-----------------------------|
 | /**                         | OPTIONS   | CORS Preflight serbest geçiş|
 | /api/v1/auth/**             | Tümü      | Kayıt, giriş, captcha       |
 | /api/v1/currencies/**       | Tümü      | Kur vitrin endpoint'i       |
 | /eureka/**                  | Tümü      | Servis keşif UI'ı           |
+| /actuator/**                | Tümü      | Prometheus metrik toplama   |
 
 Kritik NOT: Bu kapıda `.oauth2ResourceServer()` YOKTUR.
 Böylece süresi dolmuş token ile gelen istek hata vermez —
@@ -104,9 +105,32 @@ CorsWebFilter ile tüm /** path'lerine uygulanır.
 
 ## 7. MİMARİ BÜTÜNLÜK NOTU
 Gateway, Nginx'in arkasındadır. Trafik akışı:
-  İnternet → Nginx (HTTPS/SSL, 443) → api-gateway (8082) → Mikroservisler
+  İnternet → Nginx (HTTPS/SSL, 443) → api-gateway (8081) → Mikroservisler
 
 Gateway'in Eureka'ya kaydı vardır, ancak servisler Gateway adını
 Eureka üzerinden bulmak yerine Docker servis adlarıyla (hostname) haberleşir.
 Routing'de `lb://` (Load Balancer) yerine doğrudan `http://servis-adı:port`
 kullanılır — bu Docker ağı içindeki DNS çözümlemesini sağlar.
+
+## 8. MONITORING / ACTUATOR KONFİGÜRASYONU
+
+### application.yml Ayarları
+```
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  endpoint:
+    health:
+      show-details: always
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+```
+
+### SecurityConfig'te Açılan Yol
+- Sivil Bölge (@Order(1)) pathMatchers'ına `/actuator/**` eklendi
+- Bu sayede Prometheus, JWT olmadan /actuator/prometheus endpoint'ine erişebilir
+- Prometheus scrape target: api-gateway:8081 (metrics_path: /actuator/prometheus)

@@ -1,8 +1,8 @@
 # ============================================================
 # 🛂 ABSOLUTE BLUEPRINT: bank-auth-micro (PORT 8086)
-# KİMLİK VE YETKİLENDİRME ÜSSÜ - V9.0
+# KİMLİK VE YETKİLENDİRME ÜSSÜ - V10.0
 # ============================================================
-# Son Güncelleme: 2026-05-18
+# Son Güncelleme: 2026-05-20
 # ============================================================
 
 ## 1. SERVİSİN AMACI
@@ -193,4 +193,29 @@ Mesaj DTO: NotificationMessage (JSON)
 - JwtAuthenticationFilter: X-Identity-Number header'ından kimlik çözümler
 - InternalHeaderFilter: Servisler arası iç iletişimde header doğrulaması
 - SecurityConfig: Endpoint erişim kurallarını belirler
+  - /actuator/** -> permitAll() (Prometheus metrik toplama için)
+  - /error -> permitAll() (403 hata döngüsünü önlemek için)
 - ICaptchaService: Google reCAPTCHA v2 token doğrulaması (Backend Secret Key ile)
+
+## 7. MONITORING / ACTUATOR KONFİGÜRASYONU
+
+### application.yml Ayarları
+```
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  endpoint:
+    health:
+      show-details: always
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+```
+
+### SecurityConfig'te Açılan Yollar
+- `.requestMatchers("/actuator/**").permitAll()` → Prometheus erişimi
+- `.requestMatchers("/error").permitAll()` → Hata sayfaları için (403 önleme)
+- Prometheus scrape target: auth-service:8086 (metrics_path: /actuator/prometheus)

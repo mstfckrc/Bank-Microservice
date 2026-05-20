@@ -1,8 +1,8 @@
 # ============================================================
 # 🧾 ABSOLUTE BLUEPRINT: bill-service (PORT 8084)
-# FATURA OTOMASYON MERKEZİ - V9.0
+# FATURA OTOMASYON MERKEZİ - V10.0
 # ============================================================
-# Son Güncelleme: 2026-05-18
+# Son Güncelleme: 2026-05-20
 # ============================================================
 
 ## 1. SERVİSİN AMACI
@@ -16,7 +16,7 @@ Feign ile Bank-Demo-Backend'e para kesme emri verir.
 ödeme yapılmaz (lastPaymentDate kontrolü).
 
 ## 2. VERİTABANI VE ENTITY MODELLERİ
-Veritabanı: bank_bill_db (PostgreSQL 15, Port: 5433)
+Veritabanı: bank_bill_db (PostgreSQL 15, Port: 5435)
 
 ### Tablo: bill_payment_instructions
 | Kolon            | Tip             | Kısıtlamalar                                       |
@@ -138,3 +138,26 @@ Cron: "0 0 0 * * *" (Her gece gece yarısı 00:00:00)
 - validateIdentityNumber(): Controller'da ^[0-9]{11}$ regex kontrolü
   Gateway aşılsa bile 11 haneli sayısal TC/Vergi No zorunluluğu kalır
 - Talimat sahipliği: deleteInstruction'da identityNumber karşılaştırması
+
+## 7. MONITORING / ACTUATOR KONFİGÜRASYONU
+
+### application.yml Ayarları
+```
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  endpoint:
+    health:
+      show-details: always
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+```
+
+### SecurityConfig Notu
+- Bu serviste ayrı bir SecurityConfig sınıfı YOKTUR
+- Spring Security bağımlılığı bulunmadığından /actuator/** otomatik açıktır
+- Prometheus scrape target: bill-service:8084 (metrics_path: /actuator/prometheus)

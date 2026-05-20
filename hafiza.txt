@@ -1,7 +1,7 @@
 # ============================================================
-# 🏛️ PROJE ANA HAFIZA DOSYASI (KUŞBAKIŞI HARİTA) - V9.0
+# 🏛️ PROJE ANA HAFIZA DOSYASI (KUŞBAKIŞI HARİTA) - V10.0
 # ============================================================
-# Son Güncelleme: 2026-05-18
+# Son Güncelleme: 2026-05-20
 # Bu dosya, sisteme ilk kez bakan birinin tüm mimariyi
 # tek seferde anlamasını sağlamak için tasarlanmıştır.
 # ============================================================
@@ -20,18 +20,19 @@ Proxy        : Nginx Reverse Proxy (SSL Terminasyonu, Domain Yönlendirme)
 Güvenlik     : Zero-Trust (Gateway JWT'yi parçalar, arkaya sadece header gönderir)
 
 ## 2. KULLANILAN TEKNOLOJİLER (TECH STACK)
-| Katman               | Teknoloji                                         |
-|----------------------|---------------------------------------------------|
-| Backend Framework    | Spring Boot 3.x, Spring Cloud                     |
-| Frontend Framework   | Next.js (App Router), React, TypeScript            |
-| Veritabanları        | PostgreSQL 15 (Her servise ayrı izole DB)          |
-| Kimlik Doğrulama     | Keycloak 24.0.4 (OAuth2 / OpenID Connect)          |
-| Mesaj Kuyruğu        | RabbitMQ 3.13 (Asenkron bildirimler)               |
-| Önbellek             | Redis 7 (Rate Limiting + Döviz Kur Cache)          |
-| Loglama              | ELK Stack (Elasticsearch 8.12 + Logstash + Kibana) |
-| Monitoring           | Prometheus + Grafana + cAdvisor                    |
-| Reverse Proxy / SSL  | Nginx Alpine (HTTPS, TLS 1.2/1.3, .bank.local)    |
-| Konteyner            | Docker Compose 3.8                                 |
+| Katman               | Teknoloji                                                       |
+|----------------------|-----------------------------------------------------------------|
+| Backend Framework    | Spring Boot 3.x, Spring Cloud                                   |
+| Frontend Framework   | Next.js (App Router), React, TypeScript                          |
+| Veritabanları        | PostgreSQL 15 (Her servise ayrı izole DB)                        |
+| Kimlik Doğrulama     | Keycloak 24.0.4 (OAuth2 / OpenID Connect)                        |
+| Mesaj Kuyruğu        | RabbitMQ 3.13 (Asenkron bildirimler)                             |
+| Önbellek             | Redis 7 (Rate Limiting + Döviz Kur Cache)                        |
+| Loglama              | ELK Stack (Elasticsearch 8.12 + Logstash + Kibana)               |
+| Monitoring           | Prometheus + Grafana + cAdvisor + Node Exporter + Alertmanager   |
+| Metrik Toplama       | Spring Boot Actuator + Micrometer Prometheus Registry             |
+| Reverse Proxy / SSL  | Nginx Alpine (HTTPS, TLS 1.2/1.3, .bank.local)                  |
+| Konteyner            | Docker Compose 3.8                                               |
 
 ## 3. DOMAIN MİMARİSİ (NGINX REVERSE PROXY)
 Tüm bileşenler *.bank.local alt alan adları üzerinden erişilir.
@@ -62,7 +63,7 @@ SSL sertifikaları ./certs dizininden okunur.
 ## 5. VERİTABANI İZOLASYONU
 Her mikroservisin kendi bağımsız PostgreSQL 15 veritabanı vardır:
 | Veritabanı           | Servis              | Host Port |
-|----------------------|---------------------|-----------|
+|----------------------|---------------------|-----------| 
 | bank_core_db         | Bank-Demo-Backend   | 5432      |
 | bank_auth_db         | bank-auth-micro     | 5434      |
 | bank_bill_db         | bill-service        | 5435      |
@@ -102,13 +103,75 @@ bank-corporate-micro, bill-service, bank-currency-micro
 5. Orijinal Authorization header'ını SİLER.
 6. Arka plandaki servisler Keycloak bilmez, sadece X-Identity-Number'a güvenir.
 
-## 8. MONITORING ALTYAPISI
-| Bileşen     | Görev                                               |
-|-------------|-----------------------------------------------------|
-| cAdvisor    | Docker container metriklerini toplar                 |
-| Prometheus  | Metrikleri çeker ve 3 gün boyunca arşivler           |
-| Grafana     | Metrikleri görselleştirir (monitor.bank.local)       |
-| ELK Stack   | Uygulama loglarını toplar, arar, görselleştirir      |
+## 8. MONITORING VE ALERTING ALTYAPISI
+
+### 8.1 Metrik Toplama Zinciri
+Tüm Java mikroservislerine Spring Boot Actuator ve Micrometer Prometheus
+Registry entegre edilmiştir. Her servisin /actuator/prometheus endpoint'i
+Prometheus tarafından 15 saniyelik aralıklarla çekilir (scrape).
+
+SecurityConfig'lerde /actuator/** yolu permitAll() ile açılmıştır.
+Bu sayede Prometheus token olmadan metrikleri toplayabilir.
+
+application.yml'de ortak konfigürasyon (tüm servislerde aynı):
+```
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  endpoint:
+    health:
+      show-details: always
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+```
+
+### 8.2 Monitoring Bileşenleri
+| Bileşen         | Container Adı            | Görev                                                          |
+|-----------------|--------------------------|----------------------------------------------------------------|
+| cAdvisor        | bank_cadvisor_micro      | Docker container CPU/RAM/IO metriklerini toplar (port 8080)    |
+| Node Exporter   | bank_node_exporter       | Sunucu (Host VM) CPU/RAM/Disk metriklerini toplar (port 9100)  |
+| Prometheus      | bank_prometheus_micro    | Tüm metrik kaynaklarını çeker, 3 gün arşivler (port 9090)     |
+| Alertmanager    | bank_alertmanager        | Alarm kurallarını değerlendirir ve bildirim yönlendirir (9093) |
+| Grafana         | bank_grafana_micro       | Metrikleri görselleştirir (monitor.bank.local)                 |
+| ELK Stack       | elasticsearch/logstash/kibana | Uygulama loglarını toplar, arar, görselleştirir            |
+
+### 8.3 Prometheus Scrape Hedefleri (prometheus.yml)
+| Job Adı              | Hedef (Target)                     | Metrics Path           | Açıklama                     |
+|----------------------|------------------------------------|------------------------|------------------------------|
+| prometheus           | localhost:9090                     | /metrics (varsayılan)  | Prometheus'un kendi sağlığı  |
+| cadvisor             | bank_cadvisor_micro:8080           | /metrics (varsayılan)  | Container metrikleri         |
+| node_exporter        | bank_node_exporter:9100            | /metrics (varsayılan)  | Sunucu VM metrikleri         |
+| bank_microservices   | backend:8080, auth-service:8086,   | /actuator/prometheus   | Spring Boot uygulama         |
+|                      | bill-service:8084, corporate-      |                        | metrikleri (JVM, HTTP,       |
+|                      | service:8085, currency-service:    |                        | Hikari, Tomcat vb.)          |
+|                      | 8083, notification-service:8082,   |                        |                              |
+|                      | api-gateway:8081, discovery-       |                        |                              |
+|                      | server:8761                        |                        |                              |
+
+### 8.4 Alarm Kuralları (alert.rules.yml)
+Grup Adı: KarargahAlarmlari
+| Alarm Adı           | Koşul (expr)                                                              | Bekleme | Seviye   | Açıklama                                    |
+|----------------------|--------------------------------------------------------------------------|---------|----------|---------------------------------------------|
+| KonteynerCoktu       | up == 0                                                                  | 1 dk    | critical | Herhangi bir servis/konteyner çevrimdışı    |
+| YuksekCpuKullanimi   | 100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 90    | 5 dk    | warning  | VM CPU yükü %90'ın üzerinde                 |
+| KritikRamSeviyesi    | (MemTotal - MemAvailable) / MemTotal * 100 > 95                         | 3 dk    | critical | VM RAM doluluğu %95'in üzerinde             |
+
+### 8.5 Alertmanager Konfigürasyonu (alertmanager.yml)
+- Gruplama    : alertname bazlı
+- Bekleme     : group_wait=10s, group_interval=10s, repeat_interval=1h
+- Alıcı       : varsayilan-log-alici (Webhook: http://127.0.0.1:5000/alert-placeholder)
+NOT: Şu an webhook placeholder'dır. Gerçek sistemde Slack, PagerDuty veya
+e-posta entegrasyonu buraya eklenir.
+
+### 8.6 Node Exporter Detayları
+- Image: quay.io/prometheus/node-exporter:v1.8.0
+- Mount: /proc, /sys, / (rootfs) — Read-Only
+- Hariç tutulan mount noktaları: ^/(sys|proc|dev|host|etc)($$|/)
+- Host portu açılmamıştır (güvenlik — sadece Docker ağı içinden erişilir)
 
 # ⚠️ ÖNEMLİ NOT:
 # Bu dosya projenin kuşbakışı özetidir. Controller, Endpoint, DTO,

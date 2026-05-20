@@ -1,8 +1,8 @@
 # ============================================================
 # 🏦 ABSOLUTE BLUEPRINT: Bank-Demo-Backend (PORT 8080)
-# KARARGAH (CORE BANKING) - V9.0
+# KARARGAH (CORE BANKING) - V10.0
 # ============================================================
-# Son Güncelleme: 2026-05-18
+# Son Güncelleme: 2026-05-20
 # ============================================================
 
 ## 1. SERVİSİN AMACI
@@ -255,4 +255,27 @@ Mesaj DTO: NotificationMessage (JSON)
 ### Güvenlik
 - JwtAuthenticationFilter: X-Identity-Number header'ından TC okunur, SecurityContextHolder'a set edilir
 - InternalHeaderFilter: İç servislerden gelen isteklerde header doğrulaması
+- SecurityConfig'te /actuator/** -> permitAll() (Prometheus metrik toplama için)
 - Hesap sahipliği her kritik işlemde SecurityContextHolder.getAuthentication().getName() ile kontrol edilir
+
+## 7. MONITORING / ACTUATOR KONFİGÜRASYONU
+
+### application.yml Ayarları
+```
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  endpoint:
+    health:
+      show-details: always
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+```
+
+### SecurityConfig'te Açılan Yol
+- `.requestMatchers("/actuator/**").permitAll()` → Prometheus erişimi
+- Prometheus scrape target: backend:8080 (metrics_path: /actuator/prometheus)

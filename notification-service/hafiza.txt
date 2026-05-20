@@ -1,8 +1,8 @@
 # ============================================================
-# 📬 ABSOLUTE BLUEPRINT: notification-service (PORT 8087)
-# BİLDİRİM POSTANE MERKEZİ - V9.0
+# 📬 ABSOLUTE BLUEPRINT: notification-service (PORT 8082)
+# BİLDİRİM POSTANE MERKEZİ - V10.0
 # ============================================================
-# Son Güncelleme: 2026-05-18
+# Son Güncelleme: 2026-05-20
 # ============================================================
 
 ## 1. SERVİSİN AMACI
@@ -88,3 +88,26 @@ Exchange    : bank_exchange
 Queue       : notification_queue
 Routing Key : notification_routing_key
 Mesaj Format: JSON (Jackson2JsonMessageConverter)
+
+## 7. MONITORING / ACTUATOR KONFİGÜRASYONU
+
+### application.yml Ayarları
+```
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  endpoint:
+    health:
+      show-details: always
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+```
+
+### SecurityConfig Notu
+- Bu serviste ayrı bir SecurityConfig sınıfı YOKTUR
+- Spring Security bağımlılığı bulunmadığından /actuator/** otomatik açıktır
+- Prometheus scrape target: notification-service:8082 (metrics_path: /actuator/prometheus)

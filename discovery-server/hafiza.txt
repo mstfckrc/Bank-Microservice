@@ -1,8 +1,8 @@
 # ============================================================
 # 🗺️ ABSOLUTE BLUEPRINT: discovery-server (PORT 8761)
-# EUREKA SERVİS KAYIT VE KEŞİF MERKEZİ - V9.0
+# EUREKA SERVİS KAYIT VE KEŞİF MERKEZİ - V10.0
 # ============================================================
-# Son Güncelleme: 2026-05-18
+# Son Güncelleme: 2026-05-20
 # ============================================================
 
 ## 1. SERVİSİN AMACI
@@ -31,6 +31,20 @@ eureka:
   client:
     register-with-eureka: false   # Kendini kendine kaydetme
     fetch-registry: false          # Başka Eureka sunucusundan kayıt çekme
+
+# YENİ EKLENDİ: Actuator Ayarları
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  endpoint:
+    health:
+      show-details: always
+  prometheus:
+    metrics:
+      export:
+        enabled: true
 ```
 
 Kritik ayarlar:
@@ -95,3 +109,11 @@ Docker Compose Ağı (bank-network)
 
 Eureka Dashboard URL: http://localhost:8761
 (Nginx konfigürasyonuna göre dışarıdan erişilebilir olabilir)
+
+## 6. MONITORING / ACTUATOR KONFİGÜRASYONU
+
+### SecurityConfig Notu
+- Bu serviste ayrı bir SecurityConfig sınıfı YOKTUR
+- Eureka Dashboard kendi iç güvenlik mekanizmasını kullanır
+- /actuator/** yolu Spring Security olmadığı için otomatik açıktır
+- Prometheus scrape target: discovery-server:8761 (metrics_path: /actuator/prometheus)

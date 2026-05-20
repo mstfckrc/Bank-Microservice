@@ -1,8 +1,8 @@
 # ============================================================
-# 🏢 ABSOLUTE BLUEPRINT: bank-corporate-micro (PORT 8083)
-# KURUMSAL YÖNETİM MERKEZİ - V9.0
+# 🏢 ABSOLUTE BLUEPRINT: bank-corporate-micro (PORT 8085)
+# KURUMSAL YÖNETİM MERKEZİ - V10.0
 # ============================================================
-# Son Güncelleme: 2026-05-18
+# Son Güncelleme: 2026-05-20
 # ============================================================
 
 ## 1. SERVİSİN AMACI
@@ -214,6 +214,31 @@ Cron: "0 0 0 * * *" (Her gün gece yarısı 00:00:00)
 ### Güvenlik
 - HeaderAuthenticationFilter: Tüm isteklerde X-Identity-Number header kontrolü
 - Principal.getName(): Controller katmanında kimlik yönetimi
-- SecurityConfig: Endpoint erişim kurallarını belirler
+- SecurityConfig: anyRequest().permitAll() — Tüm kaplar açık
+  (Gerçek koruma API Gateway'dedir, bu servis iç ağda çalışır)
+  NOT: /actuator/** dahil tüm yollar otomatik olarak açıktır (Prometheus erişimi)
 - FeignIdentityInterceptor: Feign isteklerinde X-Internal-Identity header'ını otomatik ekler
   (Scheduler'ın Ghost Identity'si bu sayede Backend'e iletilir)
+
+## 7. MONITORING / ACTUATOR KONFİGÜRASYONU
+
+### application.yml Ayarları
+```
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  endpoint:
+    health:
+      show-details: always
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+```
+
+### SecurityConfig Notu
+- anyRequest().permitAll() kullanıldığı için /actuator/** yolu zaten açıktır
+- Ayrıca özel bir permitAll() tanımlamasına gerek yoktur
+- Prometheus scrape target: corporate-service:8085 (metrics_path: /actuator/prometheus)

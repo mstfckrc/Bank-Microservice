@@ -1,8 +1,8 @@
 # ============================================================
-# 💱 ABSOLUTE BLUEPRINT: currency-service (PORT 8085)
-# DÖVİZ KUR İSTİHBARAT MERKEZİ - V9.0
+# 💱 ABSOLUTE BLUEPRINT: currency-service (PORT 8083)
+# DÖVİZ KUR İSTİHBARAT MERKEZİ - V10.0
 # ============================================================
-# Son Güncelleme: 2026-05-18
+# Son Güncelleme: 2026-05-20
 # ============================================================
 
 ## 1. SERVİSİN AMACI
@@ -95,3 +95,26 @@ Tetikleyen: Bank-Demo-Backend → CurrencyServiceClient → GET /rates?base=..
 3. rates.get(toCurrency) ile hedef para birimi kuru alınır
 4. Kur bulunamazsa: BankOperationException ("Desteklenmeyen para birimi: ...")
 5. result = amount * rate hesaplanır ve döner
+
+## 8. MONITORING / ACTUATOR KONFİGÜRASYONU
+
+### application.yml Ayarları
+```
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  endpoint:
+    health:
+      show-details: always
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+```
+
+### SecurityConfig Notu
+- Bu serviste ayrı bir SecurityConfig sınıfı YOKTUR
+- Spring Security bağımlılığı bulunmadığından /actuator/** otomatik açıktır
+- Prometheus scrape target: currency-service:8083 (metrics_path: /actuator/prometheus)
