@@ -42,7 +42,11 @@ public class SecurityConfig {
                                 "/api/v1/auth/**",
                                 "/api/v1/currencies/**",
                                 "/eureka/**",
-                                "/actuator/**"
+                                "/actuator/**",
+                                "/v3/api-docs/**", // Servislerin haritalarının geçeceği tünel
+                                "/swagger-ui.html", // Swagger ana giriş kapısı
+                                "/swagger-ui/**",  // Arayüzün CSS/JS dosyaları
+                                "/webjars/**"      // UI bileşenleri
                         )
                 ))
                 .csrf(ServerHttpSecurity.CsrfSpec::disable)

@@ -29,11 +29,10 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         // Herkese açık dış kapılar
                         .requestMatchers("/api/v1/auth/**").permitAll()
-                        .requestMatchers("/v3/api-docs/**").permitAll()
-                        .requestMatchers("/swagger-ui/**").permitAll()
-                        .requestMatchers("/swagger-ui.html").permitAll()
                         .requestMatchers("/api/v1/currencies/rates").permitAll()
                         .requestMatchers("/actuator/**").permitAll()
+                        .requestMatchers("/v3/api-docs/**").permitAll()
+
 
                         // Admin yetkileri gerektiren kapılar
                         .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")

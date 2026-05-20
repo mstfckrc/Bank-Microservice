@@ -19,19 +19,78 @@ spring:
       port: ${SPRING_REDIS_PORT}
   cloud:
     gateway:
-      globalcors:
-        add-to-simple-url-handler-mapping: true
-        cors-configurations:
-          '[/**]':
-            allowedOriginPatterns: "*"
-            allowedMethods: "*"
-            allowedHeaders: "*"
-            allowCredentials: true
+      server:
+        webflux:
+          globalcors:
+            add-to-simple-url-handler-mapping: true
+            cors-configurations:
+              '[/**]':
+                allowedOriginPatterns: "*"
+                allowedMethods: "*"
+                allowedHeaders: "*"
+                allowCredentials: true
+          
+          # ==========================================
+          # 🚀 SWAGGER KURYELERİ (Gizli Tüneller)
+          # ==========================================
+          routes:
+            - id: openapi-backend
+              uri: lb://BANK-DEMO-BACKEND
+              predicates:
+                - Path=/v3/api-docs/backend
+              filters:
+                - RewritePath=/v3/api-docs/backend, /v3/api-docs
+
+            - id: openapi-auth
+              uri: lb://AUTH-SERVICE
+              predicates:
+                - Path=/v3/api-docs/auth
+              filters:
+                - RewritePath=/v3/api-docs/auth, /v3/api-docs
+
+            - id: openapi-corporate
+              uri: lb://BANK-CORPORATE-MICRO
+              predicates:
+                - Path=/v3/api-docs/corporate
+              filters:
+                - RewritePath=/v3/api-docs/corporate, /v3/api-docs
+
+            - id: openapi-bill
+              uri: lb://BANK-BILL-MICRO
+              predicates:
+                - Path=/v3/api-docs/bill
+              filters:
+                - RewritePath=/v3/api-docs/bill, /v3/api-docs
+
+            - id: openapi-currency
+              uri: lb://BANK-CURRENCY-MICRO
+              predicates:
+                - Path=/v3/api-docs/currency
+              filters:
+                - RewritePath=/v3/api-docs/currency, /v3/api-docs
 
 eureka:
   client:
     service-url:
       defaultZone: ${EUREKA_URL}
+
+# ==========================================
+# 📚 YENİ EKLENDİ: KURUMSAL SWAGGER VİTRİNİ (Dropdown)
+# ==========================================
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    urls:
+      - name: 🏦 Core Backend
+        url: /v3/api-docs/backend
+      - name: 🔐 Auth Service
+        url: /v3/api-docs/auth
+      - name: 🏢 Corporate Service
+        url: /v3/api-docs/corporate
+      - name: 🧾 Bill Service
+        url: /v3/api-docs/bill
+      - name: 💶 Currency Service
+        url: /v3/api-docs/currency
 
 # ==========================================
 # 🔭 YENİ EKLENDİ: ACTUATOR (İSTİHBARAT) AYARLARI
