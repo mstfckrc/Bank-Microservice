@@ -75,9 +75,14 @@ services:
     container_name: bank_backend_micro
     restart: on-failure
     depends_on:
-      - postgres-core 
-      - rabbitmq
-      - discovery-server
+      postgres-core:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
+      discovery-server:
+        condition: service_started
+      logstash:
+        condition: service_healthy # 🚀 Ağır topçu tamamen uyanmadan hücum ETME!
     environment:
       - DB_URL=${CORE_DB_URL}
       - DB_USER=${CORE_DB_USER}
@@ -102,19 +107,24 @@ services:
     container_name: bank_api_gateway_micro
     restart: on-failure
     depends_on:
-      - backend 
-      - discovery-server
-      - bill-service 
-      - auth-service
-      - redis 
+      backend:
+        condition: service_started
+      discovery-server:
+        condition: service_started
+      bill-service:
+        condition: service_started
+      auth-service:
+        condition: service_started
+      redis:
+        condition: service_started
+      logstash:
+        condition: service_healthy # 🚀 Logstash'i bekle
     environment:
       - SPRING_REDIS_HOST=${REDIS_HOST}
       - SPRING_REDIS_PORT=${REDIS_PORT}
-      # 🚀 YENİ EKLENDİ: Artık IP değil, tertemiz Domain okuyacak!
       - OAUTH_ISSUER_URI=${OAUTH_ISSUER_URI}
       - KEYCLOAK_INTERNAL_URL=${KC_INTERNAL_URL}
       - EUREKA_URL=${EUREKA_URL}
-    # 🚀 NGINX OPERASYONU: Gateway'in körlüğünü çözen fısıltı
     extra_hosts:
       - "auth.bank.local:host-gateway"
     networks:
@@ -128,8 +138,12 @@ services:
     container_name: bank_notification_micro
     restart: on-failure
     depends_on:
-      - rabbitmq
-      - discovery-server
+      rabbitmq:
+        condition: service_started
+      discovery-server:
+        condition: service_started
+      logstash:
+        condition: service_healthy # 🚀 Logstash'i bekle
     environment:
       - SPRING_RABBITMQ_HOST=${RMQ_HOST}
       - SPRING_RABBITMQ_PORT=${RMQ_PORT}
@@ -152,7 +166,10 @@ services:
       - REDIS_HOST=${REDIS_HOST}
       - REDIS_PORT=${REDIS_PORT}
     depends_on:
-      - discovery-server
+      discovery-server:
+        condition: service_started
+      logstash:
+        condition: service_healthy # 🚀 Logstash'i bekle
     networks:
       - bank-network-micro
 
@@ -164,9 +181,14 @@ services:
     container_name: bank_bill_micro
     restart: on-failure
     depends_on:
-      - postgres-bill
-      - rabbitmq
-      - discovery-server
+      postgres-bill:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
+      discovery-server:
+        condition: service_started
+      logstash:
+        condition: service_healthy # 🚀 Logstash'i bekle
     environment:
       - DB_URL=${BILL_DB_URL}
       - DB_USER=${BILL_DB_USER}
@@ -189,9 +211,14 @@ services:
     container_name: bank_corporate_micro
     restart: on-failure
     depends_on:
-      - postgres-corporate
-      - rabbitmq
-      - discovery-server
+      postgres-corporate:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
+      discovery-server:
+        condition: service_started
+      logstash:
+        condition: service_healthy # 🚀 Logstash'i bekle
     environment:
       - DB_URL=${CORP_DB_URL}
       - DB_USER=${CORP_DB_USER}
@@ -214,9 +241,14 @@ services:
     container_name: bank_auth_micro
     restart: on-failure
     depends_on:
-      - postgres-auth
-      - rabbitmq
-      - discovery-server
+      postgres-auth:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
+      discovery-server:
+        condition: service_started
+      logstash:
+        condition: service_healthy # 🚀 Logstash'i bekle
     environment:
       - DB_URL=${AUTH_DB_URL}
       - DB_USER=${AUTH_DB_USER}
@@ -242,13 +274,10 @@ services:
       dockerfile: Dockerfile
     container_name: bank_frontend_micro
     depends_on:
-      - api-gateway
+      api-gateway:
+        condition: service_started
     env_file:
       - ./Bank-Demo-Frontend/.env.local
-    # 🚀 NGINX OPERASYONU: Dış dünyaya kapatıldı
-    # ports:
-    #   - "3000:3000"
-    # 🚀 NGINX OPERASYONU: Docker'ın DNS körlüğünü çözen sihirli komutlar!
     extra_hosts:
       - "app.bank.local:host-gateway"
       - "api.bank.local:host-gateway"
@@ -263,9 +292,9 @@ services:
       dockerfile: Dockerfile
     container_name: bank_discovery_server_micro
     restart: on-failure
-    # 🚀 NGINX OPERASYONU: Sadece Nginx (eureka.bank.local) üzerinden girilecek
-    # ports:
-    #  - "8761:8761"
+    depends_on:
+      logstash:
+        condition: service_healthy # 🚀 Logstash'i bekle
     networks:
       - bank-network-micro
 
@@ -296,17 +325,15 @@ services:
       KC_DB_PASSWORD: ${KC_DB_PASS}
       KEYCLOAK_ADMIN: ${KC_ADMIN_USER}
       KEYCLOAK_ADMIN_PASSWORD: ${KC_ADMIN_PASS}
-      # 🚀 YENİ EKLENEN SİHİRLİ KOMUTLAR
-      KC_PROXY_HEADERS: xforwarded    # Nginx'in yolladığı orijinal domainleri oku
-      KC_HOSTNAME_STRICT: "false"     # Hardcode domain bekleme, .env esnekliğine uyum sağla
+      KC_PROXY_HEADERS: xforwarded
+      KC_HOSTNAME_STRICT: "false"
       KC_HOSTNAME: auth.bank.local
       KC_HOSTNAME_STRICT_HTTPS: "false"
-    
-    # 🚀 NGINX OPERASYONU: Dış dünyaya kapatıldı
     ports:
       - "9090:8080" 
     depends_on:
-      - keycloak-db
+      keycloak-db:
+        condition: service_started
     networks:
       - bank-network-micro
 
@@ -324,6 +351,12 @@ services:
       - "9200:9200"
     networks:
       - bank-network-micro
+    # 🚀 YENİ EKLENDİ: Elasticsearch uyanmadan kimseye "hazırım" demeyecek
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200 >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
 
   logstash:
     image: logstash:8.12.2
@@ -335,9 +368,16 @@ services:
     volumes:
       - ./logstash/logstash.conf:/usr/share/logstash/pipeline/logstash.conf:ro
     depends_on:
-      - elasticsearch
+      elasticsearch:
+        condition: service_healthy # 🚀 Logstash, ES uyanmadan çalışmayacak
     networks:
       - bank-network-micro
+    # 🚀 YENİ EKLENDİ: Kendi monitoring API'sinden nabzını kontrol edecek
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9600 >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
 
   kibana:
     image: kibana:8.12.2
@@ -347,7 +387,8 @@ services:
     environment:
       - ELASTICSEARCH_HOSTS=${ES_URL}
     depends_on:
-      - elasticsearch
+      elasticsearch:
+        condition: service_healthy # 🚀 Kibana da ES uyanmadan çalışmayacak
     networks:
       - bank-network-micro
 
@@ -379,22 +420,26 @@ services:
       - bank-network-micro
 
   # ==========================================
-  # 🚦 NGINX TERS VEKİL (YENİ EKLENDİ)
+  # 🚦 NGINX TERS VEKİL
   # ==========================================
   nginx-proxy:
     image: nginx:alpine
     container_name: bank_nginx_proxy
     ports:
       - "80:80" 
-      - "443:443" # 🚀 EKSİK OLAN HTTPS KAPISI EKLENDİ!
+      - "443:443"
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro 
-      - ./certs:/etc/nginx/certs:ro # 🚀 EKSİK OLAN SERTİFİKA YOLU EKLENDİ!
+      - ./certs:/etc/nginx/certs:ro
     depends_on:
-      - frontend
-      - api-gateway
-      - keycloak
-      - discovery-server
+      frontend:
+        condition: service_started
+      api-gateway:
+        condition: service_started
+      keycloak:
+        condition: service_started
+      discovery-server:
+        condition: service_started
     networks:
       - bank-network-micro
 
@@ -402,7 +447,6 @@ services:
   # 🔭 RADAR VE GÖZLEM MERKEZİ (MONITORING)
   # ==========================================
 
-  # 1. Biyolojik Sensör (cAdvisor)
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:v0.49.2
     container_name: bank_cadvisor_micro
@@ -418,14 +462,11 @@ services:
       - /dev/disk/:/dev/disk:ro
     networks:
       - bank-network-micro
-    # 🛡️ GÜVENLİK: Host portu açılmadı. Backend (8080) ile çakışma önlendi!
 
-  # 2. İstihbarat Arşivi (Prometheus)
   prometheus:
     image: prom/prometheus:latest
     container_name: bank_prometheus_micro
     restart: unless-stopped
-    # 🛡️ GÜVENLİK: Host portu açılmadı. İzole çalışıyor!
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./prometheus/alert.rules.yml:/etc/prometheus/alert.rules.yml:ro
@@ -436,15 +477,12 @@ services:
       - '--storage.tsdb.retention.time=3d'
     networks:
       - bank-network-micro
-    # 🛡️ GÜVENLİK: Host portu açılmadı. Keycloak (9090) ile çakışma önlendi!
 
-  # 3. Başkomutanın Holo-Ekranı (Grafana)
   grafana:
     image: grafana/grafana:latest
     container_name: bank_grafana_micro
     restart: unless-stopped
     environment:
-      # Değişkenleri senin mimarine uygun olarak .env'den çekeceğiz
       - GF_SECURITY_ADMIN_USER=${GRAFANA_USER}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASS}
     volumes:
