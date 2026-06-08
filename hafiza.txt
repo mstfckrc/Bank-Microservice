@@ -1,7 +1,7 @@
 # ============================================================
-# 🏛️ PROJE ANA HAFIZA DOSYASI (KUŞBAKIŞI HARİTA) - V10.0
+# 🏛️ PROJE ANA HAFIZA DOSYASI (KUŞBAKIŞI HARİTA) - V11.0
 # ============================================================
-# Son Güncelleme: 2026-05-20
+# Son Güncelleme: 2026-06-08
 # Bu dosya, sisteme ilk kez bakan birinin tüm mimariyi
 # tek seferde anlamasını sağlamak için tasarlanmıştır.
 # ============================================================
@@ -31,7 +31,8 @@ Güvenlik     : Zero-Trust (Gateway JWT'yi parçalar, arkaya sadece header gönd
 | Loglama              | ELK Stack (Elasticsearch 8.12 + Logstash + Kibana)               |
 | Monitoring           | Prometheus + Grafana + cAdvisor + Node Exporter + Alertmanager   |
 | Metrik Toplama       | Spring Boot Actuator + Micrometer Prometheus Registry             |
-| Reverse Proxy / SSL  | Nginx Alpine (HTTPS, TLS 1.2/1.3, .bank.local)                  |
+| API Dokümantasyon    | SpringDoc OpenAPI 3 + Swagger UI (Gateway üzerinden merkezi)     |
+| Reverse Proxy / SSL  | Nginx Alpine (HTTPS, TLS 1.2/1.3, *.bank.local)                 |
 | Konteyner            | Docker Compose 3.8                                               |
 
 ## 3. DOMAIN MİMARİSİ (NGINX REVERSE PROXY)
@@ -43,27 +44,29 @@ Tüm bileşenler *.bank.local alt alan adları üzerinden erişilir.
 | auth.bank.local     | Keycloak                     | 8080    |
 | eureka.bank.local   | Discovery Server             | 8761    |
 | monitor.bank.local  | Grafana                      | 3000    |
+| docs.bank.local     | API Gateway (Swagger UI)     | 8081    |
 
 Tüm HTTP (80) trafiği otomatik olarak HTTPS (443)'e yönlendirilir.
 SSL sertifikaları ./certs dizininden okunur.
+Keycloak proxy_buffer_size arttırılmıştır (128k/256k).
 
 ## 4. MİKROSERVİSLER VE GÖREVLERİ
-| Servis                | Port  | Görev                                                         |
-|-----------------------|-------|---------------------------------------------------------------|
-| api-gateway           | 8081  | Tek giriş noktası; JWT parçalama, rota yönlendirme, rate limit|
-| bank-auth-micro       | 8086  | Kullanıcı kayıt/profil, Keycloak entegrasyonu, admin CRUD     |
-| Bank-Demo-Backend     | 8080  | Hesap, transfer, MASAK onayları, Elasticsearch log sorgusu    |
-| bank-corporate-micro  | 8085  | Şirket yönetimi, personel CRUD, toplu maaş, otomatik CRON    |
-| bill-service          | 8084  | Fatura otomatik ödeme talimatları, dış kurum borç sorgulama   |
-| currency-service      | 8083  | Döviz kur sorgulama (Redis cache vitrin / canlı bypass havale)|
-| notification-service  | 8082  | RabbitMQ dinleyici; e-posta/SMS/push bildirim gönderimi       |
-| discovery-server      | 8761  | Eureka servis kaydı ve keşfi                                  |
-| Bank-Demo-Frontend    | 3000  | Next.js kullanıcı arayüzü (Müşteri/Şirket/Admin panelleri)   |
+| Servis                | Port  | Eureka Adı           | Görev                                                         |
+|-----------------------|-------|----------------------|---------------------------------------------------------------|
+| api-gateway           | 8081  | api-gateway          | Tek giriş noktası; JWT parçalama, rota, rate limit, Swagger   |
+| bank-auth-micro       | 8086  | auth-service         | Kullanıcı kayıt/profil, Keycloak entegrasyonu, admin CRUD     |
+| Bank-Demo-Backend     | 8080  | bank-demo-backend    | Hesap, transfer, MASAK onayları, Elasticsearch log sorgusu    |
+| bank-corporate-micro  | 8085  | bank-corporate-micro | Şirket yönetimi, personel CRUD, toplu maaş, otomatik CRON    |
+| bill-service          | 8084  | bank-bill-micro      | Fatura otomatik ödeme talimatları, dış kurum borç sorgulama   |
+| currency-service      | 8083  | bank-currency-micro  | Döviz kur sorgulama (Redis cache vitrin / canlı bypass havale)|
+| notification-service  | 8082  | notification-service | RabbitMQ dinleyici; e-posta/SMS/push bildirim gönderimi       |
+| discovery-server      | 8761  | discovery-server     | Eureka servis kaydı ve keşfi                                  |
+| Bank-Demo-Frontend    | 3000  | —                    | Next.js kullanıcı arayüzü (Müşteri/Şirket/Admin panelleri)   |
 
 ## 5. VERİTABANI İZOLASYONU
 Her mikroservisin kendi bağımsız PostgreSQL 15 veritabanı vardır:
 | Veritabanı           | Servis              | Host Port |
-|----------------------|---------------------|-----------| 
+|----------------------|---------------------|-----------|
 | bank_core_db         | Bank-Demo-Backend   | 5432      |
 | bank_auth_db         | bank-auth-micro     | 5434      |
 | bank_bill_db         | bill-service        | 5435      |
@@ -93,7 +96,7 @@ Tüketici : notification-service (tek dinleyici)
 ### 6.3 Servis Keşfi (Eureka)
 Tüm mikroservisler Eureka'ya (discovery-server:8761) kayıt olur.
 FeignClient isimlendirmeleri: auth-service, bank-demo-backend,
-bank-corporate-micro, bill-service, bank-currency-micro
+bank-corporate-micro, bank-bill-micro, bank-currency-micro
 
 ## 7. GÜVENLİK MİMARİSİ (ZERO-TRUST)
 1. Frontend, JWT token'ı cookie'de saklar ve her isteğe Authorization header ekler.
@@ -103,9 +106,21 @@ bank-corporate-micro, bill-service, bank-currency-micro
 5. Orijinal Authorization header'ını SİLER.
 6. Arka plandaki servisler Keycloak bilmez, sadece X-Identity-Number'a güvenir.
 
-## 8. MONITORING VE ALERTING ALTYAPISI
+## 8. SWAGGER / OPENAPI MERKEZİ DOKÜMANTASYON
+Gateway, tüm servislerin /v3/api-docs endpointlerini merkezi bir Swagger UI'da toplar.
+Erişim: https://docs.bank.local/swagger-ui.html
 
-### 8.1 Metrik Toplama Zinciri
+| Servis Adı        | Gateway Route               | Hedef Eureka Adı       |
+|--------------------|----------------------------|------------------------|
+| Core Backend       | /v3/api-docs/backend       | BANK-DEMO-BACKEND      |
+| Auth Service       | /v3/api-docs/auth          | AUTH-SERVICE            |
+| Corporate Service  | /v3/api-docs/corporate     | BANK-CORPORATE-MICRO   |
+| Bill Service       | /v3/api-docs/bill          | BANK-BILL-MICRO        |
+| Currency Service   | /v3/api-docs/currency      | BANK-CURRENCY-MICRO    |
+
+## 9. MONITORING VE ALERTING ALTYAPISI
+
+### 9.1 Metrik Toplama Zinciri
 Tüm Java mikroservislerine Spring Boot Actuator ve Micrometer Prometheus
 Registry entegre edilmiştir. Her servisin /actuator/prometheus endpoint'i
 Prometheus tarafından 15 saniyelik aralıklarla çekilir (scrape).
@@ -129,7 +144,7 @@ management:
         enabled: true
 ```
 
-### 8.2 Monitoring Bileşenleri
+### 9.2 Monitoring Bileşenleri
 | Bileşen         | Container Adı            | Görev                                                          |
 |-----------------|--------------------------|----------------------------------------------------------------|
 | cAdvisor        | bank_cadvisor_micro      | Docker container CPU/RAM/IO metriklerini toplar (port 8080)    |
@@ -139,7 +154,7 @@ management:
 | Grafana         | bank_grafana_micro       | Metrikleri görselleştirir (monitor.bank.local)                 |
 | ELK Stack       | elasticsearch/logstash/kibana | Uygulama loglarını toplar, arar, görselleştirir            |
 
-### 8.3 Prometheus Scrape Hedefleri (prometheus.yml)
+### 9.3 Prometheus Scrape Hedefleri (prometheus.yml)
 | Job Adı              | Hedef (Target)                     | Metrics Path           | Açıklama                     |
 |----------------------|------------------------------------|------------------------|------------------------------|
 | prometheus           | localhost:9090                     | /metrics (varsayılan)  | Prometheus'un kendi sağlığı  |
@@ -152,7 +167,7 @@ management:
 |                      | api-gateway:8081, discovery-       |                        |                              |
 |                      | server:8761                        |                        |                              |
 
-### 8.4 Alarm Kuralları (alert.rules.yml)
+### 9.4 Alarm Kuralları (alert.rules.yml)
 Grup Adı: KarargahAlarmlari
 | Alarm Adı           | Koşul (expr)                                                              | Bekleme | Seviye   | Açıklama                                    |
 |----------------------|--------------------------------------------------------------------------|---------|----------|---------------------------------------------|
@@ -160,18 +175,45 @@ Grup Adı: KarargahAlarmlari
 | YuksekCpuKullanimi   | 100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 90    | 5 dk    | warning  | VM CPU yükü %90'ın üzerinde                 |
 | KritikRamSeviyesi    | (MemTotal - MemAvailable) / MemTotal * 100 > 95                         | 3 dk    | critical | VM RAM doluluğu %95'in üzerinde             |
 
-### 8.5 Alertmanager Konfigürasyonu (alertmanager.yml)
+### 9.5 Alertmanager Konfigürasyonu (alertmanager.yml)
 - Gruplama    : alertname bazlı
 - Bekleme     : group_wait=10s, group_interval=10s, repeat_interval=1h
 - Alıcı       : varsayilan-log-alici (Webhook: http://127.0.0.1:5000/alert-placeholder)
 NOT: Şu an webhook placeholder'dır. Gerçek sistemde Slack, PagerDuty veya
 e-posta entegrasyonu buraya eklenir.
 
-### 8.6 Node Exporter Detayları
+### 9.6 Node Exporter Detayları
 - Image: quay.io/prometheus/node-exporter:v1.8.0
 - Mount: /proc, /sys, / (rootfs) — Read-Only
 - Hariç tutulan mount noktaları: ^/(sys|proc|dev|host|etc)($$|/)
 - Host portu açılmamıştır (güvenlik — sadece Docker ağı içinden erişilir)
+
+## 10. KONTEYNER ORKESTRASYONU — HEALTHCHECK VE BAŞLATMA ZİNCİRİ
+Docker Compose'da condition-based depends_on ile başlatma sırası garanti edilir.
+
+### Healthcheck Mekanizmaları
+| Konteyner      | Healthcheck Komutu                          | Interval | Timeout | Retries |
+|----------------|---------------------------------------------|----------|---------|---------|
+| elasticsearch  | curl -s http://localhost:9200               | 15s      | 5s      | 10      |
+| logstash       | curl -s http://localhost:9600               | 15s      | 5s      | 12      |
+
+### Başlatma Zinciri (Dependency Graph)
+```
+elasticsearch (healthcheck) → logstash (healthcheck)
+                                  ↓
+        ┌───────────────────────────────────────────────┐
+        ↓         ↓          ↓          ↓         ↓     ↓
+    discovery  rabbitmq   postgres-*  redis    keycloak-db
+        ↓                    ↓                     ↓
+    backend, auth, bill, corporate, notification  keycloak
+    currency, api-gateway
+        ↓
+    frontend
+        ↓
+    nginx-proxy
+```
+Tüm mikroservisler Logstash'in healthcheck geçmesini bekler (condition: service_healthy).
+Bu sayede uygulama ayağa kalktığında loglar asla kaybolmaz.
 
 # ⚠️ ÖNEMLİ NOT:
 # Bu dosya projenin kuşbakışı özetidir. Controller, Endpoint, DTO,

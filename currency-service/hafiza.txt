@@ -1,104 +1,83 @@
 # ============================================================
 # 💱 ABSOLUTE BLUEPRINT: currency-service (PORT 8083)
-# DÖVİZ KUR İSTİHBARAT MERKEZİ - V10.0
+# DÖVİZ KUR İSTİHBARAT MERKEZİ - V11.0
 # ============================================================
-# Son Güncelleme: 2026-05-20
+# Son Güncelleme: 2026-06-08
 # ============================================================
 
 ## 1. SERVİSİN AMACI
-Sistemin döviz kur bilgisi ihtiyacını karşılayan bağımsız mikroservistir.
-"İki Yüzlü Redis Önbelleği" (Two-Faced Redis Cache) mimarisiyle çalışır:
-- Frontend/Vitrin için: 10 dakika Redis önbellekli kurlar (performans)
-- Para transferi için: Her seferinde dış API'ye giden canlı kurlar (doğruluk)
+Döviz kuru bilgilerini sağlayan servistir. İki farklı kullanım senaryosu
+vardır: (1) Vitrin Modu — Redis cache'ten hızlı kur bilgisi sunma
+(Frontend için), (2) Canlı Bypass Modu — Cache'i atlayarak anlık kur
+çekme (havale/transfer işlemlerinde doğru çevrim için).
 
-Veritabanı yoktur. Herhangi bir tabloya sahip değildir.
-Dış sağlayıcı: https://open.er-api.com/v6/latest/{base}
+Veritabanı yoktur. Tek bağımlılık Redis'tir (cache).
 
-## 2. VERİTABANI
-YOK — Bu servisin veritabanı yoktur.
-Tüm veriler anlık olarak dış API'den çekilir.
-Redis sadece önbellek (cache) amacıyla kullanılır, kalıcı veri deposu değildir.
-
-## 3. ENDPOINTS (CONTROLLER UÇ NOKTALARI)
+## 2. ENDPOINTS (CONTROLLER UÇ NOKTALARI)
 
 ### CurrencyController (/api/v1/currencies)
-| HTTP | Endpoint | Girdi                    | Çıktı                | Açıklama                          |
-|------|----------|--------------------------|----------------------|-----------------------------------|
-| GET  | /rates   | base (Query Param: String)| ExchangeRateResponse | Döviz kurlarını getir (önbellekli)|
+| HTTP   | Endpoint  | Girdi                           | Çıktı               | Açıklama                         |
+|--------|-----------|---------------------------------|----------------------|----------------------------------|
+| GET    | /rates    | base (Query, default="TRY")     | ExchangeRateResponse | Kur bilgisi getir (Cache'li)     |
+| GET    | /convert  | from, to, amount (Query Params) | Double (200 OK)      | Döviz çevirimi (Cache bypass)    |
 
-Örnek istek: GET /api/v1/currencies/rates?base=TRY
-Tüketici   : Frontend (Next.js vitrin ekranı) + Bank-Demo-Backend (Feign üzerinden)
-
-## 4. GİRDİ VE ÇIKTILAR (DTO İÇERİKLERİ)
+## 3. GİRDİ VE ÇIKTILAR (DTO İÇERİKLERİ)
 
 ### Response DTO'ları
-ExchangeRateResponse (implements Serializable - Redis için zorunlu):
-  - base_code : String (Örn: "TRY")
-  - rates     : Map<String, Double> (Örn: {"USD": 0.03, "EUR": 0.028, "TRY": 1.0})
+ExchangeRateResponse:
+  - base_code : String (Taban para birimi, Örn: "TRY")
+  - rates     : Map<String, Double> (Örn: {"USD": 0.029, "EUR": 0.027, "TRY": 1.0})
 
-serialVersionUID = 1L (Redis byte dönüşümü için)
+## 4. KUR KAYNAĞI VE CACHE MEKANİZMASI
 
-## 5. DIŞ BAĞLANTILAR
-
-### Dış API
-| Sağlayıcı    | URL Pattern                               | Yöntem      |
-|--------------|-------------------------------------------|-------------|
-| open.er-api  | https://open.er-api.com/v6/latest/{base}  | RestTemplate GET |
-
-Hata durumunda: BankOperationException fırlatılır
-("Canlı kurlar çekilirken bir hata oluştu: ...")
-
-### Bu servisi çağıran servisler (Tüketiciler)
-| Tüketici Servis       | FeignClient Adı       | Endpoint              | Kullanım Amacı              |
-|-----------------------|-----------------------|-----------------------|-----------------------------|
-| Bank-Demo-Backend     | CurrencyServiceClient | GET /api/v1/currencies/rates?base=.. | Transfer esnasında canlı kur |
-
-Eureka servis adı: bank-currency-micro
-
-## 6. REDIS ÖNBELLEK KONFİGÜRASYONU (RedisCacheConfig)
-
+### Hardcoded Kurlar (CurrencyServiceImpl)
+Kaynak: Servis içinde sabit Map olarak tanımlı (Gerçek API entegrasyonu yok)
 ```
-Cache Adı  : "rates"
-Cache Key  : baseCurrency (Örn: "TRY", "USD", "EUR")
-TTL (Ömür) : 10 dakika (entryTtl = Duration.ofMinutes(10))
-Key Serializer   : StringRedisSerializer (okunabilir string anahtarlar)
-Value Serializer : GenericJackson2JsonRedisSerializer (JSON formatında değerler)
+TRY -> {TRY: 1.0, USD: 0.029, EUR: 0.027}
+USD -> {USD: 1.0, TRY: 34.5, EUR: 0.92}
+EUR -> {EUR: 1.0, TRY: 37.0, USD: 1.09}
 ```
 
-## 7. İŞ KURALLARI (BUSINESS LOGIC) — İKİ YÜZLÜ ÖNBELLEK MİMARİSİ
+### Redis Cache (İki Yüzlü Strateji — "Two-Faced Cache")
 
-### Yüz 1 — VİTRİN OPERASYONU (getLiveRates — ÖNBELLEKLİ)
-Tetikleyen: GET /api/v1/currencies/rates endpoint'i (Frontend ekranı)
-- @Cacheable(value="rates", key="#baseCurrency") annotasyonu aktiftir
-- İlk istekte dış API çağrılır, yanıt Redis'e 10 dk için yazılır
-- Sonraki isteklerde Redis'ten okur, dış API çağrılmaz
-- 10 dakika sonra TTL dolunca cache otomatik temizlenir, sonraki istekte API tekrar çağrılır
+#### 🟢 Vitrin Modu (/rates — @Cacheable)
+- Cache Key Pattern: "exchangeRates::{baseCurrency}"
+- TTL: RedisCacheConfig'te tanımlı (varsayılan serileştirici ile)
+- İlk istekte hesaplanır, sonraki isteklerde Redis'ten döner
+- Amaç: Frontend kur gösterimlerini hızlı servis etmek
 
-### Yüz 2 — KARARGAH OPERASYONU (convertAmount — ÖNBELLEKSİZ CANLI)
-Tetikleyen: Bank-Demo-Backend → CurrencyServiceClient → GET /rates?base=..
-- @Cacheable annotasyonu YOKTUR
-- Doğrudan fetchRatesFromExternalApi() private metodunu çağırır
-- getLiveRates() metodu ÇAĞRILMAZ (cache bypass)
-- Her transfer işleminde dış API'ye gider ve gerçek anlık kur kullanılır
-- Aynı para birimi kontrolü: fromCurrency == toCurrency ise dış API'ye gidilmez
+#### 🔴 Bypass Modu (/convert — Cache YOK)
+- @Cacheable YOKTUR, her çağrıda hesaplama yapılır
+- Amaç: Havale/Transfer sırasında anlık doğru kur kullanmak
+- Arka plandaki servisler (Backend) bu endpoint'i Feign ile çağırır
 
-### Neden İki Yüz?
-- Vitrin (Frontend): Kullanıcı kur tablosunu her saniye yenilemez, 10 dk önbellek
-  performansı artırır ve dış API'ye gereksiz istek atılmaz
-- Transfer: Para transferinde 10 dk önceki kur kullanılırsa müşteri zarar görebilir.
-  Bu nedenle transferde her zaman anlık kur zorunludur
-- Bu desen "Two-Faced Redis Cache Bypass" olarak sistemin mimarisinde tanımlanmıştır
+### RedisCacheConfig
+- @EnableCaching aktif
+- RedisCacheManager oluşturulur
+- Jackson2JsonRedisSerializer ile JSON serileştirme
+- TTL süresi framework tarafından yönetilir
 
-### Döviz Çevirme Akışı (convertAmount)
-1. fromCurrency == toCurrency → Direkt amount döner (API çağrısı YOK)
-2. fetchRatesFromExternalApi(fromCurrency) ile dış API'den kurlar çekilir
+## 5. İŞ KURALLARI (BUSINESS LOGIC)
+
+### Kur Sorgulama (/rates)
+1. base parametresi alınır (varsayılan: TRY)
+2. rates Map'inden ilgili para birimi kurları çekilir
+3. Bulunamazsa: BankOperationException("Desteklenmeyen para birimi: ...")
+4. ExchangeRateResponse döner
+
+### Döviz Çevirimi (/convert)
+1. from parametresi ile rates Map'inden kur alınır
+2. Bulunamazsa: BankOperationException("Desteklenmeyen para birimi: ...")
 3. rates.get(toCurrency) ile hedef para birimi kuru alınır
 4. Kur bulunamazsa: BankOperationException ("Desteklenmeyen para birimi: ...")
 5. result = amount * rate hesaplanır ve döner
 
-## 8. MONITORING / ACTUATOR KONFİGÜRASYONU
+## 6. GÜVENLİK
+Bu serviste ayrı bir SecurityConfig sınıfı YOKTUR.
+Spring Security bağımlılığı bulunmadığından tüm endpoint'ler açıktır.
+Gateway'de /api/v1/currencies/** Sivil Bölge'ye alınmıştır (permitAll).
 
-### application.yml Ayarları
+## 7. MONITORING / ACTUATOR KONFİGÜRASYONU
 ```
 management:
   endpoints:
@@ -113,8 +92,10 @@ management:
       export:
         enabled: true
 ```
+Prometheus scrape target: currency-service:8083 (metrics_path: /actuator/prometheus)
 
-### SecurityConfig Notu
-- Bu serviste ayrı bir SecurityConfig sınıfı YOKTUR
-- Spring Security bağımlılığı bulunmadığından /actuator/** otomatik açıktır
-- Prometheus scrape target: currency-service:8083 (metrics_path: /actuator/prometheus)
+## 8. DOCKER COMPOSE BAĞIMLILIKLARI
+depends_on:
+  - discovery-server (condition: service_started)
+  - logstash (condition: service_healthy)
+Bağımlılıklar: Redis (spring.data.redis env ile), Eureka

@@ -1,8 +1,8 @@
 # ============================================================
 # 🏦 ABSOLUTE BLUEPRINT: Bank-Demo-Backend (PORT 8080)
-# KARARGAH (CORE BANKING) - V10.0
+# KARARGAH (CORE BANKING) - V11.0
 # ============================================================
-# Son Güncelleme: 2026-05-20
+# Son Güncelleme: 2026-06-08
 # ============================================================
 
 ## 1. SERVİSİN AMACI
@@ -252,15 +252,26 @@ Mesaj DTO: NotificationMessage (JSON)
 - Yanıt: hits->hits->_source alanından parse edilir
 - Hata durumunda boş liste döner (exception yutulur, log atılır)
 
-### Güvenlik
-- JwtAuthenticationFilter: X-Identity-Number header'ından TC okunur, SecurityContextHolder'a set edilir
+## 7. GÜVENLİK
+
+### SecurityConfig — permitAll() Yolları
+| Yol Pattern              | Açıklama                         |
+|--------------------------|----------------------------------|
+| /api/v1/auth/**          | Kayıt, giriş                     |
+| /api/v1/currencies/rates | Kur vitrin endpoint'i            |
+| /actuator/**             | Prometheus metrik toplama        |
+| /v3/api-docs/**          | OpenAPI spec (Swagger Gateway)   |
+| /api/v1/internal/**      | Servisler arası iç iletişim      |
+| /api/v1/admin/**         | hasRole("ADMIN") ile korunur     |
+| anyRequest()             | authenticated()                  |
+
+### Filtre Sıralaması
+1. InternalHeaderFilter → UsernamePasswordAuthenticationFilter öncesi
+2. JwtAuthenticationFilter → UsernamePasswordAuthenticationFilter öncesi
+- JwtAuthenticationFilter: X-Identity-Number header'ından TC okunur
 - InternalHeaderFilter: İç servislerden gelen isteklerde header doğrulaması
-- SecurityConfig'te /actuator/** -> permitAll() (Prometheus metrik toplama için)
-- Hesap sahipliği her kritik işlemde SecurityContextHolder.getAuthentication().getName() ile kontrol edilir
 
-## 7. MONITORING / ACTUATOR KONFİGÜRASYONU
-
-### application.yml Ayarları
+## 8. MONITORING / ACTUATOR KONFİGÜRASYONU
 ```
 management:
   endpoints:
@@ -275,7 +286,11 @@ management:
       export:
         enabled: true
 ```
+Prometheus scrape target: backend:8080 (metrics_path: /actuator/prometheus)
 
-### SecurityConfig'te Açılan Yol
-- `.requestMatchers("/actuator/**").permitAll()` → Prometheus erişimi
-- Prometheus scrape target: backend:8080 (metrics_path: /actuator/prometheus)
+## 9. DOCKER COMPOSE BAĞIMLILIKLARI
+depends_on:
+  - postgres-core (condition: service_started)
+  - rabbitmq (condition: service_started)
+  - discovery-server (condition: service_started)
+  - logstash (condition: service_healthy)

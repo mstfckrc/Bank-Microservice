@@ -1,8 +1,8 @@
 # ============================================================
 # 🛂 ABSOLUTE BLUEPRINT: bank-auth-micro (PORT 8086)
-# KİMLİK VE YETKİLENDİRME ÜSSÜ - V10.0
+# KİMLİK VE YETKİLENDİRME ÜSSÜ - V11.0
 # ============================================================
-# Son Güncelleme: 2026-05-20
+# Son Güncelleme: 2026-06-08
 # ============================================================
 
 ## 1. SERVİSİN AMACI
@@ -44,7 +44,7 @@ bank-corporate-micro servisindeki Company tablosunda tutulur.
 
 ### 3.1 AuthController (/api/v1/auth)
 | HTTP   | Endpoint    | Girdi            | Çıktı        | Açıklama                    |
-|--------|-------------|------------------|--------------|-----------------------------|
+|--------|-------------|------------------|--------------|---------------------------  |
 | POST   | /register   | RegisterRequest  | AuthResponse | Yeni kullanıcı kaydı oluştur|
 
 ### 3.2 CustomerController (/api/v1/customers)
@@ -189,17 +189,30 @@ Mesaj DTO: NotificationMessage (JSON)
 - İtiraz edildiğinde statü tekrar PENDING yapılır
 - Admin'e SYSTEM_ALERT tipinde bildirim gönderilir
 
-### Güvenlik Katmanı
+## 7. GÜVENLİK
+
+### SecurityConfig — permitAll() Yolları
+| Yol Pattern              | Açıklama                         |
+|--------------------------|----------------------------------|
+| /api/v1/auth/**          | Kayıt, giriş                     |
+| /v3/api-docs/**          | OpenAPI spec (Swagger Gateway)   |
+| /swagger-ui/**           | Swagger UI arayüzü               |
+| /swagger-ui.html         | Swagger ana giriş                |
+| /api/v1/currencies/rates | Kur vitrin endpoint'i            |
+| /actuator/**             | Prometheus metrik toplama        |
+| /api/v1/admin/**         | hasRole("ADMIN") ile korunur     |
+| /api/v1/internal/**      | Servisler arası iç iletişim      |
+| /error                   | Hata sayfaları (403 önleme)      |
+| anyRequest()             | authenticated()                  |
+
+### Filtre Sıralaması
+1. InternalHeaderFilter → UsernamePasswordAuthenticationFilter öncesi
+2. JwtAuthenticationFilter → UsernamePasswordAuthenticationFilter öncesi
 - JwtAuthenticationFilter: X-Identity-Number header'ından kimlik çözümler
 - InternalHeaderFilter: Servisler arası iç iletişimde header doğrulaması
-- SecurityConfig: Endpoint erişim kurallarını belirler
-  - /actuator/** -> permitAll() (Prometheus metrik toplama için)
-  - /error -> permitAll() (403 hata döngüsünü önlemek için)
 - ICaptchaService: Google reCAPTCHA v2 token doğrulaması (Backend Secret Key ile)
 
-## 7. MONITORING / ACTUATOR KONFİGÜRASYONU
-
-### application.yml Ayarları
+## 8. MONITORING / ACTUATOR KONFİGÜRASYONU
 ```
 management:
   endpoints:
@@ -214,8 +227,11 @@ management:
       export:
         enabled: true
 ```
+Prometheus scrape target: auth-service:8086 (metrics_path: /actuator/prometheus)
 
-### SecurityConfig'te Açılan Yollar
-- `.requestMatchers("/actuator/**").permitAll()` → Prometheus erişimi
-- `.requestMatchers("/error").permitAll()` → Hata sayfaları için (403 önleme)
-- Prometheus scrape target: auth-service:8086 (metrics_path: /actuator/prometheus)
+## 9. DOCKER COMPOSE BAĞIMLILIKLARI
+depends_on:
+  - postgres-auth (condition: service_started)
+  - rabbitmq (condition: service_started)
+  - discovery-server (condition: service_started)
+  - logstash (condition: service_healthy)

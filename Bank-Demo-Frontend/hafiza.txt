@@ -1,51 +1,164 @@
-# 🖥️ ABSOLUTE BLUEPRINT: Bank-Demo-Frontend - "KULLANICI VİTRİNY"
+# ============================================================
+# 🖥️ ABSOLUTE BLUEPRINT: Bank-Demo-Frontend (PORT 3000)
+# KULLANICI VİTRİNİ - V11.0
+# ============================================================
+# Son Güncelleme: 2026-06-08
+# ============================================================
 
-### 1. Servisin Amacı
-Son kullanıcıların (Müşteri, Şirket Yöneticisi, Sistem Yöneticisi) banka sistemine eriştiği grafiksel arayüzdür. React ve Next.js (App Router) ile inşa edilmiştir. Verileri doğrudan API Gateway (`port: 8081`) üzerinden çeker. Kendi veritabanı yoktur.
+## 1. SERVİSİN AMACI
+Son kullanıcıların (Müşteri, Şirket Yöneticisi, Sistem Yöneticisi) banka
+sistemine eriştiği grafiksel arayüzdür. React ve Next.js (App Router)
+ile inşa edilmiştir. Verileri API Gateway (api.bank.local) üzerinden
+çeker. Kendi veritabanı yoktur.
 
----
+## 2. TEKNOLOJİ YIĞINI (TECH STACK)
+| Bileşen                | Teknoloji                                          |
+|------------------------|----------------------------------------------------|
+| Framework              | Next.js (App Router Mimarisi)                      |
+| Ağ Katmanı             | Axios (API Gateway ile iletişim)                   |
+| Durum Yönetimi (State) | Zustand (useAuthStore.ts)                          |
+| Tasarım Sistemi        | Tailwind CSS, Shadcn UI, Radix UI                  |
+| Güvenlik (Captcha)     | Google reCAPTCHA v2 (react-google-recaptcha)       |
+| Kimlik Doğrulama       | Manuel Cookie tabanlı JWT + Keycloak OIDC Callback |
 
-### 2. Teknoloji Yığını (Tech Stack)
-*   **Framework:** Next.js (v14/v15 App Router Mimarisi)
-*   **Ağ Katmanı:** Axios (API Gateway ile iletişim)
-*   **Durum Yönetimi (State):** Zustand (`useAuthStore.ts`)
-*   **Tasarım Sistemi:** Tailwind CSS, Shadcn UI, Radix UI
-*   **Güvenlik (Captcha):** Google reCAPTCHA v2 (`react-google-recaptcha`)
-*   **Kimlik Doğrulama:** NextAuth.js kullanılmamış, tamamen manuel Cookie tabanlı JWT süzgeci tasarlanmıştır.
+## 3. KLASÖR VE ROTA YAPISI (APP ROUTER)
 
----
+### App Directory Yapısı
+```
+app/
+├── (auth)/               # Giriş ve kayıt ekranları (Route Group)
+│   ├── login/            # /login sayfası
+│   └── register/         # /register sayfası
+├── (dashboard)/          # Sisteme giriş sonrası ana paneller (Route Group)
+│   ├── layout.tsx        # Dashboard düzeni (sidebar, navbar, logout)
+│   ├── admin/            # /admin/dashboard → Sistem Yöneticisi Paneli
+│   ├── company/          # /company/dashboard → Kurumsal Yönetici Paneli
+│   └── user/             # /user/dashboard → Bireysel Müşteri Paneli
+├── api/auth/callback/
+│   └── route.ts          # Keycloak OAuth2 Callback Handler (Server Route)
+├── auth-sync/
+│   └── page.tsx          # Giriş sonrası profil senkronizasyon sayfası
+├── currencies/           # Döviz kur vitrin sayfası
+├── page.tsx              # Ana sayfa (Landing Page)
+├── layout.tsx            # Root layout
+└── globals.css           # Global stiller
+```
 
-### 3. Klasör ve Rota Yapısı (App Router)
-Görünümler ve paneller "Route Groups" özelliğiyle `( )` parantez içinde izole edilmiştir.
+### Services Directory (API İstekleri)
+```
+services/
+├── account.service.ts    # Hesap CRUD işlemleri
+├── admin.service.ts      # Admin: müşteri yönetimi, MASAK, loglar
+├── auth.service.ts       # Kayıt/giriş işlemleri
+├── bill.services.ts      # Fatura talimat yönetimi
+├── company.service.ts    # Kurumsal: personel, maaş, ayarlar
+├── currency.service.ts   # Döviz kur sorgulama
+├── customer.service.ts   # Müşteri profil yönetimi
+└── transaction.service.ts # Transfer ve işlem sorgulama
+```
 
-*   **`(auth)`**: Giriş ve Kayıt olma ekranları. (`/login`, `/register`)
-*   **`(dashboard)`**: Sisteme giriş yapıldıktan sonraki ana paneller. Üç farklı dünyaya ayrılır:
-    *   `/user/dashboard` -> Bireysel Müşteriler (Havale, Fatura, Hesaplar).
-    *   `/company/dashboard` -> Kurumsal Yöneticiler (Personel ekleme, Toplu Maaş).
-    *   `/admin/dashboard` -> Sistem Yöneticileri (MASAK Onayları, Log izleme, Müşteri silme).
-*   **`services/`**: API Gateway uç noktalarına atılan tüm Axios isteklerinin toplandığı sınıf/fonksiyonlar dizini (`admin.service.ts`, `transaction.service.ts` vb.).
-*   **`store/`**: Zustand kullanılarak kullanıcının "Giriş Yapıldı" (Logged In) statüsünün RAM'de tutulduğu yer (`useAuthStore.ts`).
+### Diğer Dizinler
+```
+store/                    # Zustand state yönetimi
+├── useAuthStore.ts       # Kullanıcı oturum durumu (login/logout)
+components/               # Shadcn UI bileşenleri
+hooks/                    # Custom React hooks
+lib/                      # Utility fonksiyonları
+types/                    # TypeScript tip tanımları
+```
 
----
+## 4. KEYCLOAK OIDC GİRİŞ AKIŞI (Token Exchange)
 
-### 4. Güvenlik ve Kalkanlar (proxy.ts / Middleware)
-Sistemin en hayati Frontend kalkanı olan Middleware (`proxy.ts` veya `middleware.ts`) iki aşamalı bir duvar örer:
+### Akış Şeması (Login Flow)
+```
+1. Kullanıcı /login sayfasında "Giriş Yap" butonuna tıklar
+                ↓
+2. Frontend, Keycloak'ın Authorization Endpoint'ine yönlendirir:
+   https://auth.bank.local/realms/bank-realm/protocol/openid-connect/auth
+   ?client_id=bank-auth-client
+   &response_type=code
+   &redirect_uri=https://app.bank.local/api/auth/callback
+                ↓
+3. Keycloak giriş ekranını gösterir (TC No + Şifre)
+                ↓
+4. Başarılı girişte Keycloak, callback URL'ye "code" parametresiyle yönlendirir:
+   https://app.bank.local/api/auth/callback?code=XXXX
+                ↓
+5. /api/auth/callback/route.ts (SERVER TARAFINDA):
+   - code ile Keycloak'ın Token Endpoint'ine POST yapar
+   - KEYCLOAK_INTERNAL_URL kullanılır (Docker iç ağı: http://keycloak:8080)
+   - grant_type=authorization_code ile access_token ve id_token alır
+   - Cookie'lere set eder: token (access_token), id_token
+   - /auth-sync sayfasına yönlendirir
+                ↓
+6. /auth-sync/page.tsx (CLIENT TARAFINDA):
+   - Cookie'den token'ı alır
+   - customerService.getProfile() ile Backend'den profil bilgisi çeker
+   - JWT'yi Base64 decode ederek Keycloak claim'lerini okur (name, email)
+   - Backend verisi + Keycloak verisi harmanlanarak final profil oluşturulur
+   - Zustand store'a (useAuthStore) login() ile kaydedilir
+   - Role göre ilgili dashboard'a yönlendirilir
+```
 
-1.  **Token Ölüm Kontrolü (Expiration Check):** Tarayıcıdaki `token` çerezini alır, Base64 ile decode edip (JWT'yi manuel parçalayarak) `exp` değerine bakar. Eğer süre dolmuşsa (`exp < Date.now()`), arka plana hiç istek atmadan doğrudan Keycloak'un Logout URL'sine (`/protocol/openid-connect/logout`) yönlendirme yapar ve çerezleri siler. Çıkış işlemini kusursuzlaştırmak için `id_token_hint` kullanır.
-2.  **Yetki Duvarları (Role-Based Access):**
-    *   `/admin` rotalarına girmek isteyenlerin token'ında `"ADMIN"` rolü yoksa `/login` ekranına atar.
-    *   `/company` rotalarına girmek isteyenlerin `"CORPORATE_MANAGER"` rolü yoksa bireysel panele atar.
-    *   Oturum açmış (Token'ı olan) birisi `/login` sayfasına gitmeye çalışırsa, onu sahip olduğu role göre kendi kontrol paneline (Dashboard) geri fırlatır.
+### Kritik Notlar
+- Token Exchange: Server Route (/api/auth/callback) kullanılarak client_secret
+  tarayıcıya ASLA ifşa edilmez
+- KEYCLOAK_INTERNAL_URL: Token exchange sırasında Docker iç ağından geçer
+  (http://keycloak:8080), HTTPS sertifika sorunları bypass edilir
+- id_token: Keycloak logout işleminde id_token_hint parametresi için saklanır
 
----
+## 5. GÜVENLİK VE KALKANLAR (proxy.ts / Middleware)
+Middleware iki aşamalı bir duvar örer:
 
-### 5. Çevre Değişkenleri (.env.local)
-*   `NEXT_PUBLIC_API_URL`: API Gateway adresi (`http://localhost:8081/api/v1`).
-*   `NEXT_PUBLIC_KEYCLOAK_URL`: Keycloak kimlik doğrulama ekranının ana urli (`http://localhost:9090`).
-*   `KEYCLOAK_CLIENT_ID` / `SECRET`: Frontend'in Keycloak'a kendini tanıtması için gerekli gizli anahtarlar.
+### Aşama 1: Token Ölüm Kontrolü (Expiration Check)
+- Cookie'den token alınır, Base64 ile JWT payload decode edilir
+- exp claim'i kontrol edilir (payload.exp < Date.now()/1000)
+- Süre dolmuşsa: Keycloak Logout URL'sine yönlendirilir
+  - post_logout_redirect_uri: NEXT_PUBLIC_FRONTEND_URL
+  - id_token_hint: id_token cookie'sinden alınır
+  - Cookie'ler (token, id_token) silinir
 
----
+### Aşama 2: Yetki Duvarları (Role-Based Access Control)
+| Koşul                                | Sonuç                              |
+|--------------------------------------|------------------------------------|
+| Token yok + korumalı rota            | → /login'e yönlendir               |
+| Token var + /login veya /register    | → Role göre dashboard'a fırlat    |
+| /admin/* + ADMIN rolü yok            | → /login'e yönlendir               |
+| /company/* + CORPORATE_MANAGER yok   | → /user/dashboard'a yönlendir     |
+| /user/* + ADMIN rolü var             | → /admin/dashboard'a yönlendir    |
+| /user/* + CORPORATE_MANAGER rolü var | → /company/dashboard'a yönlendir  |
 
-### 6. Temel İş Kuralları
-1.  **Vitrin Kurları:** Ana sayfada veya döviz ekranında `currency-service`'in sunduğu `/api/v1/currencies/rates` uç noktasından alınan veriler gösterilir. Bu veriler Gateway üzerinden geçerken Auth gerektirmez (Sivil Bölge).
-2.  **Axios Interceptor Mantığı (Muhtemel):** Tüm hizmetler (`services/*.ts`), kullanıcı çerezindeki JWT'yi alıp Gateway'e `Authorization: Bearer <token>` başlığıyla göndermek zorundadır. Aksi takdirde Gateway'in Askeri Bölge filtresinden geçemezler.
+### Matcher (Hangi rotalarda çalışır?)
+```
+/login, /register, /admin/:path*, /user/:path*, /dashboard/:path*, /company/:path*
+```
+
+## 6. ÇEVRE DEĞİŞKENLERİ (.env.local)
+| Değişken                      | Değer                                    | Açıklama                        |
+|-------------------------------|------------------------------------------|---------------------------------|
+| NEXT_PUBLIC_API_URL           | https://api.bank.local/api/v1            | API Gateway adresi (HTTPS)      |
+| NEXT_PUBLIC_FRONTEND_URL      | https://app.bank.local                   | Frontend kendi adresi           |
+| NEXT_PUBLIC_KEYCLOAK_URL      | https://auth.bank.local                  | Keycloak (tarayıcı tarafı)     |
+| KEYCLOAK_REALM                | bank-realm                               | Keycloak realm adı             |
+| KEYCLOAK_CLIENT_ID            | bank-auth-client                         | Keycloak client kimliği        |
+| KEYCLOAK_CLIENT_SECRET        | l2o0bIJ7BZ0fY4lhFR1rhqb9chl6sWXk        | Keycloak gizli anahtar (SSR)   |
+| KEYCLOAK_INTERNAL_URL         | http://keycloak:8080                     | Docker iç ağ adresi            |
+| NEXT_PUBLIC_RECAPTCHA_SITE_KEY| 6Leoc7UsAAAAA...                         | reCAPTCHA site key             |
+
+## 7. TEMEL İŞ KURALLARI
+1. Vitrin Kurları: Ana sayfada currency-service'ten /api/v1/currencies/rates
+   endpoint'inden kur bilgileri çekilir (Gateway Sivil Bölge, Auth gerektirmez)
+2. Axios İstek Yönetimi: Tüm servis dosyaları (services/*.ts) token'ı
+   cookie'den alıp Authorization: Bearer <token> header'ıyla Gateway'e gönderir
+3. Profil Harmanlama: auth-sync sayfasında Backend profili + Keycloak token
+   claim'leri birleştirilerek Zustand'a kaydedilir (isim/email Keycloak'tan,
+   rol/statü Backend'den)
+
+## 8. DOCKER COMPOSE BAĞIMLILIKLARI
+depends_on:
+  - api-gateway (condition: service_started)
+extra_hosts:
+  - app.bank.local → host-gateway
+  - api.bank.local → host-gateway
+  - auth.bank.local → host-gateway
+env_file: ./Bank-Demo-Frontend/.env.local
