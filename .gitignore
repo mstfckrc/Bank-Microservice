@@ -46,3 +46,9 @@ certs/
 # Üstteki kurallara rağmen example dosyalarının Git'e gitmesine kesin izin ver!
 !.env.example
 !.env.local.example
+
+# Personal assistant memory files - not for version control
+hafiza.txt
+**/hafiza.txt
+# Personal assistant memory files
+**/hafiza.txt
