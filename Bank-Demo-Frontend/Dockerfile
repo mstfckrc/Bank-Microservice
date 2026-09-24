@@ -1,12 +1,13 @@
+ARG NODE_IMAGE=node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
 # 1. AŞAMA: Bağımlılıkları Kurma (Deps)
-FROM node:20-alpine AS deps
+FROM ${NODE_IMAGE} AS deps
 WORKDIR /app
 # npm ci kullanabilmek için package.json ve package-lock.json (varsa) kopyalıyoruz
 COPY package.json package-lock.json* ./
 RUN npm ci
 
 # 2. AŞAMA: Derleme (Builder)
-FROM node:20-alpine AS builder
+FROM ${NODE_IMAGE} AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -14,7 +15,7 @@ COPY . .
 RUN npm run build
 
 # 3. AŞAMA: Çalıştırma (Runner) - Sadece gerekli dosyaları alıp hafif bir imaj yapıyoruz
-FROM node:20-alpine AS runner
+FROM ${NODE_IMAGE} AS runner
 WORKDIR /app
 
 ENV NODE_ENV production
