@@ -1,5 +1,5 @@
 // components/dashboard/modals/TransferModal.tsx
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,17 +8,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { AccountResponse } from "@/types";
 import { Loader2, Building, User, AlertCircle } from "lucide-react";
 
+import { TransferFormValues } from "@/types";
 interface TransferModalProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   accounts: AccountResponse[];
-  onTransfer: (data: any) => Promise<void>;
+  onTransfer: (data: TransferFormValues) => Promise<void>;
   isProcessing: boolean;
 }
 
 export function TransferModal({ isOpen, onOpenChange, accounts, onTransfer, isProcessing }: TransferModalProps) {
   const [transferType, setTransferType] = useState<"iban" | "self">("iban");
-  const [error, setError] = useState<string | null>(null); // 🚀 Hata mesajı state'i
   
   const [formData, setFormData] = useState({ 
     senderIban: "", 
@@ -27,25 +27,19 @@ export function TransferModal({ isOpen, onOpenChange, accounts, onTransfer, isPr
     description: "" 
   });
 
-  const activeAccounts = accounts.filter(acc => (acc as any).isActive !== false && (acc as any).active !== false);
+  const activeAccounts = accounts.filter(acc => acc.isActive !== false && acc.active !== false);
 
   // 🚀 Seçili gönderen hesabın tüm bilgilerini bulalım (Bakiye kontrolü için)
   const selectedSenderAccount = activeAccounts.find(acc => acc.iban === formData.senderIban);
 
-  // 🚀 ANLIK VALIDASYON (Hata Kontrolü)
-  useEffect(() => {
-    const amount = parseFloat(formData.amount);
-
-    if (formData.amount && amount <= 0) {
-      setError("Transfer tutarı 0'dan büyük olmalıdır!");
-    } else if (selectedSenderAccount && amount > selectedSenderAccount.balance) {
-      setError(`Yetersiz bakiye! (Mevcut: ${selectedSenderAccount.balance.toLocaleString('tr-TR')} ${selectedSenderAccount.currency})`);
-    } else if (formData.senderIban && formData.receiverIban && formData.senderIban === formData.receiverIban) {
-      setError("Kendi hesabınıza transfer yapamazsınız!");
-    } else {
-      setError(null);
-    }
-  }, [formData, selectedSenderAccount]);
+  const amount = Number.parseFloat(formData.amount);
+  const error = formData.amount && amount <= 0
+    ? "Transfer tutarı 0'dan büyük olmalıdır!"
+    : selectedSenderAccount && amount > selectedSenderAccount.balance
+      ? `Yetersiz bakiye! (Mevcut: ${selectedSenderAccount.balance.toLocaleString('tr-TR')} ${selectedSenderAccount.currency})`
+      : formData.senderIban && formData.receiverIban && formData.senderIban === formData.receiverIban
+        ? "Kendi hesabınıza transfer yapamazsınız!"
+        : null;
 
   const handleSubmit = async () => {
     if (error) return; // Hata varsa gönderme
@@ -57,7 +51,6 @@ export function TransferModal({ isOpen, onOpenChange, accounts, onTransfer, isPr
     if (!open) {
       setFormData({ senderIban: "", receiverIban: "", amount: "", description: "" });
       setTransferType("iban");
-      setError(null);
     }
     onOpenChange(open);
   };
@@ -82,7 +75,7 @@ export function TransferModal({ isOpen, onOpenChange, accounts, onTransfer, isPr
             }}
           >
             <Building className="w-4 h-4 mr-2" />
-            IBAN'a
+            IBAN&apos;a
           </Button>
           <Button
             type="button"

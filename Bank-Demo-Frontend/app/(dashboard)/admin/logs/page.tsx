@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { SystemLogResponse } from "@/types";
 import { adminService } from "@/services/admin.service";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { 
-  Terminal, 
   Search, 
   AlertTriangle, 
   Info, 
@@ -26,31 +26,26 @@ import {
 import { PageHeader } from "@/components/shared/PageHeader";
 
 export default function SystemLogsPage() {
-  const [logs, setLogs] = useState<any[]>([]);
+  const [logs, setLogs] = useState<SystemLogResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [limit, setLimit] = useState<number>(100);
   const [level, setLevel] = useState<string>("ALL");
 
-  useEffect(() => {
-    fetchLogs();
-  }, [filterChangedTrigger()]); // Limit veya level değiştiğinde tetiklenir
-
-  // Bağımlılıkları kolay yönetmek için yardımcı fonksiyon
-  function filterChangedTrigger() {
-    return `${limit}-${level}`;
-  }
-
-  const fetchLogs = async () => {
+  const fetchLogs = useCallback(async () => {
     try {
       setLoading(true);
       const data = await adminService.getSystemLogs(limit, level);
       setLogs(data);
-    } catch (error) {
+    } catch {
       toast.error("İstihbarat ağına ulaşılamadı.", { description: "Loglar çekilirken bir hata oluştu." });
     } finally {
       setLoading(false);
     }
-  };
+  }, [limit, level]);
+
+  useEffect(() => {
+    void fetchLogs();
+  }, [fetchLogs]);
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto p-4 md:p-0 relative">

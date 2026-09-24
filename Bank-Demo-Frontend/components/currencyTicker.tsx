@@ -3,25 +3,25 @@
 import { useEffect, useState } from "react";
 import { currencyService } from "@/services/currency.service";
 import { ExchangeRateResponse } from "@/types";
-import { TrendingUp, TrendingDown, RefreshCw } from "lucide-react";
+import { TrendingUp } from "lucide-react";
 
 export function CurrencyTicker() {
   const [rates, setRates] = useState<ExchangeRateResponse | null>(null);
 
-  const fetchRates = async () => {
-    try {
-      const data = await currencyService.getRates('TRY');
-      setRates(data);
-    } catch (error) {
-      console.error("Kurlar vitrin için çekilemedi.");
-    }
-  };
-
   useEffect(() => {
-    fetchRates();
+    let isMounted = true;
+    const refreshRates = () => {
+      void currencyService.getRates('TRY')
+        .then((data) => {
+          if (isMounted) setRates(data);
+        })
+        .catch(() => console.error("Kurlar vitrin için çekilemedi."));
+    };
+
+    refreshRates();
     // Piyasalar hareketli, her 5 dakikada bir otomatik yenilesin
-    const interval = setInterval(fetchRates, 300000);
-    return () => clearInterval(interval);
+    const interval = setInterval(refreshRates, 300000);
+    return () => { isMounted = false; clearInterval(interval); };
   }, []);
 
   if (!rates) return null;

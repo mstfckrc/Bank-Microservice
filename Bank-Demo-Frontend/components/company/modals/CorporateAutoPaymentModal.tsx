@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { AccountResponse, AutoPaymentSettingsRequest, AutoPaymentSettingsResponse } from '@/types';
 import { toast } from 'sonner';
 
@@ -20,28 +20,13 @@ export default function CorporateAutoPaymentModal({
   initialData // 🚀 YENİ
 }: CorporateAutoPaymentModalProps) {
   
-  const [isEnabled, setIsEnabled] = useState<boolean>(false);
-  const [selectedDay, setSelectedDay] = useState<number | ''>('');
-  const [selectedIban, setSelectedIban] = useState<string>('');
-
-  // 🚀 YENİ: Modal her açıldığında mevcut ayarları formun içine dolduran beyin!
-  useEffect(() => {
-    if (isOpen) {
-      if (initialData && initialData.autoPaymentEnabled) {
-        setIsEnabled(true);
-        setSelectedDay(initialData.paymentDay);
-        setSelectedIban(initialData.defaultSalaryIban);
-      } else {
-        setIsEnabled(false);
-        setSelectedDay('');
-        setSelectedIban('');
-      }
-    }
-  }, [isOpen, initialData]);
+  const [isEnabled, setIsEnabled] = useState(initialData?.autoPaymentEnabled ?? false);
+  const [selectedDay, setSelectedDay] = useState<number | ''>(initialData?.autoPaymentEnabled ? initialData.paymentDay : '');
+  const [selectedIban, setSelectedIban] = useState(initialData?.autoPaymentEnabled ? initialData.defaultSalaryIban : '');
 
   if (!isOpen) return null;
 
-  const activeAccounts = accounts.filter(acc => acc.isActive !== false && (acc as any).active !== false);
+  const activeAccounts = accounts.filter(acc => acc.isActive !== false && acc.active !== false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

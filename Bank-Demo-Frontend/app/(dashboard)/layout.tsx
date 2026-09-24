@@ -1,24 +1,49 @@
 "use client";
 
 import Cookies from "js-cookie";
-import { useEffect, useState, useRef } from "react";
+import { useCallback, useEffect, useState, useRef, useSyncExternalStore } from "react";
 import { useAuthStore } from "@/store/useAuthStore";
 import Link from "next/link";
 import { Button } from "@/components/ui/button"; // 🚀 BUTON İTHALATI GERİ GELDİ
 import SessionExpiryModal from "@/components/dashboard/modals/SessionExpiryModal";
 
+const subscribeToClient = () => () => {};
+const getClientSnapshot = () => true;
+const getServerSnapshot = () => false;
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuthStore();
-  const [isClient, setIsClient] = useState(false);
+  const isClient = useSyncExternalStore(subscribeToClient, getClientSnapshot, getServerSnapshot);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
   const [isSessionExpired, setIsSessionExpired] = useState(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const startTokenTimer = useCallback(() => {
+    const token = Cookies.get("token");
+    if (!token) return;
+
+    try {
+      const payloadBase64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+      const payload = JSON.parse(atob(payloadBase64));
+      const expirationTime = payload.exp * 1000;
+
+      timerRef.current = setInterval(() => {
+        const now = Date.now();
+        const distance = Math.floor((expirationTime - now) / 1000);
+
+        if (distance <= 0) {
+          clearInterval(timerRef.current!);
+          setTimeLeft(0);
+          setIsSessionExpired(true);
+        } else {
+          setTimeLeft(distance);
+        }
+      }, 1000);
+    } catch (e) { console.error(e); }
+  }, []);
 
   useEffect(() => {
-    setIsClient(true);
     startTokenTimer();
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, []);
+  }, [startTokenTimer]);
 
   const handleLogout = () => {
     const idToken = Cookies.get("id_token");
@@ -39,29 +64,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     window.location.href = logoutUrl; 
   };
 
-  const startTokenTimer = () => {
-    const token = Cookies.get("token");
-    if (!token) return;
-
-    try {
-      const payloadBase64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
-      const payload = JSON.parse(atob(payloadBase64));
-      const expirationTime = payload.exp * 1000; 
-
-      timerRef.current = setInterval(() => {
-        const now = Date.now();
-        const distance = Math.floor((expirationTime - now) / 1000);
-
-        if (distance <= 0) {
-          clearInterval(timerRef.current!);
-          setTimeLeft(0);
-          setIsSessionExpired(true);
-        } else {
-          setTimeLeft(distance);
-        }
-      }, 1000);
-    } catch (e) { console.error(e); }
-  };
 
   if (!isClient) return null;
 

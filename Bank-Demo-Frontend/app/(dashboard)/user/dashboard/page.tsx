@@ -30,7 +30,7 @@ import { useUserDashboard } from "@/hooks/useUserDashboard";
 import { BalanceCard } from "@/components/dashboard/balance-card";
 import { AccountCard } from "@/components/dashboard/account-card";
 import { TransactionTable } from "@/components/dashboard/transaction-table";
-import { BillInstructionRequest } from "@/types";
+import { AccountCurrency, BillInstructionRequest } from "@/types";
 
 import { DepositModal } from "@/components/dashboard/modals/DepositModal";
 import { TransferModal } from "@/components/dashboard/modals/TransferModal";
@@ -77,7 +77,7 @@ export default function UserDashboardPage() {
   const isRestricted = isPending || isRejected;
 
   const filteredAccounts = accounts.filter(acc => {
-    const isActive = (acc as any).isActive !== false && (acc as any).active !== false;
+    const isActive = acc.isActive !== false && acc.active !== false;
     
     if (accountFilter === 'ACTIVE') return isActive;
     if (accountFilter === 'INACTIVE') return !isActive;
@@ -395,7 +395,7 @@ export default function UserDashboardPage() {
       <CreateAccountModal
         isOpen={isAccountDialogOpen}
         onOpenChange={setIsAccountDialogOpen}
-        onCreate={async (currency: string) => {
+        onCreate={async (currency: AccountCurrency) => {
           if (await createAccount(currency)) setIsAccountDialogOpen(false);
         }}
         isProcessing={isProcessing}

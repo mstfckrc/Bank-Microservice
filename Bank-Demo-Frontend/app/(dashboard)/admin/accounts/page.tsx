@@ -80,7 +80,7 @@ export default function AllAccountsPage() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  accounts.map((acc: any) => {
+                  accounts.map((acc) => {
                     const isAccountActive = acc.isActive !== false && acc.active !== false;
 
                     return (

@@ -6,8 +6,7 @@ import { currencyService } from "@/services/currency.service";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Search, Globe, TrendingUp } from "lucide-react";
-import Link from "next/link";
+import { ArrowLeft, Search, TrendingUp } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 export default function AllCurrenciesPage() {

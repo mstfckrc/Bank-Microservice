@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { adminService } from "@/services/admin.service";
 import { TransactionResponse } from "@/types";
@@ -15,25 +15,27 @@ export function AdminTransactionHistoryModal({ isOpen, onOpenChange, accountNumb
   const [transactions, setTransactions] = useState<TransactionResponse[]>([]);
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    if (isOpen && accountNumber) {
-      fetchTransactions();
-    } else {
-      setTransactions([]);
-    }
-  }, [isOpen, accountNumber]);
+  const fetchTransactions = useCallback(async () => {
+    if (!accountNumber) return;
 
-  const fetchTransactions = async () => {
     try {
       setLoading(true);
-      const data = await adminService.getAccountTransactions(accountNumber!);
+      const data = await adminService.getAccountTransactions(accountNumber);
       setTransactions(data || []);
-    } catch (error: any) {
+    } catch {
       setTransactions([]); 
     } finally {
       setLoading(false);
     }
-  };
+  }, [accountNumber]);
+
+  useEffect(() => {
+    if (isOpen && accountNumber) {
+      void fetchTransactions();
+    } else {
+      setTransactions([]);
+    }
+  }, [isOpen, accountNumber, fetchTransactions]);
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>

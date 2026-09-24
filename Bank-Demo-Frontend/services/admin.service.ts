@@ -1,4 +1,4 @@
-import { TransactionResponse, UserProfileResponse, AccountResponse, UpdateProfileRequest } from "../types";
+import { TransactionResponse, UserProfileResponse, AccountResponse, UpdateProfileRequest, SystemLogResponse } from "../types";
 import api from "../lib/axios";
 
 export const adminService = {
@@ -39,8 +39,8 @@ export const adminService = {
   },
 
   // Admin yetkisiyle müşteriye yeni hesap açma
-  openAccountForCustomer: async (identityNumber: string, currency: string) => {
-    const response = await api.post(`/admin/customers/${identityNumber}/accounts`, { currency });
+  openAccountForCustomer: async (identityNumber: string, currency: string): Promise<AccountResponse> => {
+    const response = await api.post<AccountResponse>(`/admin/customers/${identityNumber}/accounts`, { currency });
     return response.data;
   },
 
@@ -71,8 +71,8 @@ export const adminService = {
   },
 
   // --- İSTİHBARAT (LOG YÖNETİMİ) ---
-  getSystemLogs: async (limit: number = 100, level?: string): Promise<any[]> => {
-    const response = await api.get<any[]>('/admin/logs', {
+  getSystemLogs: async (limit: number = 100, level?: string): Promise<SystemLogResponse[]> => {
+    const response = await api.get<SystemLogResponse[]>('/admin/logs', {
       params: { 
         limit, 
         level: level === 'ALL' ? undefined : level 

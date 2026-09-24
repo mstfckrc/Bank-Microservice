@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
+import { getApiErrorMessage } from "@/lib/api-error";
 import { accountService } from "@/services/account.service";
 import { transactionService } from "@/services/transaction.service";
 import { customerService } from "@/services/customer.service";
 import { useAuthStore } from "@/store/useAuthStore";
-import { AccountResponse, TransactionResponse } from "@/types";
+import { AccountCurrency, AccountResponse, TransactionResponse, TransferFormValues } from "@/types";
 import { toast } from "sonner";
 
 export function useUserDashboard() {
@@ -43,7 +44,7 @@ export function useUserDashboard() {
       const data = await transactionService.getAccountTransactions(accountNumber);
       // Gelen data boş liste ([]) olsa bile sorunsuz set edilir.
       setTransactions(data || []);
-    } catch (error) {
+    } catch {
       // 🚀 GÜNCELLEME 2: Herhangi bir API hatasında da tabloyu temiz bırak!
       setTransactions([]);
     } finally {
@@ -51,10 +52,10 @@ export function useUserDashboard() {
     }
   };
 
-  const createAccount = async (currency: string) => {
+  const createAccount = async (currency: AccountCurrency) => {
     try {
       setIsProcessing(true);
-      const newAccount = await accountService.createAccount({ currency: currency as any });
+      const newAccount = await accountService.createAccount({ currency });
       setAccounts((prev) => [...prev, newAccount]);
       toast.success("Yeni Hesap Açıldı", { description: `${currency} hesabınız hazır.` });
       return true; 
@@ -63,7 +64,7 @@ export function useUserDashboard() {
     }
   };
 
-  const transferMoney = async (transferData: any) => {
+  const transferMoney = async (transferData: TransferFormValues) => {
     try {
       setIsProcessing(true);
       await transactionService.transfer({ ...transferData, amount: Number(transferData.amount) });
@@ -124,9 +125,9 @@ export function useUserDashboard() {
         description: "Hesabınız tekrar değerlendirmeye gönderildi."
       });
       
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast.error("İşlem Başarısız", {
-        description: error.response?.data?.message || "Talebiniz iletilemedi."
+        description: getApiErrorMessage(error, "Talebiniz iletilemedi.")
       });
     } finally {
       setIsProcessing(false);

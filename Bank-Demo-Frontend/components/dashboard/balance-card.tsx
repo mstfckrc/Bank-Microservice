@@ -9,7 +9,7 @@ interface BalanceCardProps {
 
 export function BalanceCard({ accounts, loading }: BalanceCardProps) {
   // Sadece aktif olanları toplama dahil et
-  const activeAccounts = accounts.filter(acc => (acc as any).isActive !== false && (acc as any).active !== false);
+  const activeAccounts = accounts.filter(acc => acc.isActive !== false && acc.active !== false);
   
   const totalTRY = activeAccounts.filter((acc) => acc.currency === "TRY").reduce((sum, acc) => sum + acc.balance, 0);
   const totalUSD = activeAccounts.filter((acc) => acc.currency === "USD").reduce((sum, acc) => sum + acc.balance, 0);

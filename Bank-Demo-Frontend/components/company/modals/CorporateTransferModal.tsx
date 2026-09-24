@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { getApiErrorMessage } from "@/lib/api-error";
 import { transactionService } from '@/services/transaction.service';
 import { toast } from 'sonner';
 
@@ -59,10 +60,10 @@ export default function CorporateTransferModal({
       
       onSuccess();
       onClose();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Transfer hatası:", error);
       toast.error("İşlem Başarısız", { 
-        description: error?.response?.data?.message || "Transfer işlemi sırasında bir sorun oluştu. Bakiyenizi kontrol edin." 
+        description: getApiErrorMessage(error, "Transfer işlemi sırasında bir sorun oluştu. Bakiyenizi kontrol edin.")
       });
     } finally {
       setIsProcessing(false);

@@ -45,7 +45,7 @@ export function AccountTable({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {accounts.map((acc: any) => {
+          {accounts.map((acc) => {
             const isAccountActive =
               acc.isActive !== false && acc.active !== false;
 

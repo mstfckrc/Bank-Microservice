@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { accountService } from "@/services/account.service";
 import { adminService } from "@/services/admin.service";
 import { AccountResponse } from "@/types";

@@ -1,11 +1,19 @@
 import { useState } from "react";
+import { AccountCurrency } from "@/types";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-export function CreateAccountModal({ isOpen, onOpenChange, onCreate, isProcessing }: any) {
-  const [currency, setCurrency] = useState("TRY");
+interface CreateAccountModalProps {
+  isOpen: boolean;
+  onOpenChange: (open: boolean) => void;
+  onCreate: (currency: AccountCurrency) => void | Promise<void>;
+  isProcessing: boolean;
+}
+
+export function CreateAccountModal({ isOpen, onOpenChange, onCreate, isProcessing }: CreateAccountModalProps) {
+  const [currency, setCurrency] = useState<AccountCurrency>("TRY");
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -13,7 +21,9 @@ export function CreateAccountModal({ isOpen, onOpenChange, onCreate, isProcessin
         <DialogHeader><DialogTitle>Yeni Vadesiz Hesap</DialogTitle></DialogHeader>
         <div className="py-6 space-y-2">
           <Label>Döviz Cinsi</Label>
-          <Select onValueChange={(val: any) => setCurrency(val)} defaultValue="TRY">
+          <Select onValueChange={(value) => {
+            if (value === "TRY" || value === "USD" || value === "EUR") setCurrency(value);
+          }} defaultValue="TRY">
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="TRY">Türk Lirası (TRY)</SelectItem>

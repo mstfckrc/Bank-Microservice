@@ -2,6 +2,7 @@
 // 🚀 YENİ: Roller kurumsal ve bireysel olarak ayrıldı
 export type Role = "ADMIN" | "RETAIL_CUSTOMER" | "CORPORATE_MANAGER";
 export type Currency = string;
+export type AccountCurrency = 'TRY' | 'USD' | 'EUR';
 
 // Müşteri Onay Durumları
 export type ApprovalStatus = "PENDING" | "APPROVED" | "REJECTED";
@@ -61,12 +62,13 @@ export interface AccountResponse {
   balance: number;
   currency: string;
   isActive: boolean;
+  active?: boolean;
   ownerName: string;      // 🚀 Dinamik hesap sahibi adı
   identityNumber: string; // 🚀 Sahibinin TC/Vergi No'su
 }
 
 export interface CreateAccountRequest {
-  currency: 'TRY' | 'USD' | 'EUR';
+  currency: AccountCurrency;
 }
 
 
@@ -79,6 +81,10 @@ export interface TransferRequest {
   amount: number;
   description?: string; 
 }
+export type TransferFormValues = Omit<TransferRequest, 'amount'> & {
+  amount: string;
+};
+
 
 export interface DepositRequest {
   iban: string;
@@ -147,6 +153,13 @@ export interface AutoPaymentSettingsResponse {
   autoPaymentEnabled: boolean;
   paymentDay: number;
   defaultSalaryIban: string;
+  message: string;
+}
+
+export interface SystemLogResponse {
+  timestamp?: string;
+  appName?: string;
+  level: string;
   message: string;
 }
 

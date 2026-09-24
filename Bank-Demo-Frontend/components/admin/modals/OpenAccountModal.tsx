@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { getApiErrorMessage } from "@/lib/api-error";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -6,13 +7,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Loader2, PlusCircle, WalletCards } from "lucide-react";
 import { adminService } from "@/services/admin.service";
 import { toast } from "sonner";
+import { AccountResponse } from "@/types";
 
 interface OpenAccountModalProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   // 🚀 V2: tcNo yerine identityNumber
   identityNumber: string;
-  onSuccess: (newAccount: any) => void;
+  onSuccess: (newAccount: AccountResponse) => void;
 }
 
 export function OpenAccountModal({ isOpen, onOpenChange, identityNumber, onSuccess }: OpenAccountModalProps) {
@@ -32,8 +34,8 @@ export function OpenAccountModal({ isOpen, onOpenChange, identityNumber, onSucce
       onSuccess(newAccount); 
       onOpenChange(false);
       setCurrency("TRY"); 
-    } catch (error: any) {
-      const backendMessage = error.response?.data?.message || "Hesap açılamadı.";
+    } catch (error: unknown) {
+      const backendMessage = getApiErrorMessage(error, "Hesap açılamadı.");
       toast.error("İşlem Başarısız", { description: backendMessage });
     } finally {
       setLoading(false);

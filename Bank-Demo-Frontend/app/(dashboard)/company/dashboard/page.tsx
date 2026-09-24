@@ -1,4 +1,5 @@
 "use client";
+import { getApiErrorMessage } from "@/lib/api-error";
 
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -22,7 +23,7 @@ import {
   CompanyEmployeeResponse,
   HireEmployeeRequest,
   UpdateEmployeeRequest,
-  AutoPaymentSettingsRequest, // 🚀 YENİ TİP
+  AutoPaymentSettingsRequest, AutoPaymentSettingsResponse, // 🚀 YENİ TİP
 } from "@/types";
 import { Trash2, Globe, Settings, CalendarClock } from "lucide-react"; // 🚀 YENİ İKON EKLENDİ
 import { toast } from "sonner";
@@ -33,7 +34,6 @@ export default function CompanyDashboardPage() {
 
   // Şirket Onay Durumu Kontrolleri
   const isApproved = user?.status === "APPROVED";
-  const isPending = user?.status === "PENDING";
   const isRejected = user?.status === "REJECTED";
 
   const {
@@ -67,7 +67,7 @@ export default function CompanyDashboardPage() {
   // 🚀 YENİ: Otomatik Ödeme Modal State'leri
   const [isAutoPaymentModalOpen, setIsAutoPaymentModalOpen] = useState(false);
   const [isAutoPaymentSaving, setIsAutoPaymentSaving] = useState(false);
-  const [autoPaymentSettings, setAutoPaymentSettings] = useState<any>(null); // 🚀 YENİ: Veritabanından gelen ayarları tutacağımız state
+  const [autoPaymentSettings, setAutoPaymentSettings] = useState<AutoPaymentSettingsResponse | null>(null);
 
   const [depositAccount, setDepositAccount] = useState<{
     accountNumber: string;
@@ -154,9 +154,9 @@ export default function CompanyDashboardPage() {
       const response = await companyService.updateAutoPaymentSettings(data);
       toast.success("Ayarlar Kaydedildi!", { description: response.message });
       return true;
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast.error("Hata", {
-        description: err.response?.data?.message || "Ayarlar kaydedilemedi.",
+        description: getApiErrorMessage(err, "Ayarlar kaydedilemedi."),
       });
       return false;
     } finally {
@@ -170,7 +170,7 @@ export default function CompanyDashboardPage() {
       // Not: Eğer companyService içinde getAutoPaymentSettings yoksa, backend'e GET atan ufak bir metot eklemelisin.
       const currentSettings = await companyService.getAutoPaymentSettings();
       setAutoPaymentSettings(currentSettings);
-    } catch (err) {
+    } catch {
       console.log("Mevcut ayarlar çekilemedi veya henüz ayar yapılmamış.");
       setAutoPaymentSettings(null); // Hata verirse (veya ayar yoksa) boş açsın
     }
@@ -332,7 +332,7 @@ export default function CompanyDashboardPage() {
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
             {accounts.map((acc) => {
               const isAccountActive =
-                acc.isActive !== false && (acc as any).active !== false;
+                acc.isActive !== false && acc.active !== false;
 
               return (
                 <div
@@ -641,6 +641,7 @@ export default function CompanyDashboardPage() {
       />
       {/* 🚀 YENİ: OTOMATİK ÖDEME MODALI EKLENDİ */}
       <CorporateAutoPaymentModal
+        key={isAutoPaymentModalOpen ? "open" : "closed"}
         isOpen={isAutoPaymentModalOpen}
         onClose={() => setIsAutoPaymentModalOpen(false)}
         accounts={accounts}

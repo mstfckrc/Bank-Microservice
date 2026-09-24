@@ -4,9 +4,9 @@ import { DepositRequest, TransactionResponse, TransferRequest } from '../types';
 
 export const transactionService = {
   // 🚀 PARA TRANSFERİ (Havale / EFT)
-  transfer: async (data: TransferRequest): Promise<any> => {
+  transfer: async (data: TransferRequest): Promise<TransactionResponse> => {
     // Backend'indeki POST /api/v1/transactions/transfer ucuna gidiyoruz
-    const response = await api.post('/transactions/transfer', data);
+    const response = await api.post<TransactionResponse>('/transactions/transfer', data);
     return response.data;
   },
 

@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist, devtools } from "zustand/middleware";
 import Cookies from "js-cookie";
-import { Role, ApprovalStatus, UserProfileResponse } from "../types"; // Kendi yoluna göre ayarla
+import { Role, ApprovalStatus } from "../types"; // Kendi yoluna göre ayarla
 
 export interface AuthUser {
   identityNumber: string;

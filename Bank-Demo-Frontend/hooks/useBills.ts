@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { getApiErrorMessage } from '@/lib/api-error';
 import { BillInstructionRequest, BillInstructionResponse } from '@/types';
 import { toast } from 'sonner';
 import { billService } from '@/services/bill.services';
@@ -14,8 +15,8 @@ export const useBills = () => {
     try {
       const data = await billService.getMyInstructions();
       setInstructions(data);
-    } catch (err: any) {
-      toast.error('Hata', { description: err.response?.data?.message || 'Fatura talimatları yüklenemedi.' });
+    } catch (err: unknown) {
+      toast.error('Hata', { description: getApiErrorMessage(err, 'Fatura talimatları yüklenemedi.') });
     } finally {
       setLoading(false);
     }
@@ -29,8 +30,8 @@ export const useBills = () => {
       setInstructions((prev) => [...prev, newInstruction]);
       toast.success('Başarılı', { description: 'Fatura ödeme talimatı oluşturuldu.' });
       return true;
-    } catch (err: any) {
-      toast.error('Talimat Oluşturulamadı', { description: err.response?.data?.message || 'Bir hata oluştu.' });
+    } catch (err: unknown) {
+      toast.error('Talimat Oluşturulamadı', { description: getApiErrorMessage(err, 'Bir hata oluştu.') });
       return false;
     } finally {
       setIsProcessing(false);
@@ -45,8 +46,8 @@ export const useBills = () => {
       setInstructions((prev) => prev.filter((inst) => inst.id !== id));
       toast.success('İptal Edildi', { description: res.message });
       return true;
-    } catch (err: any) {
-      toast.error('Hata', { description: err.response?.data?.message || 'Talimat iptal edilemedi.' });
+    } catch (err: unknown) {
+      toast.error('Hata', { description: getApiErrorMessage(err, 'Talimat iptal edilemedi.') });
       return false;
     } finally {
       setIsProcessing(false);

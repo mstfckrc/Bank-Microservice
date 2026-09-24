@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { getApiErrorMessage } from '@/lib/api-error';
 import { adminService } from "@/services/admin.service";
 import { UserProfileResponse } from "@/types"; // 🚀 V2: CustomerResponse yerine UserProfileResponse
 import { toast } from "sonner";
@@ -50,9 +51,9 @@ export function useCustomers() {
       toast.success(`Durum başarıyla ${status === 'APPROVED' ? 'onaylandı' : 'reddedildi'}.`);
       await fetchCustomers();
       return true;
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast.error("İşlem gerçekleştirilemedi!", { 
-        description: error.response?.data?.message || "Bilinmeyen bir hata oluştu." 
+        description: getApiErrorMessage(error, "Bilinmeyen bir hata oluştu.")
       });
       return false;
     }

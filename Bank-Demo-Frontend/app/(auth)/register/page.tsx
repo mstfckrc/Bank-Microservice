@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
+import { getApiErrorMessage } from "@/lib/api-error";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import ReCAPTCHA from "react-google-recaptcha"; // 🚀 YENİ MÜHİMMAT
@@ -73,8 +74,8 @@ export default function RegisterPage() {
       toast.success("Kayıt Başarılı!", { description: "Hesabınız oluşturuldu. Lütfen giriş yapın." });
       router.push("/login");
       
-    } catch (err: any) {
-      setError(err.response?.data?.message || "Kayıt işlemi başarısız oldu. Bilgilerinizi kontrol edin.");
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, "Kayıt işlemi başarısız oldu. Bilgilerinizi kontrol edin."));
       // Hata alırsak CAPTCHA'yı sıfırla ki adam tekrar işaretlesin
       recaptchaRef.current?.reset();
       setCaptchaToken(null);

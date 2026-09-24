@@ -1,7 +1,14 @@
 import { Button } from "@/components/ui/button";
 
+interface CloseAccountModalProps {
+  accountToClose: string | null;
+  isClosing: boolean;
+  onConfirm: () => void | Promise<void>;
+  onCancel: () => void;
+}
+
 // 🚀 DÜZELTME: accountNo olan ismi accountToClose yaptık (Dashboard ile uyumlu)
-export function CloseAccountModal({ accountToClose, isClosing, onConfirm, onCancel }: any) {
+export function CloseAccountModal({ accountToClose, isClosing, onConfirm, onCancel }: CloseAccountModalProps) {
   
   // Kontrolü de yeni isme göre yapıyoruz
   if (!accountToClose) return null;

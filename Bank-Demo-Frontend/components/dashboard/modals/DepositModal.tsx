@@ -17,7 +17,7 @@ interface DepositModalProps {
 export function DepositModal({ isOpen, onOpenChange, accounts, onDeposit, isProcessing }: DepositModalProps) {
   const [data, setData] = useState({ iban: "", amount: "" });
 
-  const activeAccounts = accounts.filter(acc => (acc as any).isActive !== false && (acc as any).active !== false);
+  const activeAccounts = accounts.filter(acc => acc.isActive !== false && acc.active !== false);
 
   const handleSubmit = async () => {
     await onDeposit(data.iban, data.amount);

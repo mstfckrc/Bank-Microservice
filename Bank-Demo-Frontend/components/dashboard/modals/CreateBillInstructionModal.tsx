@@ -27,7 +27,7 @@ export function CreateBillInstructionModal({
   if (!isOpen) return null;
 
   // Sadece aktif hesapları filtrele
-  const activeAccounts = accounts.filter(acc => acc.isActive !== false && (acc as any).active !== false);
+  const activeAccounts = accounts.filter(acc => acc.isActive !== false && acc.active !== false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

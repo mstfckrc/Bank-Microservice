@@ -24,7 +24,7 @@ export default function CorporatePaySalariesModal({
   if (!isOpen) return null;
 
   // Sadece aktif olan kasaları (hesapları) filtrele
-  const activeAccounts = accounts.filter(acc => acc.isActive !== false && (acc as any).active !== false);
+  const activeAccounts = accounts.filter(acc => acc.isActive !== false && acc.active !== false);
 
   // Toplam personel sayısı ve TRY bazında toplam maaş yükü
   const totalEmployees = employees.length;

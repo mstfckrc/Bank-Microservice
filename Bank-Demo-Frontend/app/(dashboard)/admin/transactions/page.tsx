@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { getApiErrorMessage } from "@/lib/api-error";
+import { useCallback, useEffect, useState } from "react";
 import { adminService } from "@/services/admin.service";
 import { TransactionResponse, TransactionStatus } from "@/types";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -14,29 +15,29 @@ export default function AdminTransactionsPage() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<TransactionStatus | "ALL">("PENDING_APPROVAL");
 
-  useEffect(() => {
-    fetchTransactions();
-  }, [filter]);
-
-  const fetchTransactions = async () => {
+  const fetchTransactions = useCallback(async () => {
     try {
       setLoading(true);
       const data = await adminService.getAllTransactions(filter === "ALL" ? undefined : filter);
       setTransactions(data);
-    } catch (error) {
+    } catch {
       toast.error("İşlemler yüklenemedi.");
     } finally {
       setLoading(false);
     }
-  };
+  }, [filter]);
+
+  useEffect(() => {
+    void fetchTransactions();
+  }, [fetchTransactions]);
 
   const handleApprove = async (referenceNo: string) => {
     try {
       await adminService.approveTransaction(referenceNo);
       toast.success("İşlem Onaylandı", { description: "Para alıcının hesabına aktarıldı." });
       fetchTransactions();
-    } catch (error: any) {
-      toast.error("Hata", { description: error.response?.data?.message || "Onaylanamadı." });
+    } catch (error: unknown) {
+      toast.error("Hata", { description: getApiErrorMessage(error, "Onaylanamadı.") });
     }
   };
 
@@ -45,8 +46,8 @@ export default function AdminTransactionsPage() {
       await adminService.rejectTransaction(referenceNo);
       toast.success("İşlem Reddedildi", { description: "Tutar gönderenin hesabına iade edildi." });
       fetchTransactions();
-    } catch (error: any) {
-      toast.error("Hata", { description: error.response?.data?.message || "Reddedilemedi." });
+    } catch (error: unknown) {
+      toast.error("Hata", { description: getApiErrorMessage(error, "Reddedilemedi.") });
     }
   };
 

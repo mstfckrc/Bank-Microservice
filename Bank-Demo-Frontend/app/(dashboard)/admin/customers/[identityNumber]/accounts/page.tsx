@@ -1,7 +1,8 @@
 "use client";
+import { getApiErrorMessage } from "@/lib/api-error";
 
-import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
+import { useParams } from "next/navigation";
 import { adminService } from "@/services/admin.service";
 import { accountService } from "@/services/account.service";
 import { AccountResponse } from "@/types";
@@ -33,21 +34,21 @@ export default function CustomerAccountsPage() {
   const [historyAccountId, setHistoryAccountId] = useState<number | null>(null);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
-  useEffect(() => {
-    if (identityNumber) fetchAccounts();
-  }, [identityNumber]);
-
-  const fetchAccounts = async () => {
+  const fetchAccounts = useCallback(async () => {
     try {
       setLoading(true);
       const data = await adminService.getCustomerAccounts(identityNumber); 
       setAccounts(data);
-    } catch (error) {
+    } catch {
       toast.error("Hata", { description: "Müşteri/Kurum hesapları getirilemedi." });
     } finally {
       setLoading(false);
     }
-  };
+  }, [identityNumber]);
+
+  useEffect(() => {
+    if (identityNumber) void fetchAccounts();
+  }, [identityNumber, fetchAccounts]);
 
   const confirmCloseAccount = async () => {
     if (!accountToClose) return;
@@ -63,8 +64,8 @@ export default function CustomerAccountsPage() {
         )
       );
       setAccountToClose(null); 
-    } catch (error: any) {
-      toast.error("İşlem Başarısız", { description: error.response?.data?.message || "Hesap kapatılamadı." });
+    } catch (error: unknown) {
+      toast.error("İşlem Başarısız", { description: getApiErrorMessage(error, "Hesap kapatılamadı.") });
     } finally {
       setIsClosing(false);
     }

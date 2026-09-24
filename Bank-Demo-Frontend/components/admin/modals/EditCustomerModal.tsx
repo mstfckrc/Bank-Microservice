@@ -4,11 +4,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, Save } from "lucide-react";
+import { UserProfileResponse } from "@/types";
 
 interface EditCustomerModalProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
-  customer: any; 
+  customer: UserProfileResponse | null;
   // 🚀 V2: tcNo ve fullName yerini identityNumber ve profileName aldı
   onUpdate: (identityNumber: string, updatedData: { profileName: string; email: string }) => Promise<void>;
 }
@@ -36,7 +37,7 @@ export function EditCustomerModal({ isOpen, onOpenChange, customer, onUpdate }: 
       // 🚀 V2: customer.tcNo yerine customer.identityNumber fırlatıyoruz
       await onUpdate(customer.identityNumber, formData);
       onOpenChange(false); 
-    } catch (error) {
+    } catch {
       // Hata olursa modal kapanmaz
     } finally {
       setLoading(false);

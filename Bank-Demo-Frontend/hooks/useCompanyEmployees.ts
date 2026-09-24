@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { getApiErrorMessage } from '@/lib/api-error';
 import { companyService } from '../services/company.service';
 import { CompanyEmployeeResponse, HireEmployeeRequest, TransactionResponse, UpdateEmployeeRequest } from '../types';
 
@@ -15,8 +16,8 @@ export const useCompanyEmployees = () => {
     try {
       const data = await companyService.getMyEmployees();
       setEmployees(data);
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Çalışan listesi çekilemedi.');
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, 'Çalışan listesi çekilemedi.'));
     } finally {
       setLoading(false);
     }
@@ -31,8 +32,8 @@ export const useCompanyEmployees = () => {
       // Backend'e tekrar istek atmadan, yeni personeli anında ekrana (state'e) ekliyoruz
       setEmployees((prev) => [...prev, newEmployee]);
       return true; // İşlem başarılı
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Personel işe alınırken bir hata oluştu.');
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, 'Personel işe alınırken bir hata oluştu.'));
       return false; // İşlem başarısız
     } finally {
       setIsProcessing(false);
@@ -53,8 +54,8 @@ export const useCompanyEmployees = () => {
         prev.map((emp) => (emp.identityNumber === employeeIdentityNumber ? updatedEmployee : emp))
       );
       return true;
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Personel bilgileri güncellenemedi.');
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, 'Personel bilgileri güncellenemedi.'));
       return false;
     } finally {
       setIsProcessing(false);
@@ -70,8 +71,8 @@ export const useCompanyEmployees = () => {
       // Silinen personeli ekrandan anında uçuruyoruz
       setEmployees((prev) => prev.filter((emp) => emp.identityNumber !== employeeIdentityNumber));
       return true;
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Personel silinirken bir hata oluştu.');
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, 'Personel silinirken bir hata oluştu.'));
       return false;
     } finally {
       setIsProcessing(false);
@@ -86,8 +87,8 @@ export const useCompanyEmployees = () => {
       // Servise gidip tüm işlemi hallediyor ve bize dekont listesini dönüyor
       const results = await companyService.paySalaries(senderIban);
       return results; // Başarılıysa listeyi döndür (Modal'da fiş basmak için lazım olacak)
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Maaş ödemesi sırasında bir hata oluştu.');
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, 'Maaş ödemesi sırasında bir hata oluştu.'));
       return null; // Başarısızsa null dön
     } finally {
       setIsProcessing(false);

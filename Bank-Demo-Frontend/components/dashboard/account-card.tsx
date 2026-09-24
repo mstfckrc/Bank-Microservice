@@ -18,7 +18,7 @@ export function AccountCard({ acc, isSelected, onSelect, onCloseRequest }: Accou
   // 🚀 YENİ: Sadece PENDING değil, ONAYLI OLMAYAN herkesi kısıtlıyoruz (PENDING ve REJECTED)
   const isRestricted = user?.status !== "APPROVED"; 
 
-  const isAccountActive = (acc as any).isActive !== false && (acc as any).active !== false;
+  const isAccountActive = acc.isActive !== false && acc.active !== false;
 
   let borderClasses = "";
   if (!isAccountActive) {
