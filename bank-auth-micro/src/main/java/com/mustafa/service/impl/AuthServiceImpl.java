@@ -50,11 +50,22 @@ public class AuthServiceImpl implements IAuthService {
         return "*******" + identity.substring(identity.length() - 4);
     }
 
+    private AppUser.Role requireSelfRegistrationRole(String requestedRole) {
+        if (AppUser.Role.RETAIL_CUSTOMER.name().equals(requestedRole)) {
+            return AppUser.Role.RETAIL_CUSTOMER;
+        }
+        if (AppUser.Role.CORPORATE_MANAGER.name().equals(requestedRole)) {
+            return AppUser.Role.CORPORATE_MANAGER;
+        }
+        throw new BankOperationException("Geçersiz veya yetkisiz rol seçimi!");
+    }
+
     @Override
     @Transactional
     public AuthResponse register(RegisterRequest request) {
+        AppUser.Role registrationRole = requireSelfRegistrationRole(request.getRole());
         String maskedId = maskIdentity(request.getIdentityNumber());
-        log.info("Kayıt işlemi başlatıldı. Kimlik/Vergi No: {}, Rol: {}", maskedId, request.getRole());
+        log.info("Kayıt işlemi başlatıldı. Kimlik/Vergi No: {}, Rol: {}", maskedId, registrationRole);
 
         // 🚀 0. ADIM: SİBER KALKAN KONTROLÜ (Veritabanına gitmeden önce fail-fast)
         boolean isHuman = captchaService.verifyToken(request.getCaptchaToken());
@@ -70,13 +81,13 @@ public class AuthServiceImpl implements IAuthService {
         }
 
         // 2. KEYCLOAK KAYDI: Önce Nüfus Müdürlüğüne (Keycloak) adamı kaydet ve UUID'sini al!
-        String keycloakId = createKeycloakUser(request);
+        String keycloakId = createKeycloakUser(request, registrationRole);
 
         // 3. MERKEZİ KİMLİK: (AppUser) Kendi Veritabanımızda Oluştur
         AppUser appUser = AppUser.builder()
                 .identityNumber(request.getIdentityNumber())
                 .keycloakId(keycloakId) // Şifre değil, Keycloak ID tutuyoruz
-                .role(AppUser.Role.valueOf(request.getRole()))
+                .role(registrationRole)
                 .status(AppUser.ApprovalStatus.PENDING)
                 .build();
         appUserRepository.save(appUser);
@@ -136,14 +147,14 @@ public class AuthServiceImpl implements IAuthService {
     }
 
     // 🚀 KEYCLOAK YARDIMCI METODU
-    private String createKeycloakUser(RegisterRequest request) {
+    private String createKeycloakUser(RegisterRequest request, AppUser.Role registrationRole) {
 
         UserRepresentation user = new UserRepresentation();
         user.setUsername(request.getIdentityNumber());
         user.setEmail(request.getEmail());
 
         // 🚀 TAKTİK 1: Kurumsal şirketleri Keycloak'ta isimsiz bırakmıyoruz (Kapıdaki Formu Engelleme)
-        if (AppUser.Role.CORPORATE_MANAGER.name().equals(request.getRole())) {
+        if (registrationRole == AppUser.Role.CORPORATE_MANAGER) {
             user.setFirstName(request.getCompanyName() != null ? request.getCompanyName() : "Bilinmeyen Şirket");
             user.setLastName("Kurumsal");
         } else {
@@ -175,14 +186,14 @@ public class AuthServiceImpl implements IAuthService {
         // 🚀 DÜZELTME: Middleware'in (Frontend) doğru yönlendirme yapabilmesi için Rol/Rütbe Ataması!
         try {
             RoleRepresentation realmRole =
-                    keycloak.realm(realm).roles().get(request.getRole()).toRepresentation();
+                    keycloak.realm(realm).roles().get(registrationRole.name()).toRepresentation();
             
             keycloak.realm(realm).users().get(keycloakUserId).roles().realmLevel()
                     .add(Collections.singletonList(realmRole));
             
-            log.info("Keycloak rol ataması başarılı: {}", request.getRole());
+            log.info("Keycloak rol ataması başarılı: {}", registrationRole);
         } catch (Exception e) {
-            log.error("Keycloak rol ataması sırasında hata! Rol: {}, Hata: {}", request.getRole(), e.getMessage());
+            log.error("Keycloak rol ataması sırasında hata! Rol: {}, Hata: {}", registrationRole, e.getMessage());
             throw new BankOperationException("Kullanıcı oluşturuldu ancak yetki (rol) atanamadı!");
         }
 

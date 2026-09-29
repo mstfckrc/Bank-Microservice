@@ -34,6 +34,7 @@ class AuthServiceImplTest {
     void failedCaptchaStopsRegistrationBeforeExternalCalls() {
         RegisterRequest request = new RegisterRequest();
         request.setIdentityNumber("11111111111");
+        request.setRole("RETAIL_CUSTOMER");
         request.setCaptchaToken("invalid");
         when(captchaService.verifyToken("invalid")).thenReturn(false);
 
@@ -45,5 +46,19 @@ class AuthServiceImplTest {
         verify(captchaService).verifyToken("invalid");
         verifyNoInteractions(appUserRepository, retailCustomerRepository, rabbitPublisher,
                 companyServiceClient, keycloak);
+    }
+
+    @Test
+    void adminSelfRegistrationStopsBeforeAnyExternalCall() {
+        RegisterRequest request = new RegisterRequest();
+        request.setIdentityNumber("11111111111");
+        request.setRole("ADMIN");
+
+        BankOperationException exception = assertThrows(BankOperationException.class,
+                () -> service.register(request));
+
+        assertEquals("Geçersiz veya yetkisiz rol seçimi!", exception.getMessage());
+        verifyNoInteractions(appUserRepository, retailCustomerRepository, rabbitPublisher,
+                companyServiceClient, keycloak, captchaService);
     }
 }
