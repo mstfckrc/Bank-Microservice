@@ -1,5 +1,9 @@
 name: bank-microservice-env
 
+# build: kaynak koddan image uretir; environment: container calisirken kullanilir.
+# Java servisleri runtime, frontend runner asamasini son image olarak kullanir.
+# Registry etiketi, portlar, network'ler ve volume'lar bu build duzeninde degismez.
+
 services:
   # ==========================================
   # 🗄️ 1. MÜSTAKİL VERİTABANLARI (FİZİKSEL İZOLASYON)
@@ -74,6 +78,7 @@ services:
     build:
       context: ./Bank-Demo-Backend
       dockerfile: Dockerfile
+      target: runtime
     container_name: bank_backend_micro
     restart: always
     depends_on:
@@ -104,8 +109,9 @@ services:
   # 🌟 SINIR KAPISI (API Gateway)
   api-gateway:
     build:
-      context: ./api-gateway 
+      context: ./api-gateway
       dockerfile: Dockerfile
+      target: runtime
     container_name: bank_api_gateway_micro
     restart: always
     depends_on:
@@ -137,6 +143,7 @@ services:
     build:
       context: ./notification-service
       dockerfile: Dockerfile
+      target: runtime
     container_name: bank_notification_micro
     restart: always
     depends_on:
@@ -159,7 +166,10 @@ services:
 
   # 💶 DÖVİZ SERVİSİ
   currency-service:
-    build: ./currency-service
+    build:
+      context: ./currency-service
+      dockerfile: Dockerfile
+      target: runtime
     container_name: bank_currency_micro
     restart: always
     ports:
@@ -179,8 +189,9 @@ services:
   # 🧾 FATURA SERVİSİ
   bill-service:
     build:
-      context: ./bill-service 
+      context: ./bill-service
       dockerfile: Dockerfile
+      target: runtime
     container_name: bank_bill_micro
     restart: always
     depends_on:
@@ -209,8 +220,9 @@ services:
   # 🏢 KURUMSAL İK VE MAAŞ SERVİSİ
   corporate-service:
     build:
-      context: ./bank-corporate-micro 
+      context: ./bank-corporate-micro
       dockerfile: Dockerfile
+      target: runtime
     container_name: bank_corporate_micro
     restart: always
     depends_on:
@@ -241,6 +253,7 @@ services:
     build:
       context: ./bank-auth-micro
       dockerfile: Dockerfile
+      target: runtime
     container_name: bank_auth_micro
     restart: always
     depends_on:
@@ -275,13 +288,29 @@ services:
     build:
       context: ./Bank-Demo-Frontend
       dockerfile: Dockerfile
+      target: runner
+      # Yalnizca public tarayici ayarlari build'e verilir; secret verilmez.
+      args:
+        NEXT_PUBLIC_FRONTEND_URL: ${NEXT_PUBLIC_FRONTEND_URL:-}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
+        NEXT_PUBLIC_KEYCLOAK_URL: ${NEXT_PUBLIC_KEYCLOAK_URL:-}
+        NEXT_PUBLIC_RECAPTCHA_SITE_KEY: ${NEXT_PUBLIC_RECAPTCHA_SITE_KEY:-}
     container_name: bank_frontend_micro
     restart: always
     depends_on:
       api-gateway:
         condition: service_started
-    env_file:
-      - ./Bank-Demo-Frontend/.env.local
+    # Root .env'in tamami degil, yalnizca frontend'in ihtiyaci olan ayarlar verilir.
+    # Private degerler build'e degil, container calisma ortamina aktarilir.
+    environment:
+      NEXT_PUBLIC_FRONTEND_URL: ${NEXT_PUBLIC_FRONTEND_URL:-}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
+      NEXT_PUBLIC_KEYCLOAK_URL: ${NEXT_PUBLIC_KEYCLOAK_URL:-}
+      NEXT_PUBLIC_RECAPTCHA_SITE_KEY: ${NEXT_PUBLIC_RECAPTCHA_SITE_KEY:-}
+      KEYCLOAK_REALM: ${FRONTEND_KEYCLOAK_REALM:-bank-realm}
+      KEYCLOAK_CLIENT_ID: ${FRONTEND_KEYCLOAK_CLIENT_ID:-bank-auth-client}
+      KEYCLOAK_INTERNAL_URL: ${KC_INTERNAL_URL}
+      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET}
     extra_hosts:
       - "app.bank.local:host-gateway"
       - "api.bank.local:host-gateway"
@@ -294,6 +323,7 @@ services:
     build:
       context: ./discovery-server
       dockerfile: Dockerfile
+      target: runtime
     container_name: bank_discovery_server_micro
     restart: always
     depends_on:

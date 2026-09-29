@@ -1,0 +1,9 @@
+# Yerel derleme ciktilari image icinde yeniden uretilir.
+target
+
+# Yerel ayarlar ve secret dosyalari build context'ine girmez.
+.git
+.idea
+.vscode
+.env*
+*.log

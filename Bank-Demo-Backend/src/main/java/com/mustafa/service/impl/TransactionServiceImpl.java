@@ -4,7 +4,6 @@ import com.mustafa.dto.message.NotificationMessage;
 import com.mustafa.dto.request.InternalPaymentRequest;
 import com.mustafa.messaging.publisher.RabbitMQPublisher;
 import com.mustafa.dto.request.DepositRequest;
-import com.mustafa.dto.request.TransferRequest;
 import com.mustafa.dto.response.TransactionResponse;
 import com.mustafa.entity.Account;
 import com.mustafa.entity.Transaction;
@@ -13,7 +12,6 @@ import com.mustafa.repository.IAccountRepository;
 import com.mustafa.repository.ITransactionRepository;
 import com.mustafa.service.ICurrencyService;
 import com.mustafa.service.ITransactionService;
-import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -22,7 +20,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -38,7 +35,6 @@ public class TransactionServiceImpl implements ITransactionService {
     private final ICurrencyService currencyService;
     private final RabbitMQPublisher rabbitPublisher;
 
-    private static final BigDecimal TRANSACTION_LIMIT = new BigDecimal("50000");
 
     private String maskIdentity(String identity) {
         if (identity == null || identity.length() <= 4) return "****";
@@ -86,95 +82,6 @@ public class TransactionServiceImpl implements ITransactionService {
         return mapToResponse(transaction);
     }
 
-    @Override
-    @Transactional
-    public TransactionResponse transfer(TransferRequest request) {
-        String currentIdentity = SecurityContextHolder.getContext().getAuthentication().getName();
-        String maskedId = maskIdentity(currentIdentity);
-
-        Account senderAccount = accountRepository.findByIban(request.getSenderIban())
-                .orElseThrow(() -> new BankOperationException("Gönderen hesap bulunamadı!"));
-        Account receiverAccount = accountRepository.findByIban(request.getReceiverIban())
-                .orElseThrow(() -> new BankOperationException("Alıcı hesap bulunamadı!"));
-
-        if (!senderAccount.getOwnerIdentityNumber().equals(currentIdentity)) {
-            throw new BankOperationException("Sadece kendi hesaplarınızdan para transferi yapabilirsiniz!");
-        }
-
-        if (senderAccount.getBalance().compareTo(request.getAmount()) < 0) {
-            throw new BankOperationException("Yetersiz bakiye!");
-        }
-
-        if (senderAccount.getIban().equals(receiverAccount.getIban())) {
-            throw new BankOperationException("Aynı hesaba transfer yapamazsınız.");
-        }
-
-        if (request.getAmount().compareTo(BigDecimal.ZERO) <= 0) {
-            throw new BankOperationException("Transfer tutarı 0'dan büyük olmalıdır!");
-        }
-
-        if (!senderAccount.isActive() || !receiverAccount.isActive()) {
-            throw new BankOperationException("İşlem yapılacak hesaplardan biri kapalıdır!");
-        }
-
-        senderAccount.setBalance(senderAccount.getBalance().subtract(request.getAmount()));
-
-        Double convertedAmountDouble = currencyService.convertAmount(
-                request.getAmount().doubleValue(),
-                senderAccount.getCurrency().toString(),
-                receiverAccount.getCurrency().toString()
-        );
-        BigDecimal convertedAmount = BigDecimal.valueOf(convertedAmountDouble);
-
-        String enrichedDescription = request.getDescription() != null ? request.getDescription() : "Para Transferi";
-
-        Double amountInTryDouble = senderAccount.getCurrency().toString().equals("TRY") ?
-                request.getAmount().doubleValue() :
-                currencyService.convertAmount(request.getAmount().doubleValue(), senderAccount.getCurrency().toString(), "TRY");
-
-        BigDecimal amountInTry = BigDecimal.valueOf(amountInTryDouble);
-
-        Transaction.TransactionStatus status;
-        if (!request.isSalaryPayment() && amountInTry.compareTo(TRANSACTION_LIMIT) >= 0) {
-            accountRepository.save(senderAccount);
-            status = Transaction.TransactionStatus.PENDING_APPROVAL;
-            enrichedDescription += " - [YÜKLÜ İŞLEM: YÖNETİCİ ONAYI BEKLİYOR]";
-        } else {
-            receiverAccount.setBalance(receiverAccount.getBalance().add(convertedAmount));
-            accountRepository.save(senderAccount);
-            accountRepository.save(receiverAccount);
-            status = Transaction.TransactionStatus.COMPLETED;
-        }
-
-        Transaction transaction = Transaction.builder()
-                .referenceNo(UUID.randomUUID().toString())
-                .senderAccount(senderAccount)
-                .receiverAccount(receiverAccount)
-                .amount(request.getAmount())
-                .convertedAmount(convertedAmount)
-                .transactionType(Transaction.TransactionType.TRANSFER)
-                .status(status)
-                .description(enrichedDescription)
-                .build();
-        transactionRepository.save(transaction);
-
-        if (status == Transaction.TransactionStatus.PENDING_APPROVAL) {
-            rabbitPublisher.sendNotification(NotificationMessage.builder()
-                    .destination("admin@bank.com")
-                    .subject("🚨 MASAK LİMİTİ AŞILDI")
-                    .content("Yüklü işlem onayı bekliyor. Ref: " + transaction.getReferenceNo())
-                    .identityNumber(maskedId)
-                    .notificationType(NotificationMessage.NotificationType.SYSTEM_ALERT).build());
-        } else {
-            rabbitPublisher.sendNotification(NotificationMessage.builder()
-                    .destination(senderAccount.getOwnerIdentityNumber())
-                    .subject("Para Transferi Başarılı")
-                    .content("Transferiniz gerçekleşti.")
-                    .identityNumber(maskedId)
-                    .notificationType(NotificationMessage.NotificationType.EMAIL).build());
-        }
-        return mapToResponse(transaction);
-    }
 
     @Override
     public List<TransactionResponse> getAccountTransactions(String accountNumber, String type, String startDate, String endDate) {

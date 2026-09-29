@@ -5,6 +5,7 @@ import com.mustafa.dto.request.BulkSalaryRequest;
 import com.mustafa.dto.response.AccountValidationResponse;
 import com.mustafa.dto.response.TransactionResponse;
 import com.mustafa.service.IInternalBankService;
+import com.mustafa.service.application.PayrollApplicationService;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -24,6 +25,7 @@ import java.util.List;
 public class InternalBankControllerImpl implements IInternalBankController {
 
     private final IInternalBankService internalBankService;
+    private final PayrollApplicationService payrollApplicationService;
     private final HttpServletRequest request;
 
     @Override
@@ -40,7 +42,7 @@ public class InternalBankControllerImpl implements IInternalBankController {
         String internalIdentity = request.getHeader("X-Internal-Identity");
 
         if (internalIdentity != null) {
-            log.info("INTERNAL GÜVENLİK: İç hattan gelen işlem, SecurityContext'e TC işleniyor: {}", internalIdentity);
+            log.debug("Toplu maaş isteğinin mevcut iç hat kimlik bilgisi alındı.");
             UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
                     internalIdentity, null, Collections.singletonList(new SimpleGrantedAuthority("ROLE_CORPORATE_MANAGER"))
             );
@@ -49,8 +51,8 @@ public class InternalBankControllerImpl implements IInternalBankController {
             log.warn("🚨 İÇ HAT UYARISI: X-Internal-Identity başlığı gelmedi, işlem anonim olarak devam edecek!");
         }
 
-        log.info("INTERNAL REST İsteği: Toplu maaş dağıtım emri alındı! Çıkış Kasası: {}", bulkRequest.getSenderIban());
-        return ResponseEntity.ok(internalBankService.payBulkSalaries(bulkRequest));
+        log.info("INTERNAL REST İsteği: Toplu maaş dağıtım emri alındı.");
+        return ResponseEntity.ok(payrollApplicationService.payBulkSalaries(bulkRequest));
     }
 
     @Override

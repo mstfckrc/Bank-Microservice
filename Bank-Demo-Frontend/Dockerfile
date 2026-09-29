@@ -1,33 +1,44 @@
 ARG NODE_IMAGE=node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
-# 1. AŞAMA: Bağımlılıkları Kurma (Deps)
+# Bagimliliklar: lockfile zorunludur; kaynak degisikligi bu katmani bozmaz.
 FROM ${NODE_IMAGE} AS deps
 WORKDIR /app
-# npm ci kullanabilmek için package.json ve package-lock.json (varsa) kopyalıyoruz
-COPY package.json package-lock.json* ./
-RUN npm ci
+COPY package.json package-lock.json ./
+# Cache indirilen paketler icindir; node_modules yine npm ci ile kurulur.
+RUN --mount=type=cache,id=bank-demo-npm-node24,target=/root/.npm,sharing=locked \
+    npm ci
 
-# 2. AŞAMA: Derleme (Builder)
+# Derleme: yalnizca uygulama kaynaklari ve image icinde kurulan bagimliliklar.
 FROM ${NODE_IMAGE} AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-# 🚀 Backend'e atılacak isteklerin adresini ortam değişkeni olarak build anında alabiliriz
-RUN npm run build
+# NEXT_PUBLIC_* degerleri tarayici koduna build sirasinda yazilir; secret degildir.
+# Degisiklikleri build'i yeniler, bagimlilik kurulum katmanini bozmaz.
+# Keycloak client secret burada ARG/ENV olarak tanimlanmaz.
+ARG NEXT_PUBLIC_FRONTEND_URL
+ARG NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_KEYCLOAK_URL
+ARG NEXT_PUBLIC_RECAPTCHA_SITE_KEY
+RUN : "${NEXT_PUBLIC_FRONTEND_URL:?Required public build setting}" \
+      "${NEXT_PUBLIC_API_URL:?Required public build setting}" \
+      "${NEXT_PUBLIC_KEYCLOAK_URL:?Required public build setting}" \
+      "${NEXT_PUBLIC_RECAPTCHA_SITE_KEY:?Required public build setting}" \
+    && npm run build
 
-# 3. AŞAMA: Çalıştırma (Runner) - Sadece gerekli dosyaları alıp hafif bir imaj yapıyoruz
+# Calistirma: yalnizca Next.js standalone sunucusu ve statik build ciktisi.
 FROM ${NODE_IMAGE} AS runner
 WORKDIR /app
 
-ENV NODE_ENV production
-# 🚀 İŞTE SENİN BAHSETTİĞİN O KRİTİK AYAR: Host'u 0.0.0.0 yapıyoruz ki dışarıdan erişilebilsin!
-ENV HOSTNAME "0.0.0.0"
-ENV PORT 3000
+ENV NODE_ENV=production
+# Container agindan erisim icin tum arayuzlerde dinle.
+ENV HOSTNAME="0.0.0.0"
+ENV PORT=3000
 
-# Standalone modunda üretilen dosyaları kopyalıyoruz
+# Projede public/ dizini yok; mevcut standalone/static ciktilari korunur.
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 
 EXPOSE 3000
 
-# Next.js standalone sunucusunu başlatıyoruz
+# Runtime secret'lari Compose environment uzerinden verilir, imaja yazilmaz.
 CMD ["node", "server.js"]

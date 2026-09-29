@@ -1,0 +1,16 @@
+# Generated/local dependencies must be installed inside the image build.
+node_modules
+.next
+out
+coverage
+build
+dist
+
+# Local-only metadata and secrets.
+.git
+.env*
+
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*

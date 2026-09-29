@@ -29,16 +29,4 @@ public class TransferRequest {
     // Opsiyonel açıklama alanı (Kira, Borç vb.)
     private String description;
 
-    // 🚀 1. ÇÖZÜM: Jackson'ın "null" çökmesini engelleyen Boolean sarmalayıcı (Wrapper)
-    private Boolean isSalaryPayment;
-
-    // 🚀 2. ÇÖZÜM: Service katmanının (request.isSalaryPayment()) hata vermemesi için özel metod
-    public boolean isSalaryPayment() {
-        return Boolean.TRUE.equals(this.isSalaryPayment);
-    }
-
-    // 🚀 3. ÇÖZÜM: Derleme hatasını (cannot find symbol setSalaryPayment) çözen özel setter
-    public void setSalaryPayment(Boolean salaryPayment) {
-        this.isSalaryPayment = salaryPayment;
-    }
 }

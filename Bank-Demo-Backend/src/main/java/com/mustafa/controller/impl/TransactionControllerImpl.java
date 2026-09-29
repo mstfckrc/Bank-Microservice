@@ -5,6 +5,7 @@ import com.mustafa.dto.request.DepositRequest;
 import com.mustafa.dto.request.TransferRequest;
 import com.mustafa.dto.response.TransactionResponse;
 import com.mustafa.service.ITransactionService;
+import com.mustafa.service.application.TransferApplicationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -19,6 +20,7 @@ import java.util.List;
 public class TransactionControllerImpl implements ITransactionController {
 
     private final ITransactionService transactionService;
+    private final TransferApplicationService transferApplicationService;
 
     @Override
     @PostMapping("/deposit")
@@ -31,7 +33,7 @@ public class TransactionControllerImpl implements ITransactionController {
     @PostMapping("/transfer")
     public ResponseEntity<TransactionResponse> transfer(@RequestBody TransferRequest request) {
         log.info("REST İsteği: Para transferi (Transfer) talebi alındı.");
-        return ResponseEntity.ok(transactionService.transfer(request));
+        return ResponseEntity.ok(transferApplicationService.transfer(request));
     }
 
     @Override
