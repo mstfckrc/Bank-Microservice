@@ -3,6 +3,10 @@ pipeline {
         label 'ci-java21-node24'
     }
 
+    triggers {
+        pollSCM('H/3 * * * *')
+    }
+
     options {
         skipDefaultCheckout()
         disableConcurrentBuilds()
