@@ -1,0 +1,52 @@
+pipeline {
+    agent {
+        label 'release-image-builder'
+    }
+
+    options {
+        skipDefaultCheckout()
+        disableConcurrentBuilds()
+        timeout(time: 10, unit: 'MINUTES')
+    }
+
+    stages {
+        stage('Release agent and BuildKit verification') {
+            steps {
+                sh '''
+                    set -eu
+
+                    test "$(id -un)" = "jenkins-release"
+                    buildctl --version
+                    buildctl debug workers
+                '''
+            }
+        }
+
+        stage('Build a disposable OCI smoke image') {
+            steps {
+                sh '''
+                    set -eu
+
+                    smoke_root="$(mktemp -d "${WORKSPACE:?}/buildkit-smoke.XXXXXX")"
+                    trap 'rm -rf "$smoke_root"' EXIT
+
+                    mkdir -p "$smoke_root/context" "$smoke_root/output"
+                    printf 'Bank-Demo BuildKit smoke test\\n' > "$smoke_root/context/message.txt"
+                    printf '%s\\n' \\
+                        'FROM scratch' \\
+                        'COPY message.txt /message.txt' \\
+                        > "$smoke_root/context/Dockerfile"
+
+                    buildctl build \\
+                        --frontend dockerfile.v0 \\
+                        --local context="$smoke_root/context" \\
+                        --local dockerfile="$smoke_root/context" \\
+                        --output "type=oci,dest=$smoke_root/output/smoke-image.tar"
+
+                    test -s "$smoke_root/output/smoke-image.tar"
+                    du -h "$smoke_root/output/smoke-image.tar"
+                '''
+            }
+        }
+    }
+}
