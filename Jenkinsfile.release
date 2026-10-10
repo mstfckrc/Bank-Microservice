@@ -6,10 +6,24 @@ pipeline {
     options {
         skipDefaultCheckout()
         disableConcurrentBuilds()
-        timeout(time: 10, unit: 'MINUTES')
+        timeout(time: 30, unit: 'MINUTES')
     }
 
     stages {
+        stage('Checkout trusted source') {
+            steps {
+                checkout scm
+
+                sh '''
+                    set -eu
+
+                    git rev-parse HEAD
+                    test -f discovery-server/Dockerfile
+                    test -f discovery-server/pom.xml
+                '''
+            }
+        }
+
         stage('Release agent and BuildKit verification') {
             steps {
                 sh '''
@@ -45,6 +59,33 @@ pipeline {
 
                     test -s "$smoke_root/output/smoke-image.tar"
                     du -h "$smoke_root/output/smoke-image.tar"
+                '''
+            }
+        }
+
+        stage('Build discovery-server OCI image') {
+            steps {
+                sh '''
+                    set -eu
+
+                    build_root="$(mktemp -d "${WORKSPACE:?}/discovery-server-image.XXXXXX")"
+                    trap 'rm -rf "$build_root"' EXIT
+                    image_archive="$build_root/discovery-server.oci.tar"
+                    archive_contents="$build_root/archive-contents.txt"
+
+                    buildctl build \\
+                        --frontend dockerfile.v0 \\
+                        --local context="$WORKSPACE/discovery-server" \\
+                        --local dockerfile="$WORKSPACE/discovery-server" \\
+                        --opt filename=Dockerfile \\
+                        --opt target=runtime \\
+                        --output "type=oci,dest=$image_archive"
+
+                    test -s "$image_archive"
+                    tar -tf "$image_archive" > "$archive_contents"
+                    grep -Fxq 'oci-layout' "$archive_contents"
+                    grep -Fxq 'index.json' "$archive_contents"
+                    du -h "$image_archive"
                 '''
             }
         }
