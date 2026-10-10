@@ -63,30 +63,57 @@ pipeline {
             }
         }
 
-        stage('Build discovery-server OCI image') {
+        stage('Build and push discovery-server image') {
             steps {
-                sh '''
-                    set -eu
+                withCredentials([usernamePassword(
+                    credentialsId: 'dockerhub-bank-demo-push',
+                    usernameVariable: 'DOCKERHUB_USERNAME',
+                    passwordVariable: 'DOCKERHUB_TOKEN'
+                )]) {
+                    sh '''
+                        set +x
+                        set -eu
 
-                    build_root="$(mktemp -d "${WORKSPACE:?}/discovery-server-image.XXXXXX")"
-                    trap 'rm -rf "$build_root"' EXIT
-                    image_archive="$build_root/discovery-server.oci.tar"
-                    archive_contents="$build_root/archive-contents.txt"
+                        release_root="$(mktemp -d "${WORKSPACE:?}/discovery-server-release.XXXXXX")"
+                        trap 'rm -rf "$release_root"' EXIT
 
-                    buildctl build \\
-                        --frontend dockerfile.v0 \\
-                        --local context="$WORKSPACE/discovery-server" \\
-                        --local dockerfile="$WORKSPACE/discovery-server" \\
-                        --opt filename=Dockerfile \\
-                        --opt target=runtime \\
-                        --output "type=oci,dest=$image_archive"
+                        export DOCKER_CONFIG="$release_root/docker-config"
+                        mkdir -m 700 "$DOCKER_CONFIG"
 
-                    test -s "$image_archive"
-                    tar -tf "$image_archive" > "$archive_contents"
-                    grep -Fxq 'oci-layout' "$archive_contents"
-                    grep -Fxq 'index.json' "$archive_contents"
-                    du -h "$image_archive"
-                '''
+                        auth="$(printf '%s:%s' "$DOCKERHUB_USERNAME" "$DOCKERHUB_TOKEN" | base64 | tr -d '\n')"
+                        printf '{"auths":{"https://index.docker.io/v1/":{"auth":"%s"}}}\n' \\
+                            "$auth" > "$DOCKER_CONFIG/config.json"
+                        chmod 600 "$DOCKER_CONFIG/config.json"
+                        unset auth
+
+                        source_commit="$(git rev-parse HEAD)"
+                        case "$source_commit" in
+                            *[!0-9a-f]*|'')
+                                echo 'Invalid source commit SHA.' >&2
+                                exit 1
+                                ;;
+                        esac
+                        test "${#source_commit}" -eq 40
+
+                        image_ref="docker.io/mstfckrc/discovery-server:sha-${source_commit}"
+                        metadata_file="$release_root/build-metadata.json"
+                        printf 'Source commit: %s\nImage: %s\n' "$source_commit" "$image_ref"
+
+                        buildctl build \\
+                            --frontend dockerfile.v0 \\
+                            --local context="$WORKSPACE/discovery-server" \\
+                            --local dockerfile="$WORKSPACE/discovery-server" \\
+                            --opt filename=Dockerfile \\
+                            --opt target=runtime \\
+                            --metadata-file "$metadata_file" \\
+                            --output "type=image,name=$image_ref,push=true"
+
+                        test -s "$metadata_file"
+                        image_digest="$(sed -n 's/.*"containerimage.digest"[[:space:]]*:[[:space:]]*"\(sha256:[a-f0-9]\{64\}\)".*/\1/p' "$metadata_file")"
+                        test -n "$image_digest"
+                        printf 'Published digest: %s\n' "$image_digest"
+                    '''
+                }
             }
         }
     }
