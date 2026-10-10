@@ -21,6 +21,22 @@ pipeline {
             }
         }
 
+        stage('Release pipeline syntax') {
+            steps {
+                script {
+                    if (!fileExists('Jenkinsfile.release')) {
+                        error('Jenkinsfile.release was not found in the checked-out source.')
+                    }
+
+                    if (!validateDeclarativePipeline('Jenkinsfile.release')) {
+                        error('Jenkinsfile.release is not a valid Declarative Pipeline.')
+                    }
+
+                    echo 'Jenkinsfile.release passed Declarative Pipeline validation.'
+                }
+            }
+        }
+
         stage('CI araclarini dogrula') {
             steps {
                 sh '''
