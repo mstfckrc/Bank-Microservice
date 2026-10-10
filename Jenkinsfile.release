@@ -109,7 +109,7 @@ pipeline {
                             --output "type=image,name=$image_ref,push=true"
 
                         test -s "$metadata_file"
-                        image_digest="$(sed -n 's/.*"containerimage.digest"[[:space:]]*:[[:space:]]*"\(sha256:[a-f0-9]\{64\}\)".*/\1/p' "$metadata_file")"
+                        image_digest="$(awk -F '"' '$2 == "containerimage.digest" { print $4 }' "$metadata_file")"
                         test -n "$image_digest"
                         printf 'Published digest: %s\n' "$image_digest"
                     '''
