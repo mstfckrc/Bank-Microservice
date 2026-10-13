@@ -1,0 +1,10 @@
+# compose-service|build-context|dockerhub-repository|dockerfile-target|image-env
+backend|Bank-Demo-Backend|backend|runtime|BANK_DEMO_BACKEND_IMAGE
+api-gateway|api-gateway|api-gateway|runtime|BANK_DEMO_API_GATEWAY_IMAGE
+auth-service|bank-auth-micro|auth-service|runtime|BANK_DEMO_AUTH_SERVICE_IMAGE
+corporate-service|bank-corporate-micro|corporate-service|runtime|BANK_DEMO_CORPORATE_SERVICE_IMAGE
+bill-service|bill-service|bill-service|runtime|BANK_DEMO_BILL_SERVICE_IMAGE
+currency-service|currency-service|currency-service|runtime|BANK_DEMO_CURRENCY_SERVICE_IMAGE
+discovery-server|discovery-server|discovery-server|runtime|BANK_DEMO_DISCOVERY_SERVER_IMAGE
+notification-service|notification-service|notification-service|runtime|BANK_DEMO_NOTIFICATION_SERVICE_IMAGE
+frontend|Bank-Demo-Frontend|frontend|runner|BANK_DEMO_FRONTEND_IMAGE
