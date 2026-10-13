@@ -1,0 +1,38 @@
+# Apply after docker-compose.yml. The manifest validator supplies immutable
+# repository@sha256 references through the BANK_DEMO_*_IMAGE variables.
+services:
+  backend:
+    image: ${BANK_DEMO_BACKEND_IMAGE:?validated release image is required}
+    build: !reset null
+
+  api-gateway:
+    image: ${BANK_DEMO_API_GATEWAY_IMAGE:?validated release image is required}
+    build: !reset null
+
+  auth-service:
+    image: ${BANK_DEMO_AUTH_SERVICE_IMAGE:?validated release image is required}
+    build: !reset null
+
+  corporate-service:
+    image: ${BANK_DEMO_CORPORATE_SERVICE_IMAGE:?validated release image is required}
+    build: !reset null
+
+  bill-service:
+    image: ${BANK_DEMO_BILL_SERVICE_IMAGE:?validated release image is required}
+    build: !reset null
+
+  currency-service:
+    image: ${BANK_DEMO_CURRENCY_SERVICE_IMAGE:?validated release image is required}
+    build: !reset null
+
+  discovery-server:
+    image: ${BANK_DEMO_DISCOVERY_SERVER_IMAGE:?validated release image is required}
+    build: !reset null
+
+  notification-service:
+    image: ${BANK_DEMO_NOTIFICATION_SERVICE_IMAGE:?validated release image is required}
+    build: !reset null
+
+  frontend:
+    image: ${BANK_DEMO_FRONTEND_IMAGE:?validated release image is required}
+    build: !reset null

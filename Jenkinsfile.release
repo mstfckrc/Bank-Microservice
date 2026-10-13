@@ -20,30 +20,28 @@ pipeline {
                     git rev-parse HEAD
 
                     for path in \
-                        Bank-Demo-Backend/Dockerfile \
-                        Bank-Demo-Backend/pom.xml \
-                        api-gateway/Dockerfile \
-                        api-gateway/pom.xml \
-                        bank-auth-micro/Dockerfile \
-                        bank-auth-micro/pom.xml \
-                        bank-corporate-micro/Dockerfile \
-                        bank-corporate-micro/pom.xml \
-                        bill-service/Dockerfile \
-                        bill-service/pom.xml \
-                        currency-service/Dockerfile \
-                        currency-service/pom.xml \
-                        discovery-server/Dockerfile \
-                        discovery-server/pom.xml \
-                        notification-service/Dockerfile \
-                        notification-service/pom.xml \
-                        Bank-Demo-Frontend/Dockerfile \
-                        Bank-Demo-Frontend/package.json \
-                        Bank-Demo-Frontend/package-lock.json \
-                        ci/release-public.sh; do
+                        ci/release-public.sh \
+                        ci/release-services.txt \
+                        ci/validate-release-catalog.sh \
+                        ci/prepare-release-env.sh \
+                        ci/deploy/compose.images.yml; do
                         test -f "$path" || {
                             printf 'Required release input is missing: %s\\n' "$path" >&2
                             exit 1
                         }
+                    done
+
+                    sh ci/validate-release-catalog.sh ci/release-services.txt
+
+                    sed '1d' ci/release-services.txt | while IFS='|' read -r service context_dir repository target image_env; do
+                        case "$service" in ''|'#'*) continue ;; esac
+                        test -d "$context_dir"
+                        test -f "$context_dir/Dockerfile"
+
+                        if [ "$service" = 'frontend' ]; then
+                            test -f "$context_dir/package.json"
+                            test -f "$context_dir/package-lock.json"
+                        fi
                     done
                 '''
             }
@@ -122,29 +120,20 @@ pipeline {
 
                         manifest_file="$WORKSPACE/release-manifest.tsv"
                         printf 'service\\timage\\tdigest\\n' > "$manifest_file"
-                        printf 'Building and publishing nine images from source commit %s\\n' "$source_commit"
-
+                        catalog_file="$WORKSPACE/ci/release-services.txt"
+                        expected_count="$(sh "$WORKSPACE/ci/validate-release-catalog.sh" "$catalog_file")"
+                        printf 'Building and publishing %s images from source commit %s\\n' "$expected_count" "$source_commit"
                         image_list="$release_root/images.list"
-                        printf '%s\\n' \\
-                            'backend|Bank-Demo-Backend|backend|runtime' \\
-                            'api-gateway|api-gateway|api-gateway|runtime' \\
-                            'auth-service|bank-auth-micro|auth-service|runtime' \\
-                            'corporate-service|bank-corporate-micro|corporate-service|runtime' \\
-                            'bill-service|bill-service|bill-service|runtime' \\
-                            'currency-service|currency-service|currency-service|runtime' \\
-                            'discovery-server|discovery-server|discovery-server|runtime' \\
-                            'notification-service|notification-service|notification-service|runtime' \\
-                            'frontend|Bank-Demo-Frontend|frontend|runner' \\
-                            > "$image_list"
+                        sed '1d' "$catalog_file" > "$image_list"
 
                         index=0
-                        while IFS='|' read -r service context_dir repository target; do
-                            test -n "$service" || continue
+                        while IFS='|' read -r service context_dir repository target image_env; do
+                            case "$service" in ''|'#'*) continue ;; esac
                             index=$((index + 1))
                             image_ref="docker.io/mstfckrc/${repository}:sha-${source_commit}"
                             metadata_file="$release_root/${service}-metadata.json"
 
-                            printf '\\n=== [%s/9] %s -> %s ===\\n' "$index" "$service" "$image_ref"
+                            printf '\\n=== [%s/%s] %s -> %s ===\\n' "$index" "$expected_count" "$service" "$image_ref"
 
                             if [ "$service" = 'frontend' ]; then
                                 buildctl build \\
@@ -177,7 +166,7 @@ pipeline {
                             printf 'Published digest: %s\\n' "$image_digest"
                         done < "$image_list"
 
-                        test "$index" -eq 9
+                        test "$index" -eq "$expected_count"
                         printf '\\nRelease image manifest for source commit %s:\\n' "$source_commit"
                         cat "$manifest_file"
                     '''
