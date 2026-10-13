@@ -7,6 +7,8 @@ pipeline {
         skipDefaultCheckout()
         disableConcurrentBuilds()
         timeout(time: 60, unit: 'MINUTES')
+        // Only the sibling preflight job in Bank-Demo-Release may copy artifacts.
+        copyArtifactPermission('deploy-manifest-preflight')
     }
 
     stages {
