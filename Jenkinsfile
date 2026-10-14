@@ -21,18 +21,21 @@ pipeline {
             }
         }
 
-        stage('Release pipeline syntax') {
+        stage('Release and deployment pipeline syntax') {
             steps {
                 script {
-                    if (!fileExists('Jenkinsfile.release')) {
-                        error('Jenkinsfile.release was not found in the checked-out source.')
-                    }
+                    def pipelineFiles = ['Jenkinsfile.release', 'Jenkinsfile.deploy-preflight']
+                    pipelineFiles.each { pipelineFile ->
+                        if (!fileExists(pipelineFile)) {
+                            error("${pipelineFile} was not found in the checked-out source.")
+                        }
 
-                    if (!validateDeclarativePipeline('Jenkinsfile.release')) {
-                        error('Jenkinsfile.release is not a valid Declarative Pipeline.')
-                    }
+                        if (!validateDeclarativePipeline(pipelineFile)) {
+                            error("${pipelineFile} is not a valid Declarative Pipeline.")
+                        }
 
-                    echo 'Jenkinsfile.release passed Declarative Pipeline validation.'
+                        echo "${pipelineFile} passed Declarative Pipeline validation."
+                    }
                 }
             }
         }
