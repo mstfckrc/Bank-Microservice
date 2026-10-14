@@ -87,6 +87,16 @@ pipeline {
                 '''
             }
         }
+
+        stage('Archive validated release inputs') {
+            steps {
+                archiveArtifacts(
+                    artifacts: 'release-input/release-manifest.tsv,release-input/images.env',
+                    fingerprint: true,
+                    onlyIfSuccessful: true
+                )
+            }
+        }
     }
 
     post {
