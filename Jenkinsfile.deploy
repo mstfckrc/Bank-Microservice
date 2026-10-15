@@ -67,6 +67,7 @@ pipeline {
                     test -f ci/validate-release-catalog.sh
                     test -f ci/prepare-release-env.sh
                     test -f ci/deploy/protocol.py
+                    test -f ci/deploy/bootstrap_host_validation.py
                     test -f ci/deploy/tests/test_protocol.py
                     sh ci/validate-release-catalog.sh ci/release-services.txt
                 '''
