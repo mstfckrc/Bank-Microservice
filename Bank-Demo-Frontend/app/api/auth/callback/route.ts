@@ -39,13 +39,14 @@ export async function GET(request: Request) {
     const idToken = tokenData.id_token; 
 
     const cookieStore = await cookies();
+    const secureCookie = process.env.NODE_ENV === 'production';
     
     cookieStore.set({
       name: 'token',
       value: accessToken,
       httpOnly: false, 
       path: '/',
-      secure: false,
+      secure: secureCookie,
       sameSite: 'lax',
       maxAge: 60 * 60 * 24, 
     });
@@ -56,7 +57,7 @@ export async function GET(request: Request) {
         value: idToken,
         httpOnly: false, 
         path: '/',
-        secure: false,
+        secure: secureCookie,
         sameSite: 'lax',
         maxAge: 60 * 60 * 24,
       });
