@@ -24,7 +24,11 @@ pipeline {
         stage('Release and deployment pipeline syntax') {
             steps {
                 script {
-                    def pipelineFiles = ['Jenkinsfile.release', 'Jenkinsfile.deploy-preflight']
+                    def pipelineFiles = [
+                        'Jenkinsfile.release',
+                        'Jenkinsfile.deploy-preflight',
+                        'Jenkinsfile.deploy'
+                    ]
                     pipelineFiles.each { pipelineFile ->
                         if (!fileExists(pipelineFile)) {
                             error("${pipelineFile} was not found in the checked-out source.")
