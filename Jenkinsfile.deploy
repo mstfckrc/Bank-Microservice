@@ -124,11 +124,17 @@ pipeline {
                     def requestId = sh(
                         script: '''
                             set -eu
-                            python3 ci/deploy/protocol.py create-request \
-                                --action "$ACTION" \
-                                --release-build-number "$SELECTED_RELEASE_BUILD" \
-                                --manifest deploy-input/release-manifest.tsv \
-                                --output deploy-input/request.json
+                            if [ "$ACTION" = status ]; then
+                                python3 ci/deploy/protocol.py create-request \
+                                    --action "$ACTION" \
+                                    --output deploy-input/request.json
+                            else
+                                python3 ci/deploy/protocol.py create-request \
+                                    --action "$ACTION" \
+                                    --release-build-number "$SELECTED_RELEASE_BUILD" \
+                                    --manifest deploy-input/release-manifest.tsv \
+                                    --output deploy-input/request.json
+                            fi
                             python3 -c 'import json; print(json.load(open("deploy-input/request.json"))["request_id"])'
                         ''',
                         returnStdout: true
