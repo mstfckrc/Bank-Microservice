@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install the validate-only Bank host helper and immutable catalog snapshot.
+"""Install the read-only Bank host helper and immutable deployment snapshot.
 
 The production invocation is intended to be run once by an administrator on the
 Bank VM. ``--root`` is only for isolated tests; it never changes the default
@@ -12,6 +12,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import stat
 import sys
@@ -21,12 +22,15 @@ from pathlib import Path
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 SNAPSHOT_FILES = (
-    "release-services.txt",
-    "validate-release-catalog.sh",
-    "prepare-release-env.sh",
+    REPOSITORY_ROOT / "ci" / "release-services.txt",
+    REPOSITORY_ROOT / "ci" / "validate-release-catalog.sh",
+    REPOSITORY_ROOT / "ci" / "prepare-release-env.sh",
+    REPOSITORY_ROOT / "docker-compose.yml",
+    REPOSITORY_ROOT / "ci" / "deploy" / "compose.images.yml",
 )
 HELPER_FILES = ("protocol.py",)
 WRAPPER_SOURCE = REPOSITORY_ROOT / "ci" / "deploy" / "bank-demo-deploy"
+CONFIG_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 
 
 def fail(message: str) -> "NoReturn":
@@ -40,7 +44,7 @@ def content_id(files: tuple[Path, ...]) -> str:
         digest.update(path.name.encode("utf-8") + b"\0")
         digest.update(path.read_bytes())
         digest.update(b"\0")
-    return "catalog-" + digest.hexdigest()[:16]
+    return "deploy-" + digest.hexdigest()[:16]
 
 
 def check_directory(path: Path, *, create: bool, real_install: bool) -> None:
@@ -94,6 +98,95 @@ def install_file(path: Path, data: bytes, mode: int, *, real_install: bool) -> N
         temporary.unlink(missing_ok=True)
 
 
+def replace_managed_file(path: Path, data: bytes, mode: int, *, real_install: bool) -> None:
+    """Atomically upgrade a previously installed, safely owned helper file."""
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        install_file(path, data, mode, real_install=real_install)
+        return
+    if not stat.S_ISREG(info.st_mode):
+        fail(f"Refusing to replace a non-regular managed file: {path}")
+    if real_install and info.st_uid != 0:
+        fail(f"Managed file is not owned by root: {path}")
+    if info.st_mode & 0o022 or stat.S_IMODE(info.st_mode) != mode:
+        fail(f"Managed file has unsafe ownership or permissions: {path}")
+    fd, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(data)
+            stream.flush()
+            os.fchmod(stream.fileno(), mode)
+            if real_install:
+                os.fchown(stream.fileno(), 0, 0)
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def update_config_pointer(path: Path, data: bytes, *, bank_root: Path,
+                          real_install: bool) -> None:
+    """Switch only from a valid existing snapshot, and do so as the final step."""
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        install_file(path, data, 0o644, real_install=real_install)
+        return
+    if not stat.S_ISREG(info.st_mode):
+        fail(f"Refusing to replace a non-regular deployment config: {path}")
+    if real_install and info.st_uid != 0:
+        fail(f"Existing deployment config is not owned by root: {path}")
+    if info.st_mode & 0o022 or stat.S_IMODE(info.st_mode) != 0o644:
+        fail(f"Existing deployment config has unsafe ownership or permissions: {path}")
+    try:
+        current = json.loads(path.read_text(encoding="utf-8"))
+        if (set(current) != {"protocol_version", "config_id"}
+                or type(current["protocol_version"]) is not int
+                or current["protocol_version"] != 1
+                or not isinstance(current["config_id"], str)
+                or not CONFIG_ID_RE.fullmatch(current["config_id"])):
+            fail("Refusing to replace an unknown existing deployment config.")
+        if current["config_id"].startswith("deploy-") and path.read_bytes() == data:
+            return
+        if not current["config_id"].startswith("catalog-"):
+            fail("Refusing to replace a deployment config outside the supported upgrade path.")
+        old_snapshot = bank_root / "configs" / current["config_id"]
+        old_info = old_snapshot.lstat()
+        if (not stat.S_ISDIR(old_info.st_mode) or old_info.st_mode & 0o022
+                or (real_install and old_info.st_uid != 0)):
+            fail("Refusing to replace a deployment config with an unsafe prior snapshot.")
+        old_files = {
+            "release-services.txt", "validate-release-catalog.sh", "prepare-release-env.sh"
+        }
+        if {item.name for item in old_snapshot.iterdir()} != old_files:
+            fail("Refusing to replace a deployment config with an unknown prior snapshot.")
+        for filename in old_files:
+            old_file = old_snapshot / filename
+            old_file_info = old_file.lstat()
+            if (not stat.S_ISREG(old_file_info.st_mode) or old_file_info.st_mode & 0o022
+                    or stat.S_IMODE(old_file_info.st_mode) != 0o644
+                    or (real_install and old_file_info.st_uid != 0)):
+                fail("Refusing to replace a deployment config with an unsafe prior snapshot.")
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError):
+        fail("Refusing to replace an invalid existing deployment config.")
+
+    fd, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(data)
+            stream.flush()
+            os.fchmod(stream.fileno(), 0o644)
+            if real_install:
+                os.fchown(stream.fileno(), 0, 0)
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def install_snapshot(target: Path, files: tuple[Path, ...], *, real_install: bool) -> None:
     try:
         target.lstat()
@@ -136,12 +229,12 @@ def install(root: Path) -> None:
         fail("Run the production bootstrap as root (for example, with sudo).")
 
     helper_sources = tuple(REPOSITORY_ROOT / "ci" / "deploy" / name for name in HELPER_FILES)
-    snapshot_sources = tuple(REPOSITORY_ROOT / "ci" / name for name in SNAPSHOT_FILES)
+    snapshot_sources = SNAPSHOT_FILES
     for source in helper_sources + snapshot_sources + (WRAPPER_SOURCE,):
         if not source.is_file() or source.is_symlink():
             fail(f"Required bootstrap source is missing or not a regular file: {source.name}")
 
-    config_id = content_id(helper_sources + snapshot_sources)
+    config_id = content_id(helper_sources + snapshot_sources + (WRAPPER_SOURCE,))
     etc_root = root / "etc"
     bank_root = etc_root / "bank-demo"
     configs_root = bank_root / "configs"
@@ -157,17 +250,17 @@ def install(root: Path) -> None:
 
     for source in helper_sources:
         destination = libexec_root / source.name
-        install_file(destination, source.read_bytes(), 0o644, real_install=real_install)
-    install_file(sbin_root / "bank-demo-deploy", WRAPPER_SOURCE.read_bytes(), 0o755,
-                 real_install=real_install)
+        replace_managed_file(destination, source.read_bytes(), 0o644, real_install=real_install)
+    replace_managed_file(sbin_root / "bank-demo-deploy", WRAPPER_SOURCE.read_bytes(), 0o755,
+                         real_install=real_install)
 
     config_path = bank_root / "deploy.json"
     config_data = (json.dumps({"protocol_version": 1, "config_id": config_id},
                               separators=(",", ":"), sort_keys=True) + "\n").encode()
-    install_file(config_path, config_data, 0o644, real_install=real_install)
+    update_config_pointer(config_path, config_data, bank_root=bank_root, real_install=real_install)
 
-    print(f"Installed validate-only Bank host helper; config_id={config_id}.")
-    print("No SSH account, sudoers rule, key, runtime secret, Compose file, or container was changed.")
+    print(f"Installed read-only Bank host helper; config_id={config_id}.")
+    print("No SSH account, sudoers rule, key, runtime secret, live Compose configuration, or container was changed.")
 
 
 def main() -> None:

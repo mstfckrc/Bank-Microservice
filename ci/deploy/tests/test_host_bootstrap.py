@@ -40,7 +40,13 @@ class HostBootstrapTests(unittest.TestCase):
         self.assertEqual(config["protocol_version"], 1)
         self.assertEqual(
             {path.name for path in snapshot.iterdir()},
-            {"release-services.txt", "validate-release-catalog.sh", "prepare-release-env.sh"},
+            {
+                "release-services.txt",
+                "validate-release-catalog.sh",
+                "prepare-release-env.sh",
+                "docker-compose.yml",
+                "compose.images.yml",
+            },
         )
         self.assertEqual(
             (self.root / "usr/local/libexec/bank-demo-deploy/protocol.py").read_bytes(),
@@ -65,18 +71,45 @@ class HostBootstrapTests(unittest.TestCase):
         self.assertEqual(first.returncode, 0, first.stderr)
         self.assertEqual(second.returncode, 0, second.stderr)
 
-    def test_refuses_to_overwrite_different_existing_config(self) -> None:
+    def test_upgrades_known_catalog_snapshot_and_repeats_idempotently(self) -> None:
         first = self.run_bootstrap()
         self.assertEqual(first.returncode, 0, first.stderr)
         config_path = self.root / "etc/bank-demo/deploy.json"
-        original = config_path.read_bytes()
+        current = json.loads(config_path.read_text(encoding="utf-8"))
+        old_id = "catalog-test-old"
+        old_snapshot = self.root / "etc/bank-demo/configs" / old_id
+        old_snapshot.mkdir()
+        os.chmod(old_snapshot, 0o755)
+        for filename in ("release-services.txt", "validate-release-catalog.sh", "prepare-release-env.sh"):
+            source = REPOSITORY_ROOT / "ci" / filename
+            (old_snapshot / filename).write_bytes(source.read_bytes())
+            os.chmod(old_snapshot / filename, 0o644)
+        config_path.write_text(
+            json.dumps({"protocol_version": 1, "config_id": old_id}, separators=(",", ":")) + "\n",
+            encoding="utf-8",
+        )
+        os.chmod(config_path, 0o644)
+
+        second = self.run_bootstrap()
+        third = self.run_bootstrap()
+
+        self.assertEqual(second.returncode, 0, second.stderr)
+        self.assertEqual(third.returncode, 0, third.stderr)
+        updated = json.loads(config_path.read_text(encoding="utf-8"))
+        self.assertNotEqual(updated["config_id"], old_id)
+        self.assertEqual(updated, current)
+
+    def test_refuses_to_replace_unknown_config_pointer(self) -> None:
+        first = self.run_bootstrap()
+        self.assertEqual(first.returncode, 0, first.stderr)
+        config_path = self.root / "etc/bank-demo/deploy.json"
         config_path.write_text('{"protocol_version":1,"config_id":"other"}\n', encoding="utf-8")
+        os.chmod(config_path, 0o644)
 
         second = self.run_bootstrap()
 
         self.assertEqual(second.returncode, 2)
-        self.assertIn("Refusing to overwrite", second.stderr)
-        self.assertNotEqual(config_path.read_bytes(), original)
+        self.assertIn("Refusing to replace", second.stderr)
 
 
 if __name__ == "__main__":

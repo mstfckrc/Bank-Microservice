@@ -35,6 +35,7 @@ CONFIG_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 
 HOST_CONFIG = Path("/etc/bank-demo/deploy.json")
 HOST_CONFIGS_DIR = Path("/etc/bank-demo/configs")
+HOST_WRAPPER = Path("/usr/local/sbin/bank-demo-deploy")
 MANIFEST_TEMP_DIR = Path("/var/tmp")
 TRUSTED_OWNER_UID = 0
 
@@ -48,8 +49,14 @@ RESPONSE_KEYS = {
     "manifest_sha256",
     "config_id",
     "message",
+    "status_report",
 }
 VALIDATE_RESULTS = {"validated", "rejected"}
+STATUS_RESULT = "reported"
+DOCKER_BIN = "/usr/bin/docker"
+PROJECT_NAME = "bank-microservice-env"
+SERVICE_NAME_RE = re.compile(r"^[a-z][a-z0-9-]{0,62}$")
+CONTAINER_ID_RE = re.compile(r"^[0-9a-f]{12,64}$")
 
 
 def fail(message: str) -> "NoReturn":
@@ -98,21 +105,21 @@ def build_request(args: argparse.Namespace) -> None:
         "protocol_version": 1,
         "request_id": str(uuid.uuid4()),
         "action": args.action,
-        "release_build_number": None,
-        "manifest_sha256": None,
-        "manifest_base64": None,
     }
 
-    if not BUILD_NUMBER_RE.fullmatch(args.release_build_number or ""):
-        fail("A positive image-build-pilot build number is required.")
-    if not args.manifest:
-        fail("A release manifest path is required for validation.")
-    manifest = read_bounded(Path(args.manifest), MAX_MANIFEST_BYTES)
-    if not manifest:
-        fail("Release manifest is empty.")
-    request["release_build_number"] = args.release_build_number
-    request["manifest_sha256"] = hashlib.sha256(manifest).hexdigest()
-    request["manifest_base64"] = base64.b64encode(manifest).decode("ascii")
+    if args.action == "validate":
+        if not BUILD_NUMBER_RE.fullmatch(args.release_build_number or ""):
+            fail("A positive image-build-pilot build number is required.")
+        if not args.manifest:
+            fail("A release manifest path is required for validation.")
+        manifest = read_bounded(Path(args.manifest), MAX_MANIFEST_BYTES)
+        if not manifest:
+            fail("Release manifest is empty.")
+        request.update({
+            "release_build_number": args.release_build_number,
+            "manifest_sha256": hashlib.sha256(manifest).hexdigest(),
+            "manifest_base64": base64.b64encode(manifest).decode("ascii"),
+        })
 
     encoded = (json.dumps(request, separators=(",", ":"), sort_keys=True) + "\n").encode("utf-8")
     if len(encoded) > MAX_REQUEST_BYTES:
@@ -150,7 +157,8 @@ def check_response(args: argparse.Namespace) -> None:
         fail("Bank helper response does not match the selected release build.")
 
     result = response.get("result")
-    if not isinstance(result, str) or result not in VALIDATE_RESULTS:
+    allowed_results = VALIDATE_RESULTS if args.action == "validate" else {STATUS_RESULT}
+    if not isinstance(result, str) or result not in allowed_results:
         fail("Bank helper returned an unsupported result for this action.")
 
     source_commit = response.get("source_commit")
@@ -174,6 +182,11 @@ def check_response(args: argparse.Namespace) -> None:
         fail("Bank helper validation response is missing release or configuration identity.")
     if result == "validated" and not release_build_number:
         fail("Bank helper validation response is missing the selected release build number.")
+    status_report = response.get("status_report")
+    if args.action == "validate" and status_report is not None:
+        fail("Bank helper validation response unexpectedly contains runtime status.")
+    if args.action == "status":
+        validate_status_report(status_report)
     message = response.get("message")
     if not isinstance(message, str) or len(message) > 512 or any(ord(char) < 32 for char in message):
         fail("Bank helper returned an invalid status message.")
@@ -189,8 +202,53 @@ def check_response(args: argparse.Namespace) -> None:
         print(f"Configuration ID: {config_id}")
     print(f"Message: {message}")
 
-    if result != "validated":
+    if status_report is not None:
+        print(f"Compose project: {status_report['project']}")
+        print(f"Runtime summary: {status_report['summary']}")
+        for service in status_report["services"]:
+            print(
+                f"{service['name']}: state={service['state']}, "
+                f"health={service['health']}, image_id={service['image_id'] or 'unavailable'}"
+            )
+
+    if result == "rejected":
         raise SystemExit(1)
+
+
+def validate_status_report(report: Any) -> None:
+    if not isinstance(report, dict) or set(report) != {"project", "summary", "services"}:
+        fail("Bank helper returned an invalid runtime status report.")
+    if report.get("project") != PROJECT_NAME:
+        fail("Bank helper returned an unexpected Compose project.")
+    if report.get("summary") not in {"healthy", "degraded", "partial", "not_deployed"}:
+        fail("Bank helper returned an invalid runtime summary.")
+    services = report.get("services")
+    if not isinstance(services, list) or not 1 <= len(services) <= 32:
+        fail("Bank helper returned an invalid runtime service list.")
+    seen: set[str] = set()
+    for service in services:
+        if not isinstance(service, dict) or set(service) != {
+            "name", "state", "health", "container_id", "image_id"
+        }:
+            fail("Bank helper returned an invalid runtime service entry.")
+        name = service.get("name")
+        if not isinstance(name, str) or not SERVICE_NAME_RE.fullmatch(name) or name in seen:
+            fail("Bank helper returned an invalid or duplicate service name.")
+        seen.add(name)
+        if service.get("state") not in {"running", "created", "restarting", "paused", "exited", "dead", "missing"}:
+            fail("Bank helper returned an invalid container state.")
+        if service.get("health") not in {"healthy", "starting", "unhealthy", "not_configured", "missing", "unknown"}:
+            fail("Bank helper returned an invalid container health state.")
+        container_id = service.get("container_id")
+        if container_id is not None and (
+            not isinstance(container_id, str) or not CONTAINER_ID_RE.fullmatch(container_id)
+        ):
+            fail("Bank helper returned an invalid container ID.")
+        image_id = service.get("image_id")
+        if image_id is not None and (
+            not isinstance(image_id, str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", image_id)
+        ):
+            fail("Bank helper returned an invalid image ID.")
 
 
 def main() -> None:
@@ -198,14 +256,14 @@ def main() -> None:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     create = subparsers.add_parser("create-request")
-    create.add_argument("--action", choices=["validate"], required=True)
-    create.add_argument("--release-build-number", required=True)
-    create.add_argument("--manifest", required=True)
+    create.add_argument("--action", choices=["validate", "status"], required=True)
+    create.add_argument("--release-build-number")
+    create.add_argument("--manifest")
     create.add_argument("--output", required=True)
     create.set_defaults(func=build_request)
 
     check = subparsers.add_parser("check-response")
-    check.add_argument("--action", choices=["validate"], required=True)
+    check.add_argument("--action", choices=["validate", "status"], required=True)
     check.add_argument("--request-id", required=True)
     check.add_argument("--release-build-number")
     check.add_argument("--manifest-sha256")
@@ -213,10 +271,10 @@ def main() -> None:
     check.set_defaults(func=check_response)
 
     host = subparsers.add_parser(
-        "host-validate",
-        help="Root-side validate-only endpoint used by the restricted Bank host command.",
+        "host-command",
+        help="Root-side dispatcher used by the restricted Bank host command.",
     )
-    host.set_defaults(func=host_validate)
+    host.set_defaults(func=host_command)
 
     args = parser.parse_args()
     try:
@@ -258,7 +316,34 @@ def load_host_config() -> tuple[str, Path]:
         fail("The configured Bank host deployment snapshot is missing.")
     if not stat.S_ISDIR(info.st_mode) or info.st_uid != TRUSTED_OWNER_UID or info.st_mode & 0o022:
         fail("The configured Bank host deployment snapshot has unsafe ownership or permissions.")
+    verify_deploy_snapshot(config_id, config_dir)
     return config_id, config_dir
+
+
+def verify_deploy_snapshot(config_id: str, config_dir: Path) -> None:
+    if not config_id.startswith("deploy-"):
+        return
+    snapshot_names = (
+        "release-services.txt",
+        "validate-release-catalog.sh",
+        "prepare-release-env.sh",
+        "docker-compose.yml",
+        "compose.images.yml",
+    )
+    sources = [Path(__file__)]
+    sources.extend(config_dir / name for name in snapshot_names)
+    sources.append(HOST_WRAPPER)
+    digest = hashlib.sha256()
+    try:
+        for source in sources:
+            require_trusted_file(source)
+            digest.update(source.name.encode("utf-8") + b"\0")
+            digest.update(source.read_bytes())
+            digest.update(b"\0")
+    except OSError:
+        fail("The Bank host deployment snapshot could not be verified.")
+    if config_id != "deploy-" + digest.hexdigest()[:16]:
+        fail("The Bank host deployment snapshot content does not match its configuration ID.")
 
 
 def write_response(response: dict[str, Any]) -> None:
@@ -269,8 +354,23 @@ def write_response(response: dict[str, Any]) -> None:
     sys.stdout.buffer.flush()
 
 
-def host_validate(_args: argparse.Namespace) -> None:
+def host_command(_args: argparse.Namespace) -> None:
     raw_request = sys.stdin.buffer.read(MAX_REQUEST_BYTES + 1)
+    if len(raw_request) > MAX_REQUEST_BYTES:
+        fail("Protocol request exceeds the configured size limit.")
+    request = parse_json(raw_request, what="Bank helper request")
+    action = request.get("action")
+    if action == "validate":
+        host_validate(raw_request)
+    elif action == "status":
+        host_status(raw_request)
+    else:
+        fail("Bank helper request has an unsupported action.")
+
+
+def host_validate(raw_request: bytes | None = None) -> None:
+    if raw_request is None:
+        raw_request = sys.stdin.buffer.read(MAX_REQUEST_BYTES + 1)
     if len(raw_request) > MAX_REQUEST_BYTES:
         fail("Protocol request exceeds the configured size limit.")
 
@@ -386,8 +486,182 @@ def host_validate(_args: argparse.Namespace) -> None:
             "manifest_sha256": actual_hash,
             "config_id": config_id,
             "message": message,
+            "status_report": None,
         }
     )
+
+
+def read_service_catalog(config_dir: Path) -> list[str]:
+    catalog = config_dir / "release-services.txt"
+    validator = config_dir / "validate-release-catalog.sh"
+    require_trusted_file(catalog)
+    require_trusted_file(validator)
+    validation = subprocess.run(
+        ["/bin/sh", str(validator), str(catalog)],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+        timeout=10,
+        env={"PATH": "/usr/bin:/bin", "LC_ALL": "C"},
+    )
+    if validation.returncode != 0:
+        fail("The trusted Bank host release catalog failed validation.")
+    names: list[str] = []
+    for line in catalog.read_text(encoding="utf-8").splitlines():
+        if not line or line.startswith("#"):
+            continue
+        fields = line.split("|")
+        if len(fields) != 5 or not SERVICE_NAME_RE.fullmatch(fields[0]):
+            fail("The trusted Bank host service catalog has an invalid entry.")
+        names.append(fields[0])
+    if not names or len(names) != len(set(names)):
+        fail("The trusted Bank host service catalog has missing or duplicate services.")
+    return names
+
+
+def host_status(raw_request: bytes | None = None) -> None:
+    if raw_request is None:
+        raw_request = sys.stdin.buffer.read(MAX_REQUEST_BYTES + 1)
+    if len(raw_request) > MAX_REQUEST_BYTES:
+        fail("Protocol request exceeds the configured size limit.")
+    request = parse_json(raw_request, what="Bank helper request")
+    require_exact_keys(request, {"protocol_version", "request_id", "action"}, what="Bank helper request")
+    request_id = request.get("request_id")
+    if not isinstance(request_id, str) or not REQUEST_ID_RE.fullmatch(request_id):
+        fail("Bank helper request has an invalid request ID.")
+    if request.get("action") != "status":
+        fail("Bank helper request has an unsupported action.")
+    if type(request.get("protocol_version")) is not int or request["protocol_version"] != 1:
+        fail("Bank helper request uses an unsupported protocol version.")
+
+    config_id, config_dir = load_host_config()
+    required_snapshot_files = {
+        "release-services.txt",
+        "validate-release-catalog.sh",
+        "prepare-release-env.sh",
+        "docker-compose.yml",
+        "compose.images.yml",
+    }
+    try:
+        if {path.name for path in config_dir.iterdir()} != required_snapshot_files:
+            fail("The configured Bank deployment snapshot is incomplete.")
+        for filename in required_snapshot_files:
+            require_trusted_file(config_dir / filename)
+    except OSError:
+        fail("The configured Bank deployment snapshot is incomplete.")
+
+    service_names = read_service_catalog(config_dir)
+    try:
+        listed = subprocess.run(
+            [
+                DOCKER_BIN,
+                "ps",
+                "--all",
+                "--filter",
+                f"label=com.docker.compose.project={PROJECT_NAME}",
+                "--format",
+                '{{.Label "com.docker.compose.service"}}\t{{.ID}}',
+            ],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+            timeout=10,
+            text=True,
+            env={"PATH": "/usr/bin:/bin", "LC_ALL": "C"},
+        )
+        if listed.returncode != 0:
+            fail("Docker could not report the Bank Compose containers.")
+        container_ids: dict[str, str] = {}
+        for line in listed.stdout.splitlines():
+            name, separator, container_id = line.partition("\t")
+            if not separator or name not in service_names or not CONTAINER_ID_RE.fullmatch(container_id):
+                continue
+            if name in container_ids:
+                fail("Docker reported multiple containers for one Bank application service.")
+            container_ids[name] = container_id
+
+        services: list[dict[str, Any]] = []
+        for name in service_names:
+            container_id = container_ids.get(name)
+            if container_id is None:
+                services.append({
+                    "name": name,
+                    "state": "missing",
+                    "health": "missing",
+                    "container_id": None,
+                    "image_id": None,
+                })
+                continue
+            inspected = subprocess.run(
+                [
+                    DOCKER_BIN,
+                    "inspect",
+                    "--format",
+                    "{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{else}}not_configured{{end}}|{{.Image}}",
+                    container_id,
+                ],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+                timeout=10,
+                text=True,
+                env={"PATH": "/usr/bin:/bin", "LC_ALL": "C"},
+            )
+            if inspected.returncode != 0:
+                fail("Docker could not inspect a Bank application container.")
+            fields = inspected.stdout.strip().split("|")
+            if len(fields) != 3:
+                fail("Docker returned an invalid Bank container status.")
+            state, health, image_id = fields
+            if state not in {"running", "created", "restarting", "paused", "exited", "dead"}:
+                state = "dead"
+            if health not in {"healthy", "starting", "unhealthy", "not_configured"}:
+                health = "unknown"
+            if not re.fullmatch(r"sha256:[0-9a-f]{64}", image_id):
+                image_id = ""
+            services.append({
+                "name": name,
+                "state": state,
+                "health": health,
+                "container_id": container_id,
+                "image_id": image_id or None,
+            })
+    except subprocess.TimeoutExpired:
+        fail("Bank Compose status inspection exceeded its time limit.")
+    except OSError:
+        fail("Bank Compose status inspection could not access the Docker engine.")
+    except SystemExit:
+        raise
+    except Exception:
+        fail("Bank Compose status inspection could not complete safely.")
+
+    if not any(service["state"] != "missing" for service in services):
+        summary = "not_deployed"
+    elif any(service["state"] == "missing" for service in services):
+        summary = "partial"
+    elif any(service["state"] != "running" or service["health"] in {"unhealthy", "unknown"}
+             for service in services):
+        summary = "degraded"
+    elif any(service["health"] != "healthy" for service in services):
+        summary = "degraded"
+    else:
+        summary = "healthy"
+
+    write_response({
+        "protocol_version": 1,
+        "request_id": request_id,
+        "action": "status",
+        "release_build_number": None,
+        "result": STATUS_RESULT,
+        "source_commit": None,
+        "manifest_sha256": None,
+        "config_id": config_id,
+        "message": "Read-only status collected from the Bank Compose application containers.",
+        "status_report": {"project": PROJECT_NAME, "summary": summary, "services": services},
+    })
 
 
 if __name__ == "__main__":
