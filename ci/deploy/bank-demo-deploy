@@ -6,4 +6,4 @@ if [ "$#" -ne 0 ]; then
     exit 2
 fi
 
-exec /usr/bin/python3 /usr/local/libexec/bank-demo-deploy/protocol.py host-validate
+exec /usr/bin/python3 /usr/local/libexec/bank-demo-deploy/protocol.py host-command

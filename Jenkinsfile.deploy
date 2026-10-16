@@ -12,8 +12,8 @@ pipeline {
     parameters {
         choice(
             name: 'ACTION',
-            choices: ['validate'],
-            description: 'Checks that one successful release manifest matches the trusted Bank host catalog. This initial increment does not change the running application.'
+            choices: ['status', 'validate'],
+            description: 'status reads Bank application container state; validate checks a successful image release manifest. Neither action changes the running application.'
         )
         string(
             name: 'RELEASE_BUILD_NUMBER',
@@ -26,20 +26,27 @@ pipeline {
         stage('Validate request parameters') {
             steps {
                 script {
-                    if (params.ACTION != 'validate') {
+                    if (!(params.ACTION in ['validate', 'status'])) {
                         error('Unsupported ACTION.')
                     }
 
-                    def selectedBuild = params.RELEASE_BUILD_NUMBER?.trim()
-                    if (!(selectedBuild ==~ /^[1-9][0-9]{0,8}$/)) {
-                        error('RELEASE_BUILD_NUMBER must be a positive image-build-pilot build number.')
+                    if (params.ACTION == 'validate') {
+                        def selectedBuild = params.RELEASE_BUILD_NUMBER?.trim()
+                        if (!(selectedBuild ==~ /^[1-9][0-9]{0,8}$/)) {
+                            error('RELEASE_BUILD_NUMBER must be a positive image-build-pilot build number.')
+                        }
+                        env.SELECTED_RELEASE_BUILD = selectedBuild
+                    } else {
+                        env.SELECTED_RELEASE_BUILD = ''
                     }
-                    env.SELECTED_RELEASE_BUILD = selectedBuild
                 }
             }
         }
 
         stage('Confirm selected release succeeded') {
+            when {
+                expression { params.ACTION == 'validate' }
+            }
             steps {
                 script {
                     def sourceRun = waitForBuild(
@@ -81,6 +88,9 @@ pipeline {
         }
 
         stage('Copy and validate exact release manifest') {
+            when {
+                expression { params.ACTION == 'validate' }
+            }
             steps {
                 copyArtifacts(
                     projectName: 'image-build-pilot',
@@ -124,10 +134,12 @@ pipeline {
                         returnStdout: true
                     ).trim().readLines().last()
                     env.DEPLOY_REQUEST_ID = requestId
-                    env.DEPLOY_MANIFEST_SHA256 = sh(
-                        script: 'sha256sum deploy-input/release-manifest.tsv | cut -d " " -f 1',
-                        returnStdout: true
-                    ).trim()
+                    env.DEPLOY_MANIFEST_SHA256 = params.ACTION == 'validate'
+                        ? sh(
+                            script: 'sha256sum deploy-input/release-manifest.tsv | cut -d " " -f 1',
+                            returnStdout: true
+                        ).trim()
+                        : ''
                 }
             }
         }
@@ -156,12 +168,19 @@ pipeline {
                             bank-deploy@192.168.56.10 \
                             < deploy-input/request.json \
                             > deploy-input/response.json
-                        python3 ci/deploy/protocol.py check-response \
-                            --action "$ACTION" \
-                            --request-id "$DEPLOY_REQUEST_ID" \
-                            --release-build-number "$SELECTED_RELEASE_BUILD" \
-                            --manifest-sha256 "$DEPLOY_MANIFEST_SHA256" \
-                            --input deploy-input/response.json
+                        if [ "$ACTION" = validate ]; then
+                            python3 ci/deploy/protocol.py check-response \
+                                --action "$ACTION" \
+                                --request-id "$DEPLOY_REQUEST_ID" \
+                                --release-build-number "$SELECTED_RELEASE_BUILD" \
+                                --manifest-sha256 "$DEPLOY_MANIFEST_SHA256" \
+                                --input deploy-input/response.json
+                        else
+                            python3 ci/deploy/protocol.py check-response \
+                                --action "$ACTION" \
+                                --request-id "$DEPLOY_REQUEST_ID" \
+                                --input deploy-input/response.json
+                        fi
                     '''
                 }
             }
