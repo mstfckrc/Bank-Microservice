@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install the read-only Bank host helper and immutable deployment snapshot.
+"""Install the Bank host deploy helper, runtime env copy, and immutable snapshot.
 
 The production invocation is intended to be run once by an administrator on the
 Bank VM. ``--root`` is only for isolated tests; it never changes the default
@@ -28,8 +28,9 @@ SNAPSHOT_FILES = (
     REPOSITORY_ROOT / "docker-compose.yml",
     REPOSITORY_ROOT / "ci" / "deploy" / "compose.images.yml",
 )
-HELPER_FILES = ("protocol.py",)
+HELPER_FILES = ("protocol.py", "deployment.py")
 WRAPPER_SOURCE = REPOSITORY_ROOT / "ci" / "deploy" / "bank-demo-deploy"
+RUNTIME_ENV_SOURCE = REPOSITORY_ROOT / ".env"
 CONFIG_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 
 
@@ -148,27 +149,33 @@ def update_config_pointer(path: Path, data: bytes, *, bank_root: Path,
                 or not isinstance(current["config_id"], str)
                 or not CONFIG_ID_RE.fullmatch(current["config_id"])):
             fail("Refusing to replace an unknown existing deployment config.")
-        if current["config_id"].startswith("deploy-") and path.read_bytes() == data:
-            return
-        if not current["config_id"].startswith("catalog-"):
+        if current["config_id"].startswith("deploy-"):
+            if path.read_bytes() == data:
+                return
+            old_snapshot = bank_root / "configs" / current["config_id"]
+            if not _verify_previous_deploy(current["config_id"], old_snapshot,
+                                            bank_root=bank_root, real_install=real_install):
+                fail("Refusing to replace an unverified existing deployment config.")
+        elif not current["config_id"].startswith("catalog-"):
             fail("Refusing to replace a deployment config outside the supported upgrade path.")
-        old_snapshot = bank_root / "configs" / current["config_id"]
-        old_info = old_snapshot.lstat()
-        if (not stat.S_ISDIR(old_info.st_mode) or old_info.st_mode & 0o022
-                or (real_install and old_info.st_uid != 0)):
-            fail("Refusing to replace a deployment config with an unsafe prior snapshot.")
-        old_files = {
-            "release-services.txt", "validate-release-catalog.sh", "prepare-release-env.sh"
-        }
-        if {item.name for item in old_snapshot.iterdir()} != old_files:
-            fail("Refusing to replace a deployment config with an unknown prior snapshot.")
-        for filename in old_files:
-            old_file = old_snapshot / filename
-            old_file_info = old_file.lstat()
-            if (not stat.S_ISREG(old_file_info.st_mode) or old_file_info.st_mode & 0o022
-                    or stat.S_IMODE(old_file_info.st_mode) != 0o644
-                    or (real_install and old_file_info.st_uid != 0)):
+        else:
+            old_snapshot = bank_root / "configs" / current["config_id"]
+            old_info = old_snapshot.lstat()
+            if (not stat.S_ISDIR(old_info.st_mode) or old_info.st_mode & 0o022
+                    or (real_install and old_info.st_uid != 0)):
                 fail("Refusing to replace a deployment config with an unsafe prior snapshot.")
+            old_files = {
+                "release-services.txt", "validate-release-catalog.sh", "prepare-release-env.sh"
+            }
+            if {item.name for item in old_snapshot.iterdir()} != old_files:
+                fail("Refusing to replace a deployment config with an unknown prior snapshot.")
+            for filename in old_files:
+                old_file = old_snapshot / filename
+                old_file_info = old_file.lstat()
+                if (not stat.S_ISREG(old_file_info.st_mode) or old_file_info.st_mode & 0o022
+                        or stat.S_IMODE(old_file_info.st_mode) != 0o644
+                        or (real_install and old_file_info.st_uid != 0)):
+                    fail("Refusing to replace a deployment config with an unsafe prior snapshot.")
     except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError):
         fail("Refusing to replace an invalid existing deployment config.")
 
@@ -185,6 +192,88 @@ def update_config_pointer(path: Path, data: bytes, *, bank_root: Path,
         os.replace(temporary, path)
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def _verify_previous_deploy(config_id: str, snapshot: Path, *, bank_root: Path,
+                            real_install: bool) -> bool:
+    try:
+        info = snapshot.lstat()
+        if (not stat.S_ISDIR(info.st_mode) or info.st_mode & 0o022
+                or (real_install and info.st_uid != 0)):
+            return False
+        snapshot_names = {source.name for source in SNAPSHOT_FILES}
+        if {item.name for item in snapshot.iterdir()} != snapshot_names:
+            return False
+        for source in [snapshot / item.name for item in SNAPSHOT_FILES]:
+            source_info = source.lstat()
+            if (not stat.S_ISREG(source_info.st_mode) or source_info.st_mode & 0o022
+                    or stat.S_IMODE(source_info.st_mode) != 0o644
+                    or (real_install and source_info.st_uid != 0)):
+                return False
+        return config_id.startswith("deploy-")
+    except OSError:
+        return False
+
+
+def install_runtime_env(root: Path, *, real_install: bool, source: Path) -> None:
+    try:
+        source_info = source.lstat()
+    except OSError:
+        fail("The Bank Compose .env file is not available for the root-only runtime copy.")
+    if (not stat.S_ISREG(source_info.st_mode) or source.is_symlink()
+            or source_info.st_mode & 0o077 or source_info.st_size < 1
+            or source_info.st_size > 1024 * 1024):
+        fail("The Bank Compose .env file must be a private regular file of at most 1 MiB.")
+    try:
+        contents = source.read_bytes()
+    except OSError:
+        fail("The Bank Compose .env file could not be read safely.")
+    if b"\0" in contents:
+        fail("The Bank Compose .env file contains an invalid byte.")
+    target = root / "etc" / "bank-demo" / "runtime.env"
+    try:
+        target_info = target.lstat()
+    except FileNotFoundError:
+        install_file(target, contents, 0o600, real_install=real_install)
+        return
+    except OSError:
+        fail("The Bank runtime environment file could not be inspected safely.")
+    if (not stat.S_ISREG(target_info.st_mode) or target_info.st_mode & 0o077
+            or stat.S_IMODE(target_info.st_mode) != 0o600
+            or (real_install and target_info.st_uid != 0)):
+        fail("The installed Bank runtime environment has unsafe ownership or permissions.")
+    if target.read_bytes() != contents:
+        fail("The Bank runtime environment differs; review and update it as a separate admin action.")
+
+
+def install_state_directory(root: Path, *, real_install: bool) -> None:
+    path = root / "var" / "lib" / "bank-demo-deploy"
+    try:
+        path.lstat()
+    except FileNotFoundError:
+        path.mkdir(mode=0o700)
+        if real_install:
+            os.chown(path, 0, 0)
+    info = path.lstat()
+    if (not stat.S_ISDIR(info.st_mode) or stat.S_IMODE(info.st_mode) != 0o700
+            or (real_install and info.st_uid != 0)):
+        fail("The Bank deployment state directory has unsafe ownership or permissions.")
+    lock = path / "operation.lock"
+    try:
+        lock_info = lock.lstat()
+    except FileNotFoundError:
+        fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        try:
+            if real_install:
+                os.fchown(fd, 0, 0)
+        finally:
+            os.close(fd)
+    except OSError:
+        fail("The Bank deployment lock could not be inspected safely.")
+    else:
+        if (not stat.S_ISREG(lock_info.st_mode) or stat.S_IMODE(lock_info.st_mode) != 0o600
+                or (real_install and lock_info.st_uid != 0)):
+            fail("The Bank deployment lock has unsafe ownership or permissions.")
 
 
 def install_snapshot(target: Path, files: tuple[Path, ...], *, real_install: bool) -> None:
@@ -223,7 +312,7 @@ def install_snapshot(target: Path, files: tuple[Path, ...], *, real_install: boo
             shutil.rmtree(temporary)
 
 
-def install(root: Path) -> None:
+def install(root: Path, runtime_env_source: Path = RUNTIME_ENV_SOURCE) -> None:
     real_install = root == Path("/")
     if real_install and os.geteuid() != 0:
         fail("Run the production bootstrap as root (for example, with sudo).")
@@ -245,6 +334,11 @@ def install(root: Path) -> None:
                       root / "usr" / "local" / "libexec", libexec_root, sbin_root):
         check_directory(directory, create=True, real_install=real_install)
 
+    for directory in (root / "var", root / "var" / "lib"):
+        check_directory(directory, create=True, real_install=real_install)
+    install_runtime_env(root, real_install=real_install, source=runtime_env_source)
+    install_state_directory(root, real_install=real_install)
+
     snapshot = configs_root / config_id
     install_snapshot(snapshot, snapshot_sources, real_install=real_install)
 
@@ -259,8 +353,8 @@ def install(root: Path) -> None:
                               separators=(",", ":"), sort_keys=True) + "\n").encode()
     update_config_pointer(config_path, config_data, bank_root=bank_root, real_install=real_install)
 
-    print(f"Installed read-only Bank host helper; config_id={config_id}.")
-    print("No SSH account, sudoers rule, key, runtime secret, live Compose configuration, or container was changed.")
+    print(f"Installed Bank deployment helper and root-only runtime environment; config_id={config_id}.")
+    print("No SSH account, sudoers rule, key, live Compose configuration, or container was changed.")
 
 
 def main() -> None:
@@ -271,11 +365,13 @@ def main() -> None:
         default=Path("/"),
         help="Installation root; only use a temporary directory for tests.",
     )
+    parser.add_argument("--runtime-env-source", type=Path, default=RUNTIME_ENV_SOURCE,
+                        help=argparse.SUPPRESS)
     args = parser.parse_args()
     root = args.root.resolve()
     if not root.is_dir():
         fail("Installation root must be an existing directory.")
-    install(root)
+    install(root, args.runtime_env_source.resolve())
 
 
 if __name__ == "__main__":
