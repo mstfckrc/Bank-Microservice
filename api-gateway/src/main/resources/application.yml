@@ -102,7 +102,7 @@ management:
         include: health,prometheus # Sadece sağlık ve metrik kapılarını aç
   endpoint:
     health:
-      show-details: always # Veritabanı ve Redis durumlarını da rapora dahil et
+      show-details: never
   prometheus:
     metrics:
       export:

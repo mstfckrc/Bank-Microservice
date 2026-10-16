@@ -103,6 +103,12 @@ services:
       - JWT_SECRET=${JWT_SECRET}
     ports:
       - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "--max-time", "5", "--output", "/dev/null", "http://127.0.0.1:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
     networks:
       - bank-network-micro
 
@@ -135,6 +141,12 @@ services:
       - EUREKA_URL=${EUREKA_URL}
     extra_hosts:
       - "auth.bank.local:host-gateway"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "--max-time", "5", "--output", "/dev/null", "http://127.0.0.1:8081/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
     networks:
       - bank-network-micro
 
@@ -161,6 +173,12 @@ services:
       - EUREKA_URL=${EUREKA_URL}
     ports:
       - "8082:8082"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "--max-time", "5", "--output", "/dev/null", "http://127.0.0.1:8082/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
     networks:
       - bank-network-micro
 
@@ -174,6 +192,12 @@ services:
     restart: always
     ports:
       - "8083:8083"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "--max-time", "5", "--output", "/dev/null", "http://127.0.0.1:8083/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
     environment:
       - EUREKA_URL=${EUREKA_URL}
       - REDIS_HOST=${REDIS_HOST}
@@ -214,6 +238,12 @@ services:
       - EUREKA_URL=${EUREKA_URL}
     ports:
       - "8084:8084"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "--max-time", "5", "--output", "/dev/null", "http://127.0.0.1:8084/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
     networks:
       - bank-network-micro
 
@@ -245,6 +275,12 @@ services:
       - EUREKA_URL=${EUREKA_URL}
     ports:
       - "8085:8085"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "--max-time", "5", "--output", "/dev/null", "http://127.0.0.1:8085/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
     networks:
       - bank-network-micro
 
@@ -280,6 +316,12 @@ services:
       - KEYCLOAK_INTERNAL_URL=${KC_INTERNAL_URL}
     ports:
       - "8086:8086"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "--max-time", "5", "--output", "/dev/null", "http://127.0.0.1:8086/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
     networks:
       - bank-network-micro
 
@@ -315,6 +357,12 @@ services:
       - "app.bank.local:host-gateway"
       - "api.bank.local:host-gateway"
       - "auth.bank.local:host-gateway"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then((response) => process.exit(response.status < 400 ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
     networks:
       - bank-network-micro
 
@@ -329,6 +377,12 @@ services:
     depends_on:
       logstash:
         condition: service_healthy # 🚀 Logstash'i bekle
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "--max-time", "5", "--output", "/dev/null", "http://127.0.0.1:8761/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
     networks:
       - bank-network-micro
 
