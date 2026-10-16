@@ -28,7 +28,7 @@ management:
         include: health,prometheus
   endpoint:
     health:
-      show-details: always
+      show-details: never
   prometheus:
     metrics:
       export:
