@@ -6,19 +6,24 @@ pipeline {
     options {
         skipDefaultCheckout()
         disableConcurrentBuilds()
-        timeout(time: 45, unit: 'MINUTES')
+        timeout(time: 90, unit: 'MINUTES')
     }
 
     parameters {
         choice(
             name: 'ACTION',
-            choices: ['status', 'validate'],
-            description: 'status reads Bank application container state; validate checks a successful image release manifest. Neither action changes the running application.'
+            choices: ['status', 'validate', 'deploy', 'rollback'],
+            description: 'status is read-only; validate checks a release; deploy applies a selected release and automatically rolls back on failed health checks; rollback restores the previous images for the selected deployment.'
         )
         string(
             name: 'RELEASE_BUILD_NUMBER',
             defaultValue: '',
-            description: 'Exact successful Bank-Demo-Release/image-build-pilot build number to validate.'
+            description: 'Exact successful Bank-Demo-Release/image-build-pilot build number for validate/deploy.'
+        )
+        string(
+            name: 'DEPLOYMENT_ID',
+            defaultValue: '',
+            description: 'Deployment ID returned by deploy-bank; required only for rollback.'
         )
     }
 
@@ -26,11 +31,11 @@ pipeline {
         stage('Validate request parameters') {
             steps {
                 script {
-                    if (!(params.ACTION in ['validate', 'status'])) {
+                    if (!(params.ACTION in ['validate', 'status', 'deploy', 'rollback'])) {
                         error('Unsupported ACTION.')
                     }
 
-                    if (params.ACTION == 'validate') {
+                    if (params.ACTION in ['validate', 'deploy']) {
                         def selectedBuild = params.RELEASE_BUILD_NUMBER?.trim()
                         if (!(selectedBuild ==~ /^[1-9][0-9]{0,8}$/)) {
                             error('RELEASE_BUILD_NUMBER must be a positive image-build-pilot build number.')
@@ -39,13 +44,23 @@ pipeline {
                     } else {
                         env.SELECTED_RELEASE_BUILD = ''
                     }
+
+                    if (params.ACTION == 'rollback') {
+                        def deploymentId = params.DEPLOYMENT_ID?.trim()
+                        if (!(deploymentId ==~ /^deploy-[0-9a-f]{32}$/)) {
+                            error('DEPLOYMENT_ID must be a deployment ID previously returned by deploy-bank.')
+                        }
+                        env.SELECTED_DEPLOYMENT_ID = deploymentId
+                    } else {
+                        env.SELECTED_DEPLOYMENT_ID = ''
+                    }
                 }
             }
         }
 
         stage('Confirm selected release succeeded') {
             when {
-                expression { params.ACTION == 'validate' }
+                expression { params.ACTION in ['validate', 'deploy'] }
             }
             steps {
                 script {
@@ -75,6 +90,7 @@ pipeline {
                     test -f ci/prepare-release-env.sh
                     test -f ci/deploy/protocol.py
                     test -f ci/deploy/bootstrap_host_validation.py
+                    test -f ci/deploy/deployment.py
                     test -f ci/deploy/tests/test_protocol.py
                     sh ci/validate-release-catalog.sh ci/release-services.txt
                 '''
@@ -89,7 +105,7 @@ pipeline {
 
         stage('Copy and validate exact release manifest') {
             when {
-                expression { params.ACTION == 'validate' }
+                expression { params.ACTION in ['validate', 'deploy'] }
             }
             steps {
                 copyArtifacts(
@@ -128,6 +144,11 @@ pipeline {
                                 python3 ci/deploy/protocol.py create-request \
                                     --action "$ACTION" \
                                     --output deploy-input/request.json
+                            elif [ "$ACTION" = rollback ]; then
+                                python3 ci/deploy/protocol.py create-request \
+                                    --action "$ACTION" \
+                                    --deployment-id "$SELECTED_DEPLOYMENT_ID" \
+                                    --output deploy-input/request.json
                             else
                                 python3 ci/deploy/protocol.py create-request \
                                     --action "$ACTION" \
@@ -140,7 +161,7 @@ pipeline {
                         returnStdout: true
                     ).trim().readLines().last()
                     env.DEPLOY_REQUEST_ID = requestId
-                    env.DEPLOY_MANIFEST_SHA256 = params.ACTION == 'validate'
+                    env.DEPLOY_MANIFEST_SHA256 = params.ACTION in ['validate', 'deploy']
                         ? sh(
                             script: 'sha256sum deploy-input/release-manifest.tsv | cut -d " " -f 1',
                             returnStdout: true
@@ -174,12 +195,18 @@ pipeline {
                             bank-deploy@192.168.56.10 \
                             < deploy-input/request.json \
                             > deploy-input/response.json
-                        if [ "$ACTION" = validate ]; then
+                        if [ "$ACTION" = validate ] || [ "$ACTION" = deploy ]; then
                             python3 ci/deploy/protocol.py check-response \
                                 --action "$ACTION" \
                                 --request-id "$DEPLOY_REQUEST_ID" \
                                 --release-build-number "$SELECTED_RELEASE_BUILD" \
                                 --manifest-sha256 "$DEPLOY_MANIFEST_SHA256" \
+                                --input deploy-input/response.json
+                        elif [ "$ACTION" = rollback ]; then
+                            python3 ci/deploy/protocol.py check-response \
+                                --action "$ACTION" \
+                                --request-id "$DEPLOY_REQUEST_ID" \
+                                --deployment-id "$SELECTED_DEPLOYMENT_ID" \
                                 --input deploy-input/response.json
                         else
                             python3 ci/deploy/protocol.py check-response \
@@ -192,19 +219,16 @@ pipeline {
             }
         }
 
-        stage('Archive sanitized deployment evidence') {
-            steps {
-                archiveArtifacts(
-                    artifacts: 'deploy-input/response.json',
-                    fingerprint: true,
-                    onlyIfSuccessful: true
-                )
-            }
-        }
     }
 
     post {
         always {
+            archiveArtifacts(
+                artifacts: 'deploy-input/response.json',
+                fingerprint: true,
+                allowEmptyArchive: true,
+                onlyIfSuccessful: false
+            )
             sh 'rm -rf -- deploy-input'
         }
     }

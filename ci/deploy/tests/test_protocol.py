@@ -161,6 +161,41 @@ class DeployProtocolTests(unittest.TestCase):
         self.assertEqual(set(request), {"protocol_version", "request_id", "action"})
         self.assertEqual(request["action"], "status")
 
+    def test_client_builds_deploy_request_from_exact_manifest(self) -> None:
+        manifest_path = self.root / "release-manifest-for-deploy.tsv"
+        request_path = self.root / "deploy-request.json"
+        manifest_path.write_bytes(self.manifest)
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            protocol.build_request(argparse.Namespace(
+                action="deploy", release_build_number=self.build_number,
+                manifest=str(manifest_path), deployment_id=None, output=str(request_path),
+            ))
+
+        request = json.loads(request_path.read_text(encoding="utf-8"))
+        self.assertEqual(request["action"], "deploy")
+        self.assertEqual(request["release_build_number"], self.build_number)
+        self.assertEqual(request["manifest_sha256"], self.manifest_sha256)
+        self.assertEqual(base64.b64decode(request["manifest_base64"], validate=True), self.manifest)
+
+    def test_client_builds_rollback_request_for_exact_deployment_id(self) -> None:
+        request_path = self.root / "rollback-request.json"
+        deployment_id = "deploy-" + "a" * 32
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            protocol.build_request(argparse.Namespace(
+                action="rollback", release_build_number=None, manifest=None,
+                deployment_id=deployment_id, output=str(request_path),
+            ))
+
+        request = json.loads(request_path.read_text(encoding="utf-8"))
+        self.assertEqual(request, {
+            "protocol_version": 1,
+            "request_id": request["request_id"],
+            "action": "rollback",
+            "deployment_id": deployment_id,
+        })
+
     def test_host_accepts_release_matching_its_trusted_catalog(self) -> None:
         response = json.loads(self.host_call(json.dumps(self.request()).encode("utf-8")))
 
@@ -263,6 +298,7 @@ class DeployProtocolTests(unittest.TestCase):
             "source_commit": self.source_commit,
             "manifest_sha256": self.manifest_sha256,
             "config_id": self.config_id,
+            "deployment_id": None,
             "message": "validated",
             "status_report": None,
         }
@@ -290,6 +326,7 @@ class DeployProtocolTests(unittest.TestCase):
             "source_commit": self.source_commit,
             "manifest_sha256": "0" * 64,
             "config_id": self.config_id,
+            "deployment_id": None,
             "message": "validated",
             "status_report": None,
         }
@@ -311,6 +348,8 @@ class DeployProtocolTests(unittest.TestCase):
         status_report = {
             "project": protocol.PROJECT_NAME,
             "summary": "degraded",
+            "deployment_id": None,
+            "deployment_phase": "not_deployed",
             "services": [{
                 "name": "backend",
                 "state": "running",
@@ -329,6 +368,7 @@ class DeployProtocolTests(unittest.TestCase):
             "source_commit": None,
             "manifest_sha256": None,
             "config_id": self.config_id,
+            "deployment_id": None,
             "message": "read only",
             "status_report": status_report,
         }), encoding="utf-8")
@@ -339,6 +379,60 @@ class DeployProtocolTests(unittest.TestCase):
                 request_id=self.request_id,
                 release_build_number=None,
                 manifest_sha256=None,
+                input=str(response_path),
+            ))
+
+    def test_client_accepts_successful_deploy_response_with_deployment_id(self) -> None:
+        response_path = self.root / "deploy-response.json"
+        deployment_id = "deploy-" + "d" * 32
+        response_path.write_text(json.dumps({
+            "protocol_version": 1,
+            "request_id": self.request_id,
+            "action": "deploy",
+            "release_build_number": self.build_number,
+            "result": "deployed",
+            "source_commit": self.source_commit,
+            "manifest_sha256": self.manifest_sha256,
+            "config_id": self.config_id,
+            "deployment_id": deployment_id,
+            "message": "healthy",
+            "status_report": None,
+        }), encoding="utf-8")
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            protocol.check_response(argparse.Namespace(
+                action="deploy",
+                request_id=self.request_id,
+                release_build_number=self.build_number,
+                manifest_sha256=self.manifest_sha256,
+                deployment_id=None,
+                input=str(response_path),
+            ))
+
+    def test_client_fails_pipeline_when_deploy_was_automatically_rolled_back(self) -> None:
+        response_path = self.root / "rolled-back-deploy-response.json"
+        response_path.write_text(json.dumps({
+            "protocol_version": 1,
+            "request_id": self.request_id,
+            "action": "deploy",
+            "release_build_number": self.build_number,
+            "result": "rolled_back",
+            "source_commit": self.source_commit,
+            "manifest_sha256": self.manifest_sha256,
+            "config_id": self.config_id,
+            "deployment_id": "deploy-" + "d" * 32,
+            "message": "previous images restored",
+            "status_report": None,
+        }), encoding="utf-8")
+
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()), \
+                self.assertRaises(SystemExit):
+            protocol.check_response(argparse.Namespace(
+                action="deploy",
+                request_id=self.request_id,
+                release_build_number=self.build_number,
+                manifest_sha256=self.manifest_sha256,
+                deployment_id=None,
                 input=str(response_path),
             ))
 

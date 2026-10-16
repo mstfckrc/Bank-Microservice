@@ -48,11 +48,13 @@ RESPONSE_KEYS = {
     "source_commit",
     "manifest_sha256",
     "config_id",
+    "deployment_id",
     "message",
     "status_report",
 }
 VALIDATE_RESULTS = {"validated", "rejected"}
 STATUS_RESULT = "reported"
+DEPLOY_RESULTS = {"deployed", "rolled_back", "rejected"}
 DOCKER_BIN = "/usr/bin/docker"
 PROJECT_NAME = "bank-microservice-env"
 SERVICE_NAME_RE = re.compile(r"^[a-z][a-z0-9-]{0,62}$")
@@ -62,6 +64,10 @@ CONTAINER_ID_RE = re.compile(r"^[0-9a-f]{12,64}$")
 def fail(message: str) -> "NoReturn":
     print(message, file=sys.stderr)
     raise SystemExit(2)
+
+
+class ReleaseRejected(Exception):
+    """A structurally valid request whose manifest fails the trusted catalog."""
 
 
 def read_bounded(path: Path, limit: int) -> bytes:
@@ -107,7 +113,7 @@ def build_request(args: argparse.Namespace) -> None:
         "action": args.action,
     }
 
-    if args.action == "validate":
+    if args.action in {"validate", "deploy"}:
         if not BUILD_NUMBER_RE.fullmatch(args.release_build_number or ""):
             fail("A positive image-build-pilot build number is required.")
         if not args.manifest:
@@ -120,6 +126,11 @@ def build_request(args: argparse.Namespace) -> None:
             "manifest_sha256": hashlib.sha256(manifest).hexdigest(),
             "manifest_base64": base64.b64encode(manifest).decode("ascii"),
         })
+    elif args.action == "rollback":
+        deployment_id = args.deployment_id or ""
+        if not re.fullmatch(r"deploy-[0-9a-f]{32}", deployment_id):
+            fail("A valid deployment ID is required for rollback.")
+        request["deployment_id"] = deployment_id
 
     encoded = (json.dumps(request, separators=(",", ":"), sort_keys=True) + "\n").encode("utf-8")
     if len(encoded) > MAX_REQUEST_BYTES:
@@ -157,7 +168,12 @@ def check_response(args: argparse.Namespace) -> None:
         fail("Bank helper response does not match the selected release build.")
 
     result = response.get("result")
-    allowed_results = VALIDATE_RESULTS if args.action == "validate" else {STATUS_RESULT}
+    allowed_results = (
+        VALIDATE_RESULTS if args.action == "validate"
+        else DEPLOY_RESULTS if args.action == "deploy"
+        else {"rolled_back", "rejected"} if args.action == "rollback"
+        else {STATUS_RESULT}
+    )
     if not isinstance(result, str) or result not in allowed_results:
         fail("Bank helper returned an unsupported result for this action.")
 
@@ -182,11 +198,23 @@ def check_response(args: argparse.Namespace) -> None:
         fail("Bank helper validation response is missing release or configuration identity.")
     if result == "validated" and not release_build_number:
         fail("Bank helper validation response is missing the selected release build number.")
+    deployment_id = response.get("deployment_id")
+    if deployment_id is not None and (
+        not isinstance(deployment_id, str)
+        or not re.fullmatch(r"deploy-[0-9a-f]{32}", deployment_id)
+    ):
+        fail("Bank helper returned an invalid deployment ID.")
+    if args.action == "deploy" and result == "deployed" and not deployment_id:
+        fail("Bank helper deploy response is missing its deployment ID.")
+    if args.action == "rollback" and result == "rolled_back" and deployment_id != args.deployment_id:
+        fail("Bank helper rollback response does not match the selected deployment ID.")
     status_report = response.get("status_report")
     if args.action == "validate" and status_report is not None:
         fail("Bank helper validation response unexpectedly contains runtime status.")
     if args.action == "status":
         validate_status_report(status_report)
+        if deployment_id != status_report["deployment_id"]:
+            fail("Bank helper deployment identity does not match its runtime status report.")
     message = response.get("message")
     if not isinstance(message, str) or len(message) > 512 or any(ord(char) < 32 for char in message):
         fail("Bank helper returned an invalid status message.")
@@ -200,6 +228,8 @@ def check_response(args: argparse.Namespace) -> None:
         print(f"Manifest SHA-256: {manifest_sha256}")
     if config_id:
         print(f"Configuration ID: {config_id}")
+    if deployment_id:
+        print(f"Deployment ID: {deployment_id}")
     print(f"Message: {message}")
 
     if status_report is not None:
@@ -211,12 +241,14 @@ def check_response(args: argparse.Namespace) -> None:
                 f"health={service['health']}, image_id={service['image_id'] or 'unavailable'}"
             )
 
-    if result == "rejected":
+    if result == "rejected" or (args.action == "deploy" and result == "rolled_back"):
         raise SystemExit(1)
 
 
 def validate_status_report(report: Any) -> None:
-    if not isinstance(report, dict) or set(report) != {"project", "summary", "services"}:
+    if not isinstance(report, dict) or set(report) != {
+        "project", "summary", "services", "deployment_id", "deployment_phase"
+    }:
         fail("Bank helper returned an invalid runtime status report.")
     if report.get("project") != PROJECT_NAME:
         fail("Bank helper returned an unexpected Compose project.")
@@ -225,6 +257,18 @@ def validate_status_report(report: Any) -> None:
     services = report.get("services")
     if not isinstance(services, list) or not 1 <= len(services) <= 32:
         fail("Bank helper returned an invalid runtime service list.")
+    report_deployment_id = report.get("deployment_id")
+    if report_deployment_id is not None and (
+        not isinstance(report_deployment_id, str)
+        or not re.fullmatch(r"deploy-[0-9a-f]{32}", report_deployment_id)
+    ):
+        fail("Bank helper returned an invalid runtime deployment ID.")
+    if report.get("deployment_phase") not in {
+        None, "not_deployed", "prepared", "pulling", "applying", "checking",
+        "succeeded", "rolling_back", "rolled_back", "failed_before_apply",
+        "recovery_required", "unknown",
+    }:
+        fail("Bank helper returned an invalid runtime deployment phase.")
     seen: set[str] = set()
     for service in services:
         if not isinstance(service, dict) or set(service) != {
@@ -256,17 +300,19 @@ def main() -> None:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     create = subparsers.add_parser("create-request")
-    create.add_argument("--action", choices=["validate", "status"], required=True)
+    create.add_argument("--action", choices=["validate", "status", "deploy", "rollback"], required=True)
     create.add_argument("--release-build-number")
     create.add_argument("--manifest")
+    create.add_argument("--deployment-id")
     create.add_argument("--output", required=True)
     create.set_defaults(func=build_request)
 
     check = subparsers.add_parser("check-response")
-    check.add_argument("--action", choices=["validate", "status"], required=True)
+    check.add_argument("--action", choices=["validate", "status", "deploy", "rollback"], required=True)
     check.add_argument("--request-id", required=True)
     check.add_argument("--release-build-number")
     check.add_argument("--manifest-sha256")
+    check.add_argument("--deployment-id")
     check.add_argument("--input", required=True)
     check.set_defaults(func=check_response)
 
@@ -330,7 +376,7 @@ def verify_deploy_snapshot(config_id: str, config_dir: Path) -> None:
         "docker-compose.yml",
         "compose.images.yml",
     )
-    sources = [Path(__file__)]
+    sources = [Path(__file__), Path(__file__).with_name("deployment.py")]
     sources.extend(config_dir / name for name in snapshot_names)
     sources.append(HOST_WRAPPER)
     digest = hashlib.sha256()
@@ -364,40 +410,35 @@ def host_command(_args: argparse.Namespace) -> None:
         host_validate(raw_request)
     elif action == "status":
         host_status(raw_request)
+    elif action in {"deploy", "rollback"}:
+        from deployment import host_deployment_command
+
+        host_deployment_command(action, raw_request)
     else:
         fail("Bank helper request has an unsupported action.")
 
 
-def host_validate(raw_request: bytes | None = None) -> None:
-    if raw_request is None:
-        raw_request = sys.stdin.buffer.read(MAX_REQUEST_BYTES + 1)
+def validate_release_request(raw_request: bytes, expected_action: str) -> dict[str, Any]:
+    """Validate the exact release manifest against the root-owned host catalog."""
     if len(raw_request) > MAX_REQUEST_BYTES:
         fail("Protocol request exceeds the configured size limit.")
-
     request = parse_json(raw_request, what="Bank helper request")
-    request_keys = {
-        "protocol_version",
-        "request_id",
-        "action",
-        "release_build_number",
-        "manifest_sha256",
-        "manifest_base64",
-    }
-    require_exact_keys(request, request_keys, what="Bank helper request")
-
+    require_exact_keys(
+        request,
+        {"protocol_version", "request_id", "action", "release_build_number",
+         "manifest_sha256", "manifest_base64"},
+        what="Bank helper request",
+    )
     request_id = request.get("request_id")
     if not isinstance(request_id, str) or not REQUEST_ID_RE.fullmatch(request_id):
         fail("Bank helper request has an invalid request ID.")
-    action = request.get("action")
-    if action != "validate":
+    if request.get("action") != expected_action:
         fail("Bank helper request has an unsupported action.")
     if type(request.get("protocol_version")) is not int or request["protocol_version"] != 1:
         fail("Bank helper request uses an unsupported protocol version.")
-
     build_number = request.get("release_build_number")
     if not isinstance(build_number, str) or not BUILD_NUMBER_RE.fullmatch(build_number):
         fail("Bank helper request has an invalid release build number.")
-
     manifest_hash = request.get("manifest_sha256")
     encoded_manifest = request.get("manifest_base64")
     if not isinstance(manifest_hash, str) or not SHA256_RE.fullmatch(manifest_hash):
@@ -416,79 +457,82 @@ def host_validate(raw_request: bytes | None = None) -> None:
     if actual_hash != manifest_hash:
         fail("Bank helper request manifest hash does not match its content.")
 
-    config_id: str | None = None
-    source_commit: str | None = None
-    result = "rejected"
-    message = "Release manifest was rejected by the Bank host's trusted catalog. No change was made."
-    try:
-        config_id, config_dir = load_host_config()
-        validator = config_dir / "prepare-release-env.sh"
-        catalog_validator = config_dir / "validate-release-catalog.sh"
-        for trusted_path in (validator, catalog_validator, config_dir / "release-services.txt"):
-            require_trusted_file(trusted_path)
-
-        # Verify the catalog itself before invoking the manifest validator.
-        catalog_check = subprocess.run(
-            ["/bin/sh", str(catalog_validator), str(config_dir / "release-services.txt")],
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=False,
-            timeout=10,
-            env={"PATH": "/usr/bin:/bin", "LC_ALL": "C"},
-        )
-        if catalog_check.returncode != 0:
-            fail("The trusted Bank host release catalog failed validation.")
-
-        with tempfile.NamedTemporaryFile(
-            prefix="bank-deploy-manifest-", dir=MANIFEST_TEMP_DIR, delete=True
-        ) as stream:
-            os.fchmod(stream.fileno(), 0o600)
-            stream.write(manifest)
-            stream.flush()
-            validation = subprocess.run(
-                ["/bin/sh", str(validator), stream.name],
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                check=False,
-                timeout=20,
-                env={"PATH": "/usr/bin:/bin", "LC_ALL": "C"},
-            )
-        if validation.returncode == 0:
-            match = re.search(
-                rb"Validated [0-9]+ release images for source commit ([0-9a-f]{40})\.",
-                validation.stderr,
-            )
-            if match is None:
-                fail("Trusted Bank manifest validation returned no source commit identity.")
-            source_commit = match.group(1).decode("ascii")
-            result = "validated"
-            message = "Release manifest matches the Bank host's trusted service catalog. No change was made."
-    except subprocess.TimeoutExpired:
-        result = "rejected"
-        message = "Bank host release validation exceeded its time limit. No change was made."
-    except SystemExit:
-        raise
-    except Exception:
-        # Do not return paths, exception text, or potentially sensitive host detail.
-        result = "rejected"
-        message = "Bank host release validation could not complete. No change was made."
-
-    write_response(
-        {
-            "protocol_version": 1,
-            "request_id": request_id,
-            "action": action,
-            "release_build_number": build_number,
-            "result": result,
-            "source_commit": source_commit,
-            "manifest_sha256": actual_hash,
-            "config_id": config_id,
-            "message": message,
-            "status_report": None,
-        }
+    config_id, config_dir = load_host_config()
+    validator = config_dir / "prepare-release-env.sh"
+    catalog_validator = config_dir / "validate-release-catalog.sh"
+    for trusted_path in (validator, catalog_validator, config_dir / "release-services.txt"):
+        require_trusted_file(trusted_path)
+    catalog_check = subprocess.run(
+        ["/bin/sh", str(catalog_validator), str(config_dir / "release-services.txt")],
+        stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        check=False, timeout=10, env={"PATH": "/usr/bin:/bin", "LC_ALL": "C"},
     )
+    if catalog_check.returncode != 0:
+        fail("The trusted Bank host release catalog failed validation.")
+    with tempfile.NamedTemporaryFile(
+        prefix="bank-deploy-manifest-", dir=MANIFEST_TEMP_DIR, delete=True
+    ) as stream:
+        os.fchmod(stream.fileno(), 0o600)
+        stream.write(manifest)
+        stream.flush()
+        validation = subprocess.run(
+            ["/bin/sh", str(validator), stream.name],
+            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            check=False, timeout=20, env={"PATH": "/usr/bin:/bin", "LC_ALL": "C"},
+        )
+    if validation.returncode != 0:
+        raise ReleaseRejected("Release manifest was rejected by the Bank host's trusted catalog.")
+    match = re.search(
+        rb"Validated [0-9]+ release images for source commit ([0-9a-f]{40})\.",
+        validation.stderr,
+    )
+    if match is None:
+        fail("Trusted Bank manifest validation returned no source commit identity.")
+    return {
+        "request_id": request_id,
+        "release_build_number": build_number,
+        "manifest": manifest,
+        "manifest_sha256": actual_hash,
+        "source_commit": match.group(1).decode("ascii"),
+        "config_id": config_id,
+        "config_dir": config_dir,
+    }
+
+
+def host_validate(raw_request: bytes | None = None) -> None:
+    if raw_request is None:
+        raw_request = sys.stdin.buffer.read(MAX_REQUEST_BYTES + 1)
+    try:
+        info = validate_release_request(raw_request, "validate")
+    except ReleaseRejected:
+        request = parse_json(raw_request, what="Bank helper request")
+        write_response({
+            "protocol_version": 1,
+            "request_id": request.get("request_id"),
+            "action": "validate",
+            "release_build_number": request.get("release_build_number"),
+            "result": "rejected",
+            "source_commit": None,
+            "manifest_sha256": request.get("manifest_sha256"),
+            "config_id": None,
+            "deployment_id": None,
+            "message": "Release manifest was rejected by the Bank host's trusted catalog. No change was made.",
+            "status_report": None,
+        })
+        return
+    write_response({
+        "protocol_version": 1,
+        "request_id": info["request_id"],
+        "action": "validate",
+        "release_build_number": info["release_build_number"],
+        "result": "validated",
+        "source_commit": info["source_commit"],
+        "manifest_sha256": info["manifest_sha256"],
+        "config_id": info["config_id"],
+        "deployment_id": None,
+        "message": "Release manifest matches the Bank host's trusted service catalog. No change was made.",
+        "status_report": None,
+    })
 
 
 def read_service_catalog(config_dir: Path) -> list[str]:
@@ -650,6 +694,12 @@ def host_status(raw_request: bytes | None = None) -> None:
     else:
         summary = "healthy"
 
+    try:
+        from deployment import current_deployment_state
+
+        deployment_id, deployment_phase = current_deployment_state()
+    except Exception:
+        deployment_id, deployment_phase = None, "unknown"
     write_response({
         "protocol_version": 1,
         "request_id": request_id,
@@ -659,8 +709,10 @@ def host_status(raw_request: bytes | None = None) -> None:
         "source_commit": None,
         "manifest_sha256": None,
         "config_id": config_id,
+        "deployment_id": deployment_id,
         "message": "Read-only status collected from the Bank Compose application containers.",
-        "status_report": {"project": PROJECT_NAME, "summary": summary, "services": services},
+        "status_report": {"project": PROJECT_NAME, "summary": summary, "services": services,
+                          "deployment_id": deployment_id, "deployment_phase": deployment_phase},
     })
 
 

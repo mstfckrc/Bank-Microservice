@@ -1,4 +1,4 @@
-"""Safe-install tests for the validate-only Bank host bootstrap."""
+"""Safe-install tests for the Bank host deployment bootstrap."""
 
 from __future__ import annotations
 
@@ -20,17 +20,21 @@ class HostBootstrapTests(unittest.TestCase):
         self.temp_dir = tempfile.TemporaryDirectory(prefix="bank-host-bootstrap-test-")
         self.addCleanup(self.temp_dir.cleanup)
         self.root = Path(self.temp_dir.name)
+        self.runtime_env_source = self.root / "source.env"
+        self.runtime_env_source.write_text("TEST_ONLY_VALUE=not-a-secret\n", encoding="utf-8")
+        os.chmod(self.runtime_env_source, 0o600)
 
     def run_bootstrap(self) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
-            [sys.executable, str(BOOTSTRAP), "--root", str(self.root)],
+            [sys.executable, str(BOOTSTRAP), "--root", str(self.root),
+             "--runtime-env-source", str(self.runtime_env_source)],
             check=False,
             capture_output=True,
             text=True,
             env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
         )
 
-    def test_installs_only_validate_contract_with_restrictive_modes(self) -> None:
+    def test_installs_deploy_contract_and_runtime_env_with_restrictive_modes(self) -> None:
         result = self.run_bootstrap()
 
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -53,6 +57,10 @@ class HostBootstrapTests(unittest.TestCase):
             (REPOSITORY_ROOT / "ci/deploy/protocol.py").read_bytes(),
         )
         self.assertEqual(
+            (self.root / "usr/local/libexec/bank-demo-deploy/deployment.py").read_bytes(),
+            (REPOSITORY_ROOT / "ci/deploy/deployment.py").read_bytes(),
+        )
+        self.assertEqual(
             (self.root / "usr/local/sbin/bank-demo-deploy").read_bytes(),
             (REPOSITORY_ROOT / "ci/deploy/bank-demo-deploy").read_bytes(),
         )
@@ -63,6 +71,11 @@ class HostBootstrapTests(unittest.TestCase):
             (self.root / "usr/local/sbin/bank-demo-deploy").stat().st_mode & 0o777,
             0o755,
         )
+        runtime_env = self.root / "etc/bank-demo/runtime.env"
+        self.assertEqual(runtime_env.read_text(encoding="utf-8"), "TEST_ONLY_VALUE=not-a-secret\n")
+        self.assertEqual(runtime_env.stat().st_mode & 0o777, 0o600)
+        self.assertEqual((self.root / "var/lib/bank-demo-deploy").stat().st_mode & 0o777, 0o700)
+        self.assertEqual((self.root / "var/lib/bank-demo-deploy/operation.lock").stat().st_mode & 0o777, 0o600)
 
     def test_repeated_install_is_idempotent(self) -> None:
         first = self.run_bootstrap()
