@@ -13,7 +13,7 @@ function fail(message) {
 }
 
 FNR == 1 {
-    if ($0 != "# compose-service|build-context|dockerhub-repository|dockerfile-target|image-env") {
+    if ($0 != "# compose-service|build-context|dockerhub-repository|dockerfile-target") {
         fail("unexpected header")
     }
     next
@@ -22,8 +22,8 @@ FNR == 1 {
 /^[[:space:]]*$/ { next }
 /^[[:space:]]*#/ { next }
 
-NF != 5 {
-    fail("expected exactly five pipe-separated fields")
+NF != 4 {
+    fail("expected exactly four pipe-separated fields")
     next
 }
 
@@ -32,21 +32,17 @@ NF != 5 {
     context = $2
     repository = $3
     target = $4
-    image_env = $5
 
     if (service !~ /^[a-z][a-z0-9-]*$/) fail("invalid Compose service name")
     if (context !~ /^[A-Za-z0-9._/-]+$/ || context ~ /^\// || context ~ /(^|\/)\.\.(\/|$)/) fail("invalid build context")
     if (repository !~ /^[a-z0-9][a-z0-9-]*$/) fail("invalid registry repository")
     if (target !~ /^[a-z][a-z0-9-]*$/) fail("invalid Docker build target")
-    if (image_env !~ /^BANK_DEMO_[A-Z0-9_]+_IMAGE$/) fail("invalid image environment variable")
 
     if (service in services) fail("duplicate Compose service")
     if (repository in repositories) fail("duplicate registry repository")
-    if (image_env in image_envs) fail("duplicate image environment variable")
 
     services[service] = 1
     repositories[repository] = 1
-    image_envs[image_env] = 1
     count++
 }
 
