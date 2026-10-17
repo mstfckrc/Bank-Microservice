@@ -22,6 +22,7 @@ import protocol
 
 
 STATE_ROOT = Path("/var/lib/bank-demo-deploy")
+SHARED_COMPOSE_LOCK = Path("/var/lib/bank-demo-compose.lock")
 RUNTIME_ENV = Path("/etc/bank-demo/runtime.env")
 PROJECT_DIRECTORY = Path("/home/mstfckrc/Bank-Microservice")
 DOCKER_BIN = "/usr/bin/docker"
@@ -29,6 +30,7 @@ HEALTH_WAIT_SECONDS = 900
 PULL_TIMEOUT_SECONDS = 2700
 UP_TIMEOUT_SECONDS = 1200
 ROLLBACK_TIMEOUT_SECONDS = 1200
+SHARED_LOCK_WAIT_SECONDS = 3600
 DEPLOYMENT_ID_RE = re.compile(r"^deploy-[0-9a-f]{32}$")
 IMAGE_REF_RE = re.compile(r"^docker\.io/mstfckrc/[a-z0-9][a-z0-9-]*@sha256:[0-9a-f]{64}$")
 IMAGE_ID_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
@@ -114,6 +116,41 @@ def _save_state(state: dict[str, Any]) -> None:
 
 @contextmanager
 def _operation_lock() -> Iterator[None]:
+    # This root-owned, empty 0644 file is the rendezvous point for local Compose
+    # commands (flock) and this root helper. The private state directory/lock
+    # below remains inaccessible to the local user.
+    try:
+        shared_fd = os.open(
+            SHARED_COMPOSE_LOCK,
+            os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0),
+        )
+    except OSError as exc:
+        raise OperationError("The shared Bank Compose lock is unavailable; run the host bootstrap first.") from exc
+    try:
+        shared_info = os.fstat(shared_fd)
+        if (not stat.S_ISREG(shared_info.st_mode)
+                or shared_info.st_uid != protocol.TRUSTED_OWNER_UID
+                or stat.S_IMODE(shared_info.st_mode) != 0o644
+                or shared_info.st_size != 0 or shared_info.st_nlink != 1):
+            raise OperationError("The shared Bank Compose lock has unsafe ownership or permissions.")
+        shared_deadline = time.monotonic() + SHARED_LOCK_WAIT_SECONDS
+        while True:
+            try:
+                fcntl.flock(shared_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= shared_deadline:
+                    raise OperationError("A local Bank Compose operation still holds the shared runtime lock.")
+                time.sleep(0.25)
+
+        with _state_operation_lock():
+            yield
+    finally:
+        os.close(shared_fd)
+
+
+@contextmanager
+def _state_operation_lock() -> Iterator[None]:
     _trusted_directory(STATE_ROOT)
     lock_path = STATE_ROOT / "operation.lock"
     flags = os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0)

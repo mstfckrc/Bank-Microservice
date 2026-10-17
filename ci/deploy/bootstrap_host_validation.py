@@ -258,6 +258,22 @@ def install_state_directory(root: Path, *, real_install: bool) -> None:
     if (not stat.S_ISDIR(info.st_mode) or stat.S_IMODE(info.st_mode) != 0o700
             or (real_install and info.st_uid != 0)):
         fail("The Bank deployment state directory has unsafe ownership or permissions.")
+
+    deployments = path / "deployments"
+    try:
+        deployments_info = deployments.lstat()
+    except FileNotFoundError:
+        deployments.mkdir(mode=0o700)
+        if real_install:
+            os.chown(deployments, 0, 0)
+        deployments_info = deployments.lstat()
+    except OSError:
+        fail("The Bank deployment history directory could not be inspected safely.")
+    if (not stat.S_ISDIR(deployments_info.st_mode)
+            or stat.S_IMODE(deployments_info.st_mode) != 0o700
+            or (real_install and deployments_info.st_uid != 0)):
+        fail("The Bank deployment history directory has unsafe ownership or permissions.")
+
     lock = path / "operation.lock"
     try:
         lock_info = lock.lstat()
@@ -274,6 +290,12 @@ def install_state_directory(root: Path, *, real_install: bool) -> None:
         if (not stat.S_ISREG(lock_info.st_mode) or stat.S_IMODE(lock_info.st_mode) != 0o600
                 or (real_install and lock_info.st_uid != 0)):
             fail("The Bank deployment lock has unsafe ownership or permissions.")
+
+
+def install_shared_compose_lock(root: Path, *, real_install: bool) -> None:
+    """Install a non-secret, root-owned lock readable by the local Compose user."""
+    lock = root / "var" / "lib" / "bank-demo-compose.lock"
+    install_file(lock, b"", 0o644, real_install=real_install)
 
 
 def install_snapshot(target: Path, files: tuple[Path, ...], *, real_install: bool) -> None:
@@ -338,6 +360,7 @@ def install(root: Path, runtime_env_source: Path = RUNTIME_ENV_SOURCE) -> None:
         check_directory(directory, create=True, real_install=real_install)
     install_runtime_env(root, real_install=real_install, source=runtime_env_source)
     install_state_directory(root, real_install=real_install)
+    install_shared_compose_lock(root, real_install=real_install)
 
     snapshot = configs_root / config_id
     install_snapshot(snapshot, snapshot_sources, real_install=real_install)

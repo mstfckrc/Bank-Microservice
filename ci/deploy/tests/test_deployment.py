@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import fcntl
 import io
 import json
 import os
@@ -36,8 +37,12 @@ class DeploymentStateMachineTests(unittest.TestCase):
         runtime_env = self.fixture.root / "runtime.env"
         runtime_env.write_text("TEST_ONLY_VALUE=not-a-secret\n", encoding="utf-8")
         os.chmod(runtime_env, 0o600)
+        self.shared_lock = self.fixture.root / "bank-demo-compose.lock"
+        self.shared_lock.write_bytes(b"")
+        os.chmod(self.shared_lock, 0o644)
         self.patches = [
             mock.patch.object(deployment, "STATE_ROOT", self.state_root),
+            mock.patch.object(deployment, "SHARED_COMPOSE_LOCK", self.shared_lock),
             mock.patch.object(deployment, "RUNTIME_ENV", runtime_env),
             mock.patch.object(deployment, "PROJECT_DIRECTORY", REPOSITORY_ROOT),
         ]
@@ -151,6 +156,24 @@ class DeploymentStateMachineTests(unittest.TestCase):
 
         self.assertEqual(response["result"], "rejected")
         self.assertFalse((self.state_root / "state.json").exists())
+
+    def test_shared_local_compose_lock_contention_blocks_deployment(self) -> None:
+        descriptor = os.open(self.shared_lock, os.O_RDONLY)
+        self.addCleanup(os.close, descriptor)
+        fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        self.addCleanup(fcntl.flock, descriptor, fcntl.LOCK_UN)
+
+        with mock.patch.object(deployment, "SHARED_LOCK_WAIT_SECONDS", 0):
+            with self.assertRaisesRegex(deployment.OperationError, "local Bank Compose"):
+                with deployment._operation_lock():
+                    self.fail("A contended shared lock must not enter the deployment critical section.")
+
+    def test_shared_lock_requires_root_owned_mode_and_empty_regular_file(self) -> None:
+        os.chmod(self.shared_lock, 0o666)
+
+        with self.assertRaisesRegex(deployment.OperationError, "unsafe ownership or permissions"):
+            with deployment._operation_lock():
+                self.fail("An unsafe shared lock must not be accepted.")
 
     def compose_model(self, images: dict[str, str]) -> dict[str, object]:
         return {
