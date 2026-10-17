@@ -1,9 +1,0 @@
-#!/bin/sh
-set -eu
-
-if [ "$#" -ne 0 ]; then
-    echo 'This restricted command accepts a JSON request on stdin and no arguments.' >&2
-    exit 2
-fi
-
-exec /usr/bin/python3 /usr/local/libexec/bank-demo-deploy/protocol.py host-command

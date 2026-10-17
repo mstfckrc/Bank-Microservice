@@ -3,39 +3,85 @@ pipeline {
         label 'release-image-builder'
     }
 
+    parameters {
+        string(
+            name: 'CI_RUN_ID',
+            defaultValue: '',
+            description: 'Internal: successful bankdemo-ci-build-pilot run number. Used for automatic publication and authorized retries.'
+        )
+    }
+
     options {
         skipDefaultCheckout()
         disableConcurrentBuilds()
         timeout(time: 60, unit: 'MINUTES')
-        // Only the deployment validation and deployment jobs may copy artifacts.
-        copyArtifactPermission('deploy-manifest-preflight,deploy-bank')
     }
 
     stages {
-        stage('Checkout trusted source') {
+        stage('Verify successful main CI provenance') {
+            steps {
+                script {
+                    if (!(params.CI_RUN_ID ==~ /^[1-9][0-9]*$/)) {
+                        error('CI_RUN_ID must identify a successful main CI build.')
+                    }
+
+                    def causes = currentBuild.getBuildCauses()
+                    def upstreamCause = causes.find { cause ->
+                        cause.upstreamProject == 'bankdemo-ci-build-pilot' &&
+                            cause.upstreamBuild?.toString() == params.CI_RUN_ID
+                    }
+                    def authorizedManualRetry = causes.any { cause ->
+                        cause._class == 'hudson.model.Cause$UserIdCause'
+                    }
+                    def hasUpstreamCause = causes.any { cause -> cause.upstreamProject != null }
+                    if ((hasUpstreamCause && upstreamCause == null) ||
+                        (!hasUpstreamCause && !authorizedManualRetry)) {
+                        error('This publisher must be triggered by the matching main CI run or by an authorized manual retry.')
+                    }
+
+                    copyArtifacts(
+                        projectName: 'bankdemo-ci-build-pilot',
+                        selector: specific(params.CI_RUN_ID),
+                        filter: 'source-provenance.txt',
+                        fingerprintArtifacts: true
+                    )
+
+                    def sourceCommit = readFile('source-provenance.txt').trim()
+                    if (!(sourceCommit ==~ /^[0-9a-f]{40}$/)) {
+                        error('The upstream CI provenance artifact does not contain a valid full source SHA.')
+                    }
+                    env.VERIFIED_SOURCE_SHA = sourceCommit
+                    echo "Verified successful main CI run #${params.CI_RUN_ID} for source ${sourceCommit}."
+                }
+            }
+        }
+
+        stage('Checkout the exact CI-verified source') {
             steps {
                 checkout scm
-
                 sh '''
                     set -eu
-
-                    git rev-parse HEAD
-
+                    git fetch --no-tags origin main
+                    git cat-file -e "${VERIFIED_SOURCE_SHA}^{commit}"
+                    git checkout --detach "$VERIFIED_SOURCE_SHA"
+                    test "$(git rev-parse HEAD)" = "$VERIFIED_SOURCE_SHA"
+                    printf 'Publisher checkout is pinned to CI-verified source %s.\n' "$VERIFIED_SOURCE_SHA"
+                '''
+                sh '''
+                    set -eu
                     for path in \
                         ci/release-public.sh \
                         ci/release-services.txt \
-                        ci/validate-release-catalog.sh \
-                        ci/prepare-release-env.sh \
-                        ci/deploy/compose.images.yml; do
+                        ci/validate-release-catalog.sh; do
                         test -f "$path" || {
-                            printf 'Required release input is missing: %s\\n' "$path" >&2
+                            printf 'Required release input is missing: %s\n' "$path" >&2
                             exit 1
                         }
                     done
 
                     sh ci/validate-release-catalog.sh ci/release-services.txt
 
-                    sed '1d' ci/release-services.txt | while IFS='|' read -r service context_dir repository target image_env; do
+                    sed '1d' ci/release-services.txt | while IFS='|' read -r service context_dir repository target; do
                         case "$service" in ''|'#'*) continue ;; esac
                         test -d "$context_dir"
                         test -f "$context_dir/Dockerfile"
@@ -49,20 +95,14 @@ pipeline {
             }
         }
 
-        stage('Release agent and BuildKit verification') {
+        stage('Verify rootless image builder and public settings') {
             steps {
                 sh '''
                     set -eu
-
                     test "$(id -un)" = "jenkins-release"
                     buildctl --version
                     buildctl debug workers
                 '''
-            }
-        }
-
-        stage('Validate public frontend build settings') {
-            steps {
                 sh '''
                     set -eu
                     set -a
@@ -79,12 +119,82 @@ pipeline {
                     case "$NEXT_PUBLIC_KEYCLOAK_URL" in https://*) ;; *) echo 'Keycloak URL must use HTTPS.' >&2; exit 1 ;; esac
                     case "$NEXT_PUBLIC_RECAPTCHA_SITE_KEY" in your_*|change-me*|placeholder*) echo 'Replace the frontend reCAPTCHA placeholder before publishing.' >&2; exit 1 ;; esac
 
-                    echo 'All required public frontend build settings are present; values are not printed.'
+                    echo 'Required public frontend build settings are present; values are not printed.'
                 '''
             }
         }
 
-        stage('Build and push all application images') {
+        stage('Compare with the last successful publication') {
+            steps {
+                copyArtifacts(
+                    projectName: 'Bank-Demo-Release/image-build-pilot',
+                    selector: lastSuccessful(),
+                    filter: 'published-source.sha,release-manifest.tsv',
+                    target: 'previous-release',
+                    optional: true,
+                    fingerprintArtifacts: true
+                )
+                script {
+                    def baselineFile = 'previous-release/published-source.sha'
+                    if (!fileExists(baselineFile)) {
+                        env.PUBLISH_IMAGES = 'true'
+                        echo 'No successful-publication baseline exists; the full catalog will be published.'
+                    } else {
+                        def baseline = readFile(baselineFile).trim()
+                        if (!(baseline ==~ /^[0-9a-f]{40}$/)) {
+                            error('The last successful publication has an invalid source SHA baseline.')
+                        }
+                        if (!fileExists('previous-release/release-manifest.tsv')) {
+                            error('The last successful publication is missing its canonical image manifest.')
+                        }
+                        def sourceIsOlder = sh(
+                            script: 'git merge-base --is-ancestor "$VERIFIED_SOURCE_SHA" "' + baseline + '"',
+                            returnStatus: true
+                        )
+                        if (sourceIsOlder == 0 && baseline != env.VERIFIED_SOURCE_SHA) {
+                            error('This CI run predates the last successful publication; refusing to move the publication baseline backwards.')
+                        }
+                        if (sourceIsOlder != 0) {
+                            def baselineIsAncestor = sh(
+                                script: 'git merge-base --is-ancestor "' + baseline + '" "$VERIFIED_SOURCE_SHA"',
+                                returnStatus: true
+                            )
+                            if (baselineIsAncestor != 0) {
+                                error('The CI-verified source and last publication are not on the same main history.')
+                            }
+                        }
+
+                        def diffStatus = sh(
+                            script: "git diff --quiet '${baseline}' '${env.VERIFIED_SOURCE_SHA}' -- " +
+                                'Bank-Demo-Backend api-gateway bank-auth-micro bank-corporate-micro ' +
+                                'bill-service currency-service discovery-server notification-service ' +
+                                'Bank-Demo-Frontend ci/release-services.txt ci/release-public.sh ' +
+                                'ci/validate-release-catalog.sh Jenkinsfile.release',
+                            returnStatus: true
+                        )
+                        if (diffStatus == 0) {
+                            env.PUBLISH_IMAGES = 'false'
+                            sh '''
+                                set -eu
+                                cp previous-release/release-manifest.tsv release-manifest.tsv
+                                cp previous-release/published-source.sha published-source.sha
+                            '''
+                            echo "No image inputs changed since successful publication ${baseline}; retaining its manifest and baseline."
+                        } else if (diffStatus == 1) {
+                            env.PUBLISH_IMAGES = 'true'
+                            echo "Image inputs changed since successful publication ${baseline}; publishing the full catalog."
+                        } else {
+                            error("Could not compare image inputs against the last successful publication (git diff exit ${diffStatus}).")
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Build and push the complete application image catalog') {
+            when {
+                expression { env.PUBLISH_IMAGES == 'true' }
+            }
             steps {
                 withCredentials([usernamePassword(
                     credentialsId: 'dockerhub-bank-demo-push',
@@ -101,8 +211,8 @@ pipeline {
                         export DOCKER_CONFIG="$release_root/docker-config"
                         mkdir -m 700 "$DOCKER_CONFIG"
 
-                        auth="$(printf '%s:%s' "$DOCKERHUB_USERNAME" "$DOCKERHUB_TOKEN" | base64 | tr -d '\\n')"
-                        printf '{"auths":{"https://index.docker.io/v1/":{"auth":"%s"}}}\\n' \\
+                        auth="$(printf '%s:%s' "$DOCKERHUB_USERNAME" "$DOCKERHUB_TOKEN" | base64 | tr -d '\n')"
+                        printf '{"auths":{"https://index.docker.io/v1/":{"auth":"%s"}}}\n' \
                             "$auth" > "$DOCKER_CONFIG/config.json"
                         chmod 600 "$DOCKER_CONFIG/config.json"
                         unset auth DOCKERHUB_TOKEN
@@ -111,66 +221,58 @@ pipeline {
                         . "$WORKSPACE/ci/release-public.sh"
                         set +a
 
-                        source_commit="$(git rev-parse HEAD)"
-                        case "$source_commit" in
-                            *[!0-9a-f]*|'')
-                                echo 'Invalid source commit SHA.' >&2
-                                exit 1
-                                ;;
-                        esac
-                        test "${#source_commit}" -eq 40
-
+                        source_commit="$VERIFIED_SOURCE_SHA"
                         manifest_file="$WORKSPACE/release-manifest.tsv"
-                        printf 'service\\timage\\tdigest\\n' > "$manifest_file"
+                        printf 'service\timage\tdigest\n' > "$manifest_file"
                         catalog_file="$WORKSPACE/ci/release-services.txt"
                         expected_count="$(sh "$WORKSPACE/ci/validate-release-catalog.sh" "$catalog_file")"
-                        printf 'Building and publishing %s images from source commit %s\\n' "$expected_count" "$source_commit"
+                        printf 'Building and publishing %s images from source commit %s\n' "$expected_count" "$source_commit"
                         image_list="$release_root/images.list"
                         sed '1d' "$catalog_file" > "$image_list"
 
                         index=0
-                        while IFS='|' read -r service context_dir repository target image_env; do
+                        while IFS='|' read -r service context_dir repository target; do
                             case "$service" in ''|'#'*) continue ;; esac
                             index=$((index + 1))
                             image_ref="docker.io/mstfckrc/${repository}:sha-${source_commit}"
                             metadata_file="$release_root/${service}-metadata.json"
 
-                            printf '\\n=== [%s/%s] %s -> %s ===\\n' "$index" "$expected_count" "$service" "$image_ref"
+                            printf '\n=== [%s/%s] %s -> %s ===\n' "$index" "$expected_count" "$service" "$image_ref"
 
                             if [ "$service" = 'frontend' ]; then
-                                buildctl build \\
-                                    --frontend dockerfile.v0 \\
-                                    --local context="$WORKSPACE/$context_dir" \\
-                                    --local dockerfile="$WORKSPACE/$context_dir" \\
-                                    --opt filename=Dockerfile \\
-                                    --opt "target=$target" \\
-                                    --opt "build-arg:NEXT_PUBLIC_FRONTEND_URL=$NEXT_PUBLIC_FRONTEND_URL" \\
-                                    --opt "build-arg:NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL" \\
-                                    --opt "build-arg:NEXT_PUBLIC_KEYCLOAK_URL=$NEXT_PUBLIC_KEYCLOAK_URL" \\
-                                    --opt "build-arg:NEXT_PUBLIC_RECAPTCHA_SITE_KEY=$NEXT_PUBLIC_RECAPTCHA_SITE_KEY" \\
-                                    --metadata-file "$metadata_file" \\
+                                buildctl build \
+                                    --frontend dockerfile.v0 \
+                                    --local context="$WORKSPACE/$context_dir" \
+                                    --local dockerfile="$WORKSPACE/$context_dir" \
+                                    --opt filename=Dockerfile \
+                                    --opt "target=$target" \
+                                    --opt "build-arg:NEXT_PUBLIC_FRONTEND_URL=$NEXT_PUBLIC_FRONTEND_URL" \
+                                    --opt "build-arg:NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL" \
+                                    --opt "build-arg:NEXT_PUBLIC_KEYCLOAK_URL=$NEXT_PUBLIC_KEYCLOAK_URL" \
+                                    --opt "build-arg:NEXT_PUBLIC_RECAPTCHA_SITE_KEY=$NEXT_PUBLIC_RECAPTCHA_SITE_KEY" \
+                                    --metadata-file "$metadata_file" \
                                     --output "type=image,name=$image_ref,push=true"
                             else
-                                buildctl build \\
-                                    --frontend dockerfile.v0 \\
-                                    --local context="$WORKSPACE/$context_dir" \\
-                                    --local dockerfile="$WORKSPACE/$context_dir" \\
-                                    --opt filename=Dockerfile \\
-                                    --opt "target=$target" \\
-                                    --metadata-file "$metadata_file" \\
+                                buildctl build \
+                                    --frontend dockerfile.v0 \
+                                    --local context="$WORKSPACE/$context_dir" \
+                                    --local dockerfile="$WORKSPACE/$context_dir" \
+                                    --opt filename=Dockerfile \
+                                    --opt "target=$target" \
+                                    --metadata-file "$metadata_file" \
                                     --output "type=image,name=$image_ref,push=true"
                             fi
 
                             test -s "$metadata_file"
                             image_digest="$(awk -F '"' '$2 == "containerimage.digest" { print $4 }' "$metadata_file")"
-                            printf '%s\\n' "$image_digest" | grep -Eq '^sha256:[0-9a-f]{64}$'
-                            printf '%s\\t%s\\t%s\\n' "$service" "$image_ref" "$image_digest" >> "$manifest_file"
-                            printf 'Published digest: %s\\n' "$image_digest"
+                            printf '%s\n' "$image_digest" | grep -Eq '^sha256:[0-9a-f]{64}$'
+                            printf '%s\t%s\t%s\n' "$service" "$image_ref" "$image_digest" >> "$manifest_file"
+                            printf 'Published digest: %s\n' "$image_digest"
                         done < "$image_list"
 
                         test "$index" -eq "$expected_count"
-                        printf '\\nRelease image manifest for source commit %s:\\n' "$source_commit"
-                        cat "$manifest_file"
+                        printf '%s\n' "$source_commit" > "$WORKSPACE/published-source.sha"
+                        printf '\nPublished all %s application images successfully.\n' "$index"
                     '''
                 }
             }
@@ -179,8 +281,12 @@ pipeline {
 
     post {
         always {
-            archiveArtifacts artifacts: 'release-manifest.tsv', allowEmptyArchive: true, fingerprint: true
-            sh 'rm -f release-manifest.tsv'
+            script {
+                if (currentBuild.currentResult == 'SUCCESS') {
+                    archiveArtifacts artifacts: 'release-manifest.tsv,published-source.sha', fingerprint: true
+                }
+            }
+            sh 'rm -f release-manifest.tsv published-source.sha source-provenance.txt'
         }
     }
 }

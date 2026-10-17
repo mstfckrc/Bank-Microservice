@@ -11,24 +11,27 @@ pipeline {
         skipDefaultCheckout()
         disableConcurrentBuilds()
         timeout(time: 60, unit: 'MINUTES')
+        copyArtifactPermission('Bank-Demo-Release/image-build-pilot')
     }
 
     stages {
         stage('Kaynak kodu al') {
             steps {
                 checkout scm
-                sh 'git rev-parse HEAD'
+                script {
+                    env.VERIFIED_SOURCE_SHA = sh(
+                        script: 'git rev-parse HEAD',
+                        returnStdout: true
+                    ).trim()
+                    echo "Checked out source commit ${env.VERIFIED_SOURCE_SHA}."
+                }
             }
         }
 
-        stage('Release and deployment pipeline syntax') {
+        stage('Image publication pipeline syntax') {
             steps {
                 script {
-                    def pipelineFiles = [
-                        'Jenkinsfile.release',
-                        'Jenkinsfile.deploy-preflight',
-                        'Jenkinsfile.deploy'
-                    ]
+                    def pipelineFiles = ['Jenkinsfile.release']
                     pipelineFiles.each { pipelineFile ->
                         if (!fileExists(pipelineFile)) {
                             error("${pipelineFile} was not found in the checked-out source.")
@@ -163,6 +166,23 @@ pipeline {
     post {
         always {
             junit allowEmptyResults: true, testResults: '**/target/*-reports/TEST-*.xml'
+        }
+        success {
+            script {
+                if (env.JOB_NAME == 'bankdemo-ci-build-pilot') {
+                    if (!(env.VERIFIED_SOURCE_SHA ==~ /^[0-9a-f]{40}$/)) {
+                        error('The successful main CI run has no valid checked-out source SHA.')
+                    }
+
+                    writeFile file: 'source-provenance.txt', text: "${env.VERIFIED_SOURCE_SHA}\n"
+                    archiveArtifacts artifacts: 'source-provenance.txt', fingerprint: true
+
+                    build job: 'Bank-Demo-Release/image-build-pilot',
+                        parameters: [string(name: 'CI_RUN_ID', value: env.BUILD_NUMBER)],
+                        wait: false,
+                        propagate: false
+                }
+            }
         }
     }
 }
