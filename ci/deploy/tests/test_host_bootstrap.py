@@ -75,7 +75,14 @@ class HostBootstrapTests(unittest.TestCase):
         self.assertEqual(runtime_env.read_text(encoding="utf-8"), "TEST_ONLY_VALUE=not-a-secret\n")
         self.assertEqual(runtime_env.stat().st_mode & 0o777, 0o600)
         self.assertEqual((self.root / "var/lib/bank-demo-deploy").stat().st_mode & 0o777, 0o700)
+        self.assertEqual(
+            (self.root / "var/lib/bank-demo-deploy/deployments").stat().st_mode & 0o777,
+            0o700,
+        )
         self.assertEqual((self.root / "var/lib/bank-demo-deploy/operation.lock").stat().st_mode & 0o777, 0o600)
+        shared_lock = self.root / "var/lib/bank-demo-compose.lock"
+        self.assertEqual(shared_lock.read_bytes(), b"")
+        self.assertEqual(shared_lock.stat().st_mode & 0o777, 0o644)
 
     def test_repeated_install_is_idempotent(self) -> None:
         first = self.run_bootstrap()
@@ -83,6 +90,21 @@ class HostBootstrapTests(unittest.TestCase):
 
         self.assertEqual(first.returncode, 0, first.stderr)
         self.assertEqual(second.returncode, 0, second.stderr)
+
+    def test_refuses_deployments_symlink_without_touching_its_target(self) -> None:
+        state_root = self.root / "var/lib/bank-demo-deploy"
+        state_root.mkdir(parents=True)
+        os.chmod(state_root, 0o700)
+        outside = self.root / "outside"
+        outside.mkdir()
+        os.chmod(outside, 0o700)
+        (state_root / "deployments").symlink_to(outside, target_is_directory=True)
+
+        result = self.run_bootstrap()
+
+        self.assertEqual(result.returncode, 2)
+        self.assertTrue((state_root / "deployments").is_symlink())
+        self.assertEqual(list(outside.iterdir()), [])
 
     def test_upgrades_known_catalog_snapshot_and_repeats_idempotently(self) -> None:
         first = self.run_bootstrap()
