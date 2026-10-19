@@ -72,7 +72,9 @@ pipeline {
                     for path in \
                         ci/release-public.sh \
                         ci/release-services.txt \
-                        ci/validate-release-catalog.sh; do
+                        ci/validate-release-catalog.sh \
+                        ci/selective_release.py \
+                        ci/tests/test_selective_release.py; do
                         test -f "$path" || {
                             printf 'Required release input is missing: %s\n' "$path" >&2
                             exit 1
@@ -91,6 +93,17 @@ pipeline {
                             test -f "$context_dir/package-lock.json"
                         fi
                     done
+                '''
+            }
+        }
+
+        stage('Test selective publication rules') {
+            steps {
+                sh '''
+                    set -eu
+                    /usr/bin/python3 --version
+                    PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 -m unittest discover \
+                        -s ci/tests -p 'test_selective_release.py' -v
                 '''
             }
         }
@@ -126,6 +139,11 @@ pipeline {
 
         stage('Compare with the last successful publication') {
             steps {
+                sh '''
+                    set -eu
+                    rm -rf -- previous-release release-plan release-manifest.tsv published-source.sha release-summary.tsv
+                    mkdir -p previous-release release-plan
+                '''
                 copyArtifacts(
                     projectName: 'Bank-Demo-Release/image-build-pilot',
                     selector: lastSuccessful(),
@@ -137,8 +155,8 @@ pipeline {
                 script {
                     def baselineFile = 'previous-release/published-source.sha'
                     if (!fileExists(baselineFile)) {
-                        env.PUBLISH_IMAGES = 'true'
-                        echo 'No successful-publication baseline exists; the full catalog will be published.'
+                        env.RELEASE_BASELINE_SHA = ''
+                        echo 'No successful-publication baseline exists; the selector will choose the full catalog.'
                     } else {
                         def baseline = readFile(baselineFile).trim()
                         if (!(baseline ==~ /^[0-9a-f]{40}$/)) {
@@ -163,35 +181,35 @@ pipeline {
                                 error('The CI-verified source and last publication are not on the same main history.')
                             }
                         }
-
-                        def diffStatus = sh(
-                            script: "git diff --quiet '${baseline}' '${env.VERIFIED_SOURCE_SHA}' -- " +
-                                'Bank-Demo-Backend api-gateway bank-auth-micro bank-corporate-micro ' +
-                                'bill-service currency-service discovery-server notification-service ' +
-                                'Bank-Demo-Frontend ci/release-services.txt ci/release-public.sh ' +
-                                'ci/validate-release-catalog.sh Jenkinsfile.release',
-                            returnStatus: true
-                        )
-                        if (diffStatus == 0) {
-                            env.PUBLISH_IMAGES = 'false'
-                            sh '''
-                                set -eu
-                                cp previous-release/release-manifest.tsv release-manifest.tsv
-                                cp previous-release/published-source.sha published-source.sha
-                            '''
-                            echo "No image inputs changed since successful publication ${baseline}; retaining its manifest and baseline."
-                        } else if (diffStatus == 1) {
-                            env.PUBLISH_IMAGES = 'true'
-                            echo "Image inputs changed since successful publication ${baseline}; publishing the full catalog."
-                        } else {
-                            error("Could not compare image inputs against the last successful publication (git diff exit ${diffStatus}).")
-                        }
+                        env.RELEASE_BASELINE_SHA = baseline
+                    }
+                }
+                sh '''
+                    set -eu
+                    /usr/bin/python3 ci/selective_release.py plan \
+                        --repo-root "$WORKSPACE" \
+                        --source-sha "$VERIFIED_SOURCE_SHA" \
+                        --baseline-sha "${RELEASE_BASELINE_SHA:-}" \
+                        --current-catalog ci/release-services.txt \
+                        --previous-manifest previous-release/release-manifest.tsv \
+                        --output-dir release-plan
+                '''
+                script {
+                    def selectedCount = sh(
+                        script: "awk 'NR > 1 && NF { count++ } END { print count + 0 }' release-plan/build-catalog.txt",
+                        returnStdout: true
+                    ).trim().toInteger()
+                    env.PUBLISH_IMAGES = selectedCount > 0 ? 'true' : 'false'
+                    if (selectedCount > 0) {
+                        echo "${selectedCount} image(s) selected; the remaining catalog entries will reuse prior successful digests."
+                    } else {
+                        echo 'No image inputs changed; no image build or registry push will run.'
                     }
                 }
             }
         }
 
-        stage('Build and push the complete application image catalog') {
+        stage('Build and push selected application images') {
             when {
                 expression { env.PUBLISH_IMAGES == 'true' }
             }
@@ -222,11 +240,10 @@ pipeline {
                         set +a
 
                         source_commit="$VERIFIED_SOURCE_SHA"
-                        manifest_file="$WORKSPACE/release-manifest.tsv"
-                        printf 'service\timage\tdigest\n' > "$manifest_file"
-                        catalog_file="$WORKSPACE/ci/release-services.txt"
+                        manifest_file="$WORKSPACE/release-plan/build-manifest.tsv"
+                        catalog_file="$WORKSPACE/release-plan/build-catalog.txt"
                         expected_count="$(sh "$WORKSPACE/ci/validate-release-catalog.sh" "$catalog_file")"
-                        printf 'Building and publishing %s images from source commit %s\n' "$expected_count" "$source_commit"
+                        printf 'Building and publishing %s selected image(s) from source commit %s\n' "$expected_count" "$source_commit"
                         image_list="$release_root/images.list"
                         sed '1d' "$catalog_file" > "$image_list"
 
@@ -271,10 +288,27 @@ pipeline {
                         done < "$image_list"
 
                         test "$index" -eq "$expected_count"
-                        printf '%s\n' "$source_commit" > "$WORKSPACE/published-source.sha"
-                        printf '\nPublished all %s application images successfully.\n' "$index"
+                        printf '\nPublished all %s selected application image(s) successfully.\n' "$index"
                     '''
                 }
+            }
+        }
+
+        stage('Assemble and validate complete release manifest') {
+            steps {
+                sh '''
+                    set -eu
+                    /usr/bin/python3 ci/selective_release.py complete \
+                        --source-sha "$VERIFIED_SOURCE_SHA" \
+                        --current-catalog ci/release-services.txt \
+                        --build-catalog release-plan/build-catalog.txt \
+                        --plan-json release-plan/plan.json \
+                        --reuse-manifest release-plan/reuse-manifest.tsv \
+                        --built-manifest release-plan/build-manifest.tsv \
+                        --output-manifest release-manifest.tsv \
+                        --output-source-sha published-source.sha \
+                        --output-summary release-summary.tsv
+                '''
             }
         }
     }
@@ -283,10 +317,10 @@ pipeline {
         always {
             script {
                 if (currentBuild.currentResult == 'SUCCESS') {
-                    archiveArtifacts artifacts: 'release-manifest.tsv,published-source.sha', fingerprint: true
+                    archiveArtifacts artifacts: 'release-manifest.tsv,published-source.sha,release-summary.tsv,release-plan/plan.json', fingerprint: true
                 }
             }
-            sh 'rm -f release-manifest.tsv published-source.sha source-provenance.txt'
+            sh 'rm -rf -- previous-release release-plan release-manifest.tsv published-source.sha release-summary.tsv source-provenance.txt'
         }
     }
 }
