@@ -14,28 +14,17 @@ public class RateLimitConfig {
     @Bean
     public KeyResolver ipKeyResolver() {
         return exchange -> {
-            // 1. KUBERNETES / NGINX SENARYOSU: Nginx'in araya eklediği asıl IP başlığını ara.
-            String forwardedFor = exchange.getRequest().getHeaders().getFirst("X-Forwarded-For");
-            
-            if (forwardedFor != null && !forwardedFor.isEmpty()) {
-                // Eğer proxy arkasındaysak ve başlık geldiyse (virgüllü olabilir), ilk IP'yi al.
-                return Mono.just(forwardedFor.split(",")[0].trim());
-            }
-
-            // 2. DOCKER COMPOSE SENARYOSU: Doğrudan bağlantı var, proxy yok.
+            // Nginx'in yeniden ürettiği başlıkları framework önceden remoteAddress'e uygular.
+            // Ham X-Forwarded-For başlığını burada ikinci kez yorumlama.
             InetSocketAddress remoteAddress = exchange.getRequest().getRemoteAddress();
             if (remoteAddress != null) {
-                // DİKKAT: NPE yememek için getAddress().getHostAddress() YERİNE getHostString() KULLANIYORUZ!
                 return Mono.just(remoteAddress.getHostString());
             }
 
-            // 3. HİÇBİRİ YOKSA: Kalkanı boş geçirmemek için bilinmeyen olarak işaretle.
             return Mono.just("unknown");
         };
     }
 
-    // 🚀 SİBER KALKANIN KENDİSİ
-    // Spring Boot bunu alacak, içine Redis ayarlarını gömecek ve Gateway'e verecek.
     @Bean
     public RedisRateLimiter redisRateLimiter() {
         return new RedisRateLimiter(1, 2);

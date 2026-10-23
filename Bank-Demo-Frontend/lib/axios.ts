@@ -1,6 +1,7 @@
 import axios from 'axios';
 import Cookies from 'js-cookie';
 import { toast } from 'sonner';
+import { useAuthStore } from '@/store/useAuthStore';
 
 // 1. Temel Axios Kopyamız
 const api = axios.create({
@@ -22,6 +23,9 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
+// Parallel dashboard requests must not start several logout redirects.
+let logoutInProgress = false;
+
 // 3. YANIT (RESPONSE) INTERCEPTOR
 api.interceptors.response.use(
   (response) => response, 
@@ -30,38 +34,29 @@ api.interceptors.response.use(
     const status = error.response?.status;
     const message = error.response?.data?.message || "Beklenmedik bir hata oluştu.";
 
-    // 401 ve 403 DIŞINDAKİ Hatalar
-    if (status !== 401 && status !== 403) {
+    if (status === 403) {
+      // A permission denial does not invalidate the authenticated session.
+      toast.error('İşlem için yetkiniz yok', { description: message });
+    } else if (status !== 401) {
       toast.error("İşlem Başarısız", {
         description: message,
       });
     }
 
-    // 🚀 401 veya 403 Hataları (Yetki Sorunları) -> KEYCLOAK ÇIKIŞI
-    if (status === 401 || status === 403) {
-      if (!isLoginRequest) {
-        const idToken = Cookies.get('id_token');
-        
-        // Kendi iç çerezlerimizi temizle
-        Cookies.remove('token');
-        Cookies.remove('id_token');
-        
-        if (typeof window !== 'undefined') {
-          toast.error("Oturum Geçersiz", { description: "Lütfen tekrar giriş yapın." });
-          
-          // Keycloak Çıkış URL'si Hazırlığı
-          const keycloakUrl = process.env.NEXT_PUBLIC_KEYCLOAK_URL || "http://localhost:9090";
-          const redirectUri = encodeURIComponent("http://localhost:3000/"); // Anasayfaya döner
-          let logoutUrl = `${keycloakUrl}/realms/bank-realm/protocol/openid-connect/logout?post_logout_redirect_uri=${redirectUri}&client_id=bank-auth-client`;
-          
-          if (idToken) {
-            logoutUrl += `&id_token_hint=${idToken}`;
-          }
+    if (status === 401 && !isLoginRequest && typeof window !== 'undefined' && !logoutInProgress) {
+      logoutInProgress = true;
+      const idToken = Cookies.get('id_token');
+      useAuthStore.getState().logout();
+      Cookies.remove('id_token', { path: '/' });
+      toast.error('Oturum Geçersiz', { description: 'Lütfen tekrar giriş yapın.' });
 
-          // Adamı siteden kopar ve Keycloak'a fırlat
-          window.location.href = logoutUrl;
-        }
-      }
+      const keycloakUrl = process.env.NEXT_PUBLIC_KEYCLOAK_URL || 'http://localhost:9090';
+      const frontendUrl = process.env.NEXT_PUBLIC_FRONTEND_URL || window.location.origin;
+      const logoutUrl = new URL(`${keycloakUrl.replace(/\/$/, '')}/realms/bank-realm/protocol/openid-connect/logout`);
+      logoutUrl.searchParams.set('post_logout_redirect_uri', new URL('/', frontendUrl).href);
+      logoutUrl.searchParams.set('client_id', 'bank-auth-client');
+      if (idToken) logoutUrl.searchParams.set('id_token_hint', idToken);
+      window.location.assign(logoutUrl.href);
     }
     
     return Promise.reject(error);

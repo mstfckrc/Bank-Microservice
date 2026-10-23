@@ -101,8 +101,6 @@ services:
       - EUREKA_URL=${EUREKA_URL}
       - ELASTICSEARCH_URL=${ES_URL}
       - JWT_SECRET=${JWT_SECRET}
-    ports:
-      - "8080:8080"
     healthcheck:
       test: ["CMD", "curl", "--fail", "--silent", "--show-error", "--max-time", "5", "--output", "/dev/null", "http://127.0.0.1:8080/actuator/health"]
       interval: 30s
@@ -139,6 +137,7 @@ services:
       - OAUTH_ISSUER_URI=${OAUTH_ISSUER_URI}
       - KEYCLOAK_INTERNAL_URL=${KC_INTERNAL_URL}
       - EUREKA_URL=${EUREKA_URL}
+      - GATEWAY_CORS_ALLOWED_ORIGINS=${GATEWAY_CORS_ALLOWED_ORIGINS:-https://app.bank.local,https://docs.bank.local}
     extra_hosts:
       - "auth.bank.local:host-gateway"
     healthcheck:
@@ -171,8 +170,6 @@ services:
       - SPRING_RABBITMQ_USERNAME=${RMQ_USER}
       - SPRING_RABBITMQ_PASSWORD=${RMQ_PASS}
       - EUREKA_URL=${EUREKA_URL}
-    ports:
-      - "8082:8082"
     healthcheck:
       test: ["CMD", "curl", "--fail", "--silent", "--show-error", "--max-time", "5", "--output", "/dev/null", "http://127.0.0.1:8082/actuator/health"]
       interval: 30s
@@ -190,8 +187,6 @@ services:
       target: runtime
     container_name: bank_currency_micro
     restart: always
-    ports:
-      - "8083:8083"
     healthcheck:
       test: ["CMD", "curl", "--fail", "--silent", "--show-error", "--max-time", "5", "--output", "/dev/null", "http://127.0.0.1:8083/actuator/health"]
       interval: 30s
@@ -236,8 +231,6 @@ services:
       - SPRING_RABBITMQ_USERNAME=${RMQ_USER}
       - SPRING_RABBITMQ_PASSWORD=${RMQ_PASS}
       - EUREKA_URL=${EUREKA_URL}
-    ports:
-      - "8084:8084"
     healthcheck:
       test: ["CMD", "curl", "--fail", "--silent", "--show-error", "--max-time", "5", "--output", "/dev/null", "http://127.0.0.1:8084/actuator/health"]
       interval: 30s
@@ -273,8 +266,6 @@ services:
       - SPRING_RABBITMQ_USERNAME=${RMQ_USER}
       - SPRING_RABBITMQ_PASSWORD=${RMQ_PASS}
       - EUREKA_URL=${EUREKA_URL}
-    ports:
-      - "8085:8085"
     healthcheck:
       test: ["CMD", "curl", "--fail", "--silent", "--show-error", "--max-time", "5", "--output", "/dev/null", "http://127.0.0.1:8085/actuator/health"]
       interval: 30s
@@ -314,8 +305,6 @@ services:
       - JWT_SECRET=${JWT_SECRET}
       - RECAPTCHA_SECRET=${RECAPTCHA_SECRET}
       - KEYCLOAK_INTERNAL_URL=${KC_INTERNAL_URL}
-    ports:
-      - "8086:8086"
     healthcheck:
       test: ["CMD", "curl", "--fail", "--silent", "--show-error", "--max-time", "5", "--output", "/dev/null", "http://127.0.0.1:8086/actuator/health"]
       interval: 30s

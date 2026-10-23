@@ -33,7 +33,8 @@ class AuthServiceImplTest {
     @Test
     void failedCaptchaStopsRegistrationBeforeExternalCalls() {
         RegisterRequest request = new RegisterRequest();
-        request.setIdentityNumber("11111111111");
+        // Checksum-valid test input so this case reaches the CAPTCHA behavior under test.
+        request.setIdentityNumber("11111111110");
         request.setRole("RETAIL_CUSTOMER");
         request.setCaptchaToken("invalid");
         when(captchaService.verifyToken("invalid")).thenReturn(false);

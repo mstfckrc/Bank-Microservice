@@ -1,7 +1,11 @@
 server:
   port: 8081
-  # 🚀 YENİ EKLENDİ: Nginx'in fısıldadığı X-Forwarded başlıklarına GÜVEN!
+  # Yalnız iç ağdan erişilir; Nginx dışarıdan gelen forwarded başlıklarını temizler.
   forward-headers-strategy: framework
+
+app:
+  cors:
+    allowed-origins: ${GATEWAY_CORS_ALLOWED_ORIGINS:https://app.bank.local,https://docs.bank.local}
 
 spring:
   application:
@@ -21,15 +25,6 @@ spring:
     gateway:
       server:
         webflux:
-          globalcors:
-            add-to-simple-url-handler-mapping: true
-            cors-configurations:
-              '[/**]':
-                allowedOriginPatterns: "*"
-                allowedMethods: "*"
-                allowedHeaders: "*"
-                allowCredentials: true
-          
           # ==========================================
           # 🚀 SWAGGER KURYELERİ (Gizli Tüneller)
           # ==========================================

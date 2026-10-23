@@ -13,6 +13,7 @@ import com.mustafa.repository.IAppUserRepository;
 import com.mustafa.repository.IRetailCustomerRepository;
 import com.mustafa.service.IAuthService;
 import com.mustafa.service.ICaptchaService; // 🚀 Siber Kalkan Arayüzü
+import com.mustafa.validation.IdentityNumberValidator;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -64,6 +65,15 @@ public class AuthServiceImpl implements IAuthService {
     @Transactional
     public AuthResponse register(RegisterRequest request) {
         AppUser.Role registrationRole = requireSelfRegistrationRole(request.getRole());
+        // Registration only: existing users/login/profile paths are not revalidated.
+        if (registrationRole == AppUser.Role.RETAIL_CUSTOMER
+                && !IdentityNumberValidator.isValidTckn(request.getIdentityNumber())) {
+            throw new BankOperationException("Geçerli bir T.C. kimlik numarası giriniz.");
+        }
+        if (registrationRole == AppUser.Role.CORPORATE_MANAGER
+                && !IdentityNumberValidator.isValidVknFormat(request.getIdentityNumber())) {
+            throw new BankOperationException("Vergi numarası 10 rakamdan oluşmalıdır.");
+        }
         String maskedId = maskIdentity(request.getIdentityNumber());
         log.info("Kayıt işlemi başlatıldı. Kimlik/Vergi No: {}, Rol: {}", maskedId, registrationRole);
 
