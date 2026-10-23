@@ -1,35 +1,33 @@
 package com.mustafa.config;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.cors.CorsConfiguration;
-import org.springframework.web.cors.reactive.CorsWebFilter;
 import org.springframework.web.cors.reactive.UrlBasedCorsConfigurationSource;
 
 import java.util.Arrays;
+import java.util.List;
 
 @Configuration
 public class CorsConfig {
 
     @Bean
-    public CorsWebFilter corsWebFilter() {
+    public UrlBasedCorsConfigurationSource corsConfigurationSource(
+            @Value("${app.cors.allowed-origins:https://app.bank.local,https://docs.bank.local}") String allowedOrigins) {
         CorsConfiguration corsConfig = new CorsConfiguration();
-
-	    corsConfig.setAllowedOriginPatterns(Arrays.asList("*"));
-
-        // Bütün HTTP taktiklerine (GET, POST, OPTIONS vb.) izin veriyoruz
-        corsConfig.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-
-        // Pasaport ve Mühürlere (Headers) tam izin
-        corsConfig.setAllowedHeaders(Arrays.asList("*"));
-
-        // Token (Bearer) ve Cookie taşınabilmesi için kritik izin
+        corsConfig.setAllowedOrigins(Arrays.stream(allowedOrigins.split(","))
+                .map(String::trim)
+                .filter(origin -> !origin.isEmpty())
+                .toList());
+        corsConfig.setAllowedMethods(List.of("GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+        corsConfig.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept"));
         corsConfig.setAllowCredentials(true);
+        corsConfig.validateAllowCredentials();
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        // Bütün rotalar (/**) için bu CORS kalkanını uygula
+        // Security zinciri preflight'ı authentication'dan önce işler; ayrı global filter yok.
         source.registerCorsConfiguration("/**", corsConfig);
-
-        return new CorsWebFilter(source);
+        return source;
     }
 }

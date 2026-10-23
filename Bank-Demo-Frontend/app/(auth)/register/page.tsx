@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { getApiErrorMessage } from "@/lib/api-error";
+import { isValidTckn, isValidVknFormat } from "@/lib/identity-number";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import ReCAPTCHA from "react-google-recaptcha"; // 🚀 YENİ MÜHİMMAT
@@ -17,6 +18,7 @@ import { toast } from "sonner";
 export default function RegisterPage() {
   const router = useRouter();
   const recaptchaRef = useRef<ReCAPTCHA>(null); // 🚀 CAPTCHA REFERANSI
+  const formRef = useRef<HTMLFormElement>(null);
   
   const [accountType, setAccountType] = useState<"RETAIL" | "CORPORATE">("RETAIL");
   const [loading, setLoading] = useState(false);
@@ -33,6 +35,20 @@ export default function RegisterPage() {
     taxOffice: "",
   });
 
+  const identityNumberValid = accountType === "RETAIL"
+    ? isValidTckn(formData.identityNumber)
+    : isValidVknFormat(formData.identityNumber);
+  const identityNumberLength = accountType === "RETAIL" ? 11 : 10;
+  const showIdentityNumberError = formData.identityNumber.length === identityNumberLength
+    && !identityNumberValid;
+  const [nativeFormValid, setNativeFormValid] = useState(false);
+
+  useEffect(() => {
+    setNativeFormValid(formRef.current?.checkValidity() ?? false);
+  }, [accountType, formData]);
+
+  const canSubmit = nativeFormValid && identityNumberValid && Boolean(captchaToken);
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
@@ -45,6 +61,15 @@ export default function RegisterPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+
+    if (accountType === "RETAIL" && !isValidTckn(formData.identityNumber)) {
+      setError("Geçerli bir T.C. kimlik numarası giriniz.");
+      return;
+    }
+    if (accountType === "CORPORATE" && !isValidVknFormat(formData.identityNumber)) {
+      setError("Vergi numarası 10 rakamdan oluşmalıdır.");
+      return;
+    }
 
     // 🚀 SİBER KALKAN KONTROLÜ: Robot mu İnsan mı?
     if (!captchaToken) {
@@ -134,7 +159,7 @@ export default function RegisterPage() {
             </Button>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form ref={formRef} onSubmit={handleSubmit} className="space-y-5">
             {error && (
               <div className="p-3 bg-red-50 border border-red-100 rounded-lg flex items-start gap-3 text-red-600 text-sm font-medium animate-in fade-in zoom-in duration-300">
                 <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
@@ -156,7 +181,12 @@ export default function RegisterPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="identityNumber" className="text-slate-700 font-bold">TC Kimlik Numarası</Label>
-                  <Input id="identityNumber" name="identityNumber" maxLength={11} placeholder="11 Haneli TC Kimlik No" value={formData.identityNumber} onChange={handleInputChange} required disabled={loading} className="bg-slate-50 font-mono" />
+                  <Input id="identityNumber" name="identityNumber" inputMode="numeric" minLength={11} maxLength={11} pattern="[1-9][0-9]{10}" placeholder="11 Haneli TC Kimlik No" value={formData.identityNumber} onChange={handleInputChange} required disabled={loading} aria-invalid={showIdentityNumberError} aria-describedby={showIdentityNumberError ? "identity-number-error" : undefined} className="bg-slate-50 font-mono" />
+                  {showIdentityNumberError && (
+                    <p id="identity-number-error" role="alert" className="text-sm text-red-600">
+                      Geçerli bir T.C. kimlik numarası giriniz.
+                    </p>
+                  )}
                 </div>
               </>
             )}
@@ -170,7 +200,12 @@ export default function RegisterPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="identityNumber" className="text-slate-700 font-bold">Vergi Numarası</Label>
-                    <Input id="identityNumber" name="identityNumber" maxLength={10} placeholder="10 Haneli VKN" value={formData.identityNumber} onChange={handleInputChange} required disabled={loading} className="bg-slate-50 font-mono" />
+                    <Input id="identityNumber" name="identityNumber" inputMode="numeric" minLength={10} maxLength={10} pattern="[0-9]{10}" placeholder="10 Haneli VKN" value={formData.identityNumber} onChange={handleInputChange} required disabled={loading} aria-invalid={showIdentityNumberError} aria-describedby={showIdentityNumberError ? "identity-number-error" : undefined} className="bg-slate-50 font-mono" />
+                    {showIdentityNumberError && (
+                      <p id="identity-number-error" role="alert" className="text-sm text-red-600">
+                        Vergi numarası 10 rakamdan oluşmalıdır.
+                      </p>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="taxOffice" className="text-slate-700 font-bold">Vergi Dairesi</Label>
@@ -203,7 +238,7 @@ export default function RegisterPage() {
             <Button 
               type="submit" 
               className="w-full h-12 text-base font-bold bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all mt-4"
-              disabled={loading}
+              disabled={loading || !canSubmit}
             >
               {loading ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : null}
               {loading ? "Hesap Oluşturuluyor..." : "Hesabı Oluştur"}

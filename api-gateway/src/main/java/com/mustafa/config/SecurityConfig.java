@@ -2,12 +2,14 @@ package com.mustafa.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Import;
 import org.springframework.core.annotation.Order;
 import org.springframework.core.convert.converter.Converter;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AbstractAuthenticationToken;
 import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -25,7 +27,26 @@ import java.util.stream.Collectors;
 
 @Configuration
 @EnableWebFluxSecurity
+@Import(CorsConfig.class)
 public class SecurityConfig {
+
+    // Internal API'ler dış istemci trafiği için değildir. Bu daha öncelikli zincir,
+    // geçerli kullanıcı JWT'si ve OPTIONS dahil tüm Gateway isteklerini reddeder.
+    @Bean
+    @Order(0)
+    public SecurityWebFilterChain internalApiFilterChain(ServerHttpSecurity http) {
+        http
+                .securityMatcher(ServerWebExchangeMatchers.pathMatchers(
+                        "/api/v1/internal",
+                        "/api/v1/internal/**"))
+                .csrf(ServerHttpSecurity.CsrfSpec::disable)
+                .cors(ServerHttpSecurity.CorsSpec::disable)
+                .oauth2ResourceServer(oauth2 -> oauth2
+                        .jwt(jwt -> jwt.jwtAuthenticationConverter(grantedAuthoritiesExtractor())))
+                .authorizeExchange(exchanges -> exchanges.anyExchange().denyAll());
+
+        return http.build();
+    }
 
     // -------------------------------------------------------------------
     // 🟢 1. KAPI: SİVİL BÖLGE (Öncelik 1)
@@ -50,7 +71,7 @@ public class SecurityConfig {
                         )
                 ))
                 .csrf(ServerHttpSecurity.CsrfSpec::disable)
-                .cors(ServerHttpSecurity.CorsSpec::disable)
+                .cors(Customizer.withDefaults())
                 .authorizeExchange(exchanges -> exchanges.anyExchange().permitAll());
         // DİKKAT: .oauth2ResourceServer() BURADA YOK. Bu sayede ölü token hata verdirmez.
 
@@ -66,7 +87,7 @@ public class SecurityConfig {
     public SecurityWebFilterChain securedFilterChain(ServerHttpSecurity http) {
         http
                 .csrf(ServerHttpSecurity.CsrfSpec::disable)
-                .cors(ServerHttpSecurity.CorsSpec::disable)
+                .cors(Customizer.withDefaults())
                 .authorizeExchange(exchanges -> exchanges.anyExchange().authenticated())
                 // Token kontrolü ve Keycloak Tercümanı burada devreye girer
                 .oauth2ResourceServer(oauth2 -> oauth2
