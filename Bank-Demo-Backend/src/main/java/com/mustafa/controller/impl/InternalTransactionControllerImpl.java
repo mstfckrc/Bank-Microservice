@@ -18,13 +18,11 @@ public class InternalTransactionControllerImpl implements IInternalTransactionCo
 
     @Override
     @PostMapping("/bill-payment")
-    public ResponseEntity<Void> deductBillPayment(
-            @RequestHeader("X-Identity-Number") String identityNumber,
-            @RequestBody InternalPaymentRequest request) {
+    public ResponseEntity<Void> deductBillPayment(@RequestBody InternalPaymentRequest request) {
 
-        log.info("📻 [TELSİZ ÇAĞRISI] Fatura servisinden para kesme emri geldi! Kimlik: {}, Miktar: {}", identityNumber, request.getAmount());
+        log.info("Fatura servisinden otomatik ödeme emri alındı.");
 
-        transactionService.processInternalPayment(identityNumber, request);
+        transactionService.processInternalPayment(request);
 
         return ResponseEntity.ok().build();
     }

@@ -5,6 +5,27 @@ spring:
   application:
     name: bank-corporate-micro
 
+  security:
+    oauth2:
+      client:
+        registration:
+          bank-service:
+            provider: bank-keycloak
+            client-id: ${BANK_SERVICE_CLIENT_ID:bank-corporate-service}
+            client-secret: ${BANK_SERVICE_CLIENT_SECRET}
+            authorization-grant-type: client_credentials
+            scope:
+              - bank.customer.profile.read
+              - bank.account.validate
+              - bank.salary.pay
+        provider:
+          bank-keycloak:
+            token-uri: ${BANK_SERVICE_TOKEN_URI}
+      resourceserver:
+        jwt:
+          issuer-uri: ${OAUTH_ISSUER_URI}
+          jwk-set-uri: ${OAUTH_JWK_SET_URI}
+
   datasource:
     # 🚀 SADECE DEĞİŞKEN ADLARI:
     url: ${DB_URL}
@@ -47,3 +68,7 @@ management:
     metrics:
       export:
         enabled: true
+
+app:
+  security:
+    audience: ${OAUTH_AUDIENCE:bank-api}

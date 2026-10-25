@@ -17,7 +17,6 @@ import org.junit.jupiter.api.Test;
 
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import java.math.BigDecimal;
 import java.util.List;
@@ -49,14 +48,12 @@ class PayrollApplicationServiceTest {
     @Test
     void existingBulkSalaryHttpContractStillSelectsSalaryWorkflow() throws Exception {
         stubSender(Account.Currency.TRY, "200000.00");
-        var servletRequest = new MockHttpServletRequest();
-        servletRequest.addHeader("X-Internal-Identity", "11111111111");
         var mvc = MockMvcBuilders.standaloneSetup(new InternalBankControllerImpl(
-                mock(IInternalBankService.class), service, servletRequest)).build();
+                mock(IInternalBankService.class), service)).build();
 
         mvc.perform(post("/api/v1/internal/transactions/bulk-salary").contentType("application/json")
                 .content("""
-                        {"senderIban":"SENDER","companyName":"Demo","salaryItems":[
+                        {"senderIban":"SENDER","companyName":"Demo","companyIdentityNumber":"11111111111","salaryItems":[
                           {"receiverIban":"EMPLOYEE1","amount":60000},
                           {"receiverIban":"EMPLOYEE2","amount":70000}]}
                         """)).andExpect(status().isOk());
@@ -116,7 +113,7 @@ class PayrollApplicationServiceTest {
     }
 
     private BulkSalaryRequest request(String first, String second) {
-        return new BulkSalaryRequest("SENDER", "Demo", List.of(
+        return new BulkSalaryRequest("SENDER", "Demo", "11111111111", List.of(
                 new SalaryPaymentItem("EMPLOYEE1", new BigDecimal(first)),
                 new SalaryPaymentItem("EMPLOYEE2", new BigDecimal(second))));
     }

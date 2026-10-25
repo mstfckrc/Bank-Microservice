@@ -115,7 +115,7 @@ class TransferFlowIT {
                 new SalaryPaymentItem("EMPLOYEE1", new BigDecimal("60000.00")),
                 new SalaryPaymentItem("EMPLOYEE2", new BigDecimal("70000.00"))));
         if (includeThird) items.add(new SalaryPaymentItem("EMPLOYEE3", new BigDecimal("10000.00")));
-        return new BulkSalaryRequest("SENDER", "Demo", items);
+        return new BulkSalaryRequest("SENDER", "Demo", "11111111111", items);
     }
 
     private void account(String iban, String number, String balance, boolean active) {

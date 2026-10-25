@@ -100,7 +100,8 @@ services:
       - SPRING_RABBITMQ_PASSWORD=${RMQ_PASS}
       - EUREKA_URL=${EUREKA_URL}
       - ELASTICSEARCH_URL=${ES_URL}
-      - JWT_SECRET=${JWT_SECRET}
+      - OAUTH_ISSUER_URI=${OAUTH_ISSUER_URI}
+      - OAUTH_JWK_SET_URI=${KC_INTERNAL_URL}/realms/bank-realm/protocol/openid-connect/certs
     healthcheck:
       test: ["CMD", "curl", "--fail", "--silent", "--show-error", "--max-time", "5", "--output", "/dev/null", "http://127.0.0.1:8080/actuator/health"]
       interval: 30s
@@ -231,6 +232,12 @@ services:
       - SPRING_RABBITMQ_USERNAME=${RMQ_USER}
       - SPRING_RABBITMQ_PASSWORD=${RMQ_PASS}
       - EUREKA_URL=${EUREKA_URL}
+      - BANK_SERVICE_CLIENT_ID=bank-bill-service
+      - BANK_SERVICE_CLIENT_SECRET=${BILL_BANK_SERVICE_CLIENT_SECRET}
+      - BANK_SERVICE_TOKEN_URI=${KC_INTERNAL_URL}/realms/bank-realm/protocol/openid-connect/token
+      - OAUTH_ISSUER_URI=${OAUTH_ISSUER_URI}
+      - OAUTH_JWK_SET_URI=${KC_INTERNAL_URL}/realms/bank-realm/protocol/openid-connect/certs
+      - OAUTH_AUDIENCE=bank-api
     healthcheck:
       test: ["CMD", "curl", "--fail", "--silent", "--show-error", "--max-time", "5", "--output", "/dev/null", "http://127.0.0.1:8084/actuator/health"]
       interval: 30s
@@ -266,6 +273,12 @@ services:
       - SPRING_RABBITMQ_USERNAME=${RMQ_USER}
       - SPRING_RABBITMQ_PASSWORD=${RMQ_PASS}
       - EUREKA_URL=${EUREKA_URL}
+      - BANK_SERVICE_CLIENT_ID=bank-corporate-service
+      - BANK_SERVICE_CLIENT_SECRET=${CORPORATE_BANK_SERVICE_CLIENT_SECRET}
+      - BANK_SERVICE_TOKEN_URI=${KC_INTERNAL_URL}/realms/bank-realm/protocol/openid-connect/token
+      - OAUTH_ISSUER_URI=${OAUTH_ISSUER_URI}
+      - OAUTH_JWK_SET_URI=${KC_INTERNAL_URL}/realms/bank-realm/protocol/openid-connect/certs
+      - OAUTH_AUDIENCE=bank-api
     healthcheck:
       test: ["CMD", "curl", "--fail", "--silent", "--show-error", "--max-time", "5", "--output", "/dev/null", "http://127.0.0.1:8085/actuator/health"]
       interval: 30s
@@ -301,7 +314,14 @@ services:
       - SPRING_RABBITMQ_USERNAME=${RMQ_USER}
       - SPRING_RABBITMQ_PASSWORD=${RMQ_PASS}
       - EUREKA_URL=${EUREKA_URL}
-      - KEYCLOAK_CLIENT_SECRET=${KEYCLOAK_CLIENT_SECRET}
+      - KEYCLOAK_ADMIN_CLIENT_ID=bank-auth-admin
+      - KEYCLOAK_ADMIN_CLIENT_SECRET=${KEYCLOAK_ADMIN_CLIENT_SECRET}
+      - BANK_SERVICE_CLIENT_ID=bank-auth-service
+      - BANK_SERVICE_CLIENT_SECRET=${AUTH_BANK_SERVICE_CLIENT_SECRET}
+      - BANK_SERVICE_TOKEN_URI=${KC_INTERNAL_URL}/realms/bank-realm/protocol/openid-connect/token
+      - OAUTH_ISSUER_URI=${OAUTH_ISSUER_URI}
+      - OAUTH_JWK_SET_URI=${KC_INTERNAL_URL}/realms/bank-realm/protocol/openid-connect/certs
+      - OAUTH_AUDIENCE=bank-api
       - JWT_SECRET=${JWT_SECRET}
       - RECAPTCHA_SECRET=${RECAPTCHA_SECRET}
       - KEYCLOAK_INTERNAL_URL=${KC_INTERNAL_URL}
@@ -406,8 +426,8 @@ services:
       KEYCLOAK_ADMIN_PASSWORD: ${KC_ADMIN_PASS}
       KC_PROXY_HEADERS: xforwarded
       KC_HOSTNAME_STRICT: "false"
-      KC_HOSTNAME: auth.bank.local
-      KC_HOSTNAME_STRICT_HTTPS: "false"
+      # Keycloak 24 hostname v1: keep the issuer identical for browser HTTPS and internal HTTP token requests.
+      KC_HOSTNAME_URL: https://auth.bank.local
     ports:
       - "9090:8080" 
     depends_on:

@@ -18,11 +18,11 @@ public class InternalUserServiceImpl implements IInternalUserService {
 
     @Override
     public CustomerProfileResponse getCustomerProfile(String identityNumber) {
-        log.info("INTERNAL SERVICE: {} TC kimlik numaralı müşterinin profil bilgisi veritabanından çekiliyor.", identityNumber);
+        log.info("INTERNAL SERVICE: Yetkili müşteri profili sorgusu işleniyor.");
 
         RetailCustomer customer = retailCustomerRepository.findByAppUser_IdentityNumber(identityNumber)
                 .orElseThrow(() -> {
-                    log.warn("İç İstihbarat Hatası: {} TC numaralı müşteri bulunamadı!", identityNumber);
+                    log.warn("İç profil sorgusunda müşteri bulunamadı.");
                     return new BankOperationException("Müşteri sistemde bulunamadı!");
                 });
 

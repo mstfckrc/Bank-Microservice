@@ -96,6 +96,33 @@ class SelectiveReleaseTests(unittest.TestCase):
         self.assertEqual(set(plan["selected"]), {"backend"})
         self.assertEqual(set(plan["reused"]), {"api-gateway", "frontend"})
 
+    def test_root_runtime_settings_reuse_every_image(self):
+        catalog = rows()
+        for path in (".env.example", "docker-compose.yml", "nginx.conf"):
+            with self.subTest(path=path):
+                plan = compute_plan(catalog, catalog, previous_manifest(), [path], OLD_SOURCE)
+                self.assertFalse(plan["selected"])
+                self.assertEqual(plan["reused"], {
+                    service: vars(entry) for service, entry in previous_manifest().items()
+                })
+
+    def test_runtime_settings_do_not_expand_a_real_service_change(self):
+        catalog = rows()
+        plan = compute_plan(catalog, catalog, previous_manifest(), [
+            ".env.example", "docker-compose.yml", "nginx.conf",
+            "Bank-Demo-Backend/src/main/App.java",
+        ], OLD_SOURCE)
+        self.assertEqual(set(plan["selected"]), {"backend"})
+        self.assertEqual(set(plan["reused"]), {"api-gateway", "frontend"})
+
+    def test_root_context_still_selects_runtime_files_as_image_inputs(self):
+        catalog = [Service("backend", ".", "backend", "runtime")]
+        for path in (".env.example", "docker-compose.yml", "nginx.conf"):
+            with self.subTest(path=path):
+                plan = compute_plan(catalog, catalog, previous_manifest(catalog), [path], OLD_SOURCE)
+                self.assertEqual(set(plan["selected"]), {"backend"})
+                self.assertFalse(plan["reused"])
+
     def test_move_between_service_contexts_selects_both_images(self):
         catalog = rows()
         plan = compute_plan(

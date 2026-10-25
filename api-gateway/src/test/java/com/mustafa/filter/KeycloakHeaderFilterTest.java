@@ -26,13 +26,14 @@ class KeycloakHeaderFilterTest {
     private final KeycloakHeaderFilter filter = new KeycloakHeaderFilter();
 
     @Test
-    void authenticatedJwtReplacesClientIdentityHeadersAndDispatchesOnce() {
+    void authenticatedJwtPreservesBearerStripsIdentityHeadersAndDispatchesOnce() {
         MockServerWebExchange exchange = MockServerWebExchange.from(
                 MockServerHttpRequest.get("/api/v1/accounts")
-                        .header("Authorization", "Bearer client-token")
+                        .header("Authorization", "Bearer verified-token")
                         .header("X-Identity-Number", "spoofed-identity")
                         .header("X-User-Role", "ROLE_ADMIN")
                         .header("X-Internal-Identity", "spoofed-internal-identity")
+                        .header("X-User-TC", "spoofed-alternative-identity")
                         .build());
         Jwt jwt = Jwt.withTokenValue("verified-token")
                 .header("alg", "none")
@@ -55,10 +56,11 @@ class KeycloakHeaderFilterTest {
 
         assertEquals(1, calls.get());
         ServerHttpRequest forwardedRequest = forwardedExchange.get().getRequest();
-        assertEquals("12345678901", forwardedRequest.getHeaders().getFirst("X-Identity-Number"));
-        assertEquals("ROLE_RETAIL_CUSTOMER", forwardedRequest.getHeaders().getFirst("X-User-Role"));
+        assertNull(forwardedRequest.getHeaders().getFirst("X-Identity-Number"));
+        assertNull(forwardedRequest.getHeaders().getFirst("X-User-Role"));
         assertNull(forwardedRequest.getHeaders().getFirst("X-Internal-Identity"));
-        assertNull(forwardedRequest.getHeaders().getFirst("Authorization"));
+        assertNull(forwardedRequest.getHeaders().getFirst("X-User-TC"));
+        assertEquals("Bearer verified-token", forwardedRequest.getHeaders().getFirst("Authorization"));
     }
 
     @Test
@@ -68,6 +70,7 @@ class KeycloakHeaderFilterTest {
                         .header("X-Identity-Number", "spoofed-identity")
                         .header("X-User-Role", "ROLE_ADMIN")
                         .header("X-Internal-Identity", "spoofed-internal-identity")
+                        .header("X-User-TC", "spoofed-alternative-identity")
                         .build());
 
         AtomicInteger calls = new AtomicInteger();
@@ -84,6 +87,8 @@ class KeycloakHeaderFilterTest {
         assertNull(forwardedExchange.get().getRequest().getHeaders().getFirst("X-Identity-Number"));
         assertNull(forwardedExchange.get().getRequest().getHeaders().getFirst("X-User-Role"));
         assertNull(forwardedExchange.get().getRequest().getHeaders().getFirst("X-Internal-Identity"));
+        assertNull(forwardedExchange.get().getRequest().getHeaders().getFirst("X-User-TC"));
+        assertNull(forwardedExchange.get().getRequest().getHeaders().getFirst("Authorization"));
     }
 
     @Test

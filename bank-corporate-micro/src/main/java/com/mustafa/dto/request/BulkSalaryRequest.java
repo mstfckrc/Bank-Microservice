@@ -13,5 +13,6 @@ import java.util.List;
 public class BulkSalaryRequest {
     private String senderIban;  // Şirketin çıkış kasası
     private String companyName; // Dekont açıklaması için şirket adı
+    private String companyIdentityNumber; // İş bağlamı; Core gönderici kasa sahipliğini doğrular.
     private List<SalaryPaymentItem> salaryItems; // Personel maaş listesi
 }

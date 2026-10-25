@@ -5,6 +5,25 @@ spring:
   application:
     name: bank-bill-micro
 
+  security:
+    oauth2:
+      client:
+        registration:
+          bank-service:
+            provider: bank-keycloak
+            client-id: ${BANK_SERVICE_CLIENT_ID:bank-bill-service}
+            client-secret: ${BANK_SERVICE_CLIENT_SECRET}
+            authorization-grant-type: client_credentials
+            scope:
+              - bank.bill.collect
+        provider:
+          bank-keycloak:
+            token-uri: ${BANK_SERVICE_TOKEN_URI}
+      resourceserver:
+        jwt:
+          issuer-uri: ${OAUTH_ISSUER_URI}
+          jwk-set-uri: ${OAUTH_JWK_SET_URI}
+
   datasource:
     # 🚀 SADECE DEĞİŞKEN ADLARI:
     url: ${DB_URL}
@@ -23,6 +42,10 @@ spring:
     port: ${SPRING_RABBITMQ_PORT}
     username: ${SPRING_RABBITMQ_USERNAME}
     password: ${SPRING_RABBITMQ_PASSWORD}
+
+app:
+  security:
+    audience: ${OAUTH_AUDIENCE:bank-api}
 
 eureka:
   client:

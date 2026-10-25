@@ -19,7 +19,7 @@ public class InternalUserControllerImpl implements IInternalUserController {
 
     @Override
     public CustomerProfileResponse getCustomerProfile(@PathVariable("identityNumber") String identityNumber) {
-        log.info("INTERNAL KAPISI: Kurumsal servisten {} TC kimlik numaralı müşteri için profil talebi geldi.", identityNumber);
+        log.info("INTERNAL KAPISI: Yetkili servisten müşteri profili talebi geldi.");
         return internalUserService.getCustomerProfile(identityNumber);
     }
 }

@@ -27,7 +27,7 @@ public class InternalCompanyServiceImpl implements IInternalCompanyService {
     public void syncNewCompany(CompanySyncRequest request) {
         // Mevcut Repository metoduyla kontrol
         if (companyRepository.findByCompanyIdentityNumber(request.getCompanyIdentityNumber()).isPresent()) {
-            log.warn("Kurumsal firma zaten mevcut: {}", request.getCompanyIdentityNumber());
+            log.warn("Kurumsal şirket zaten mevcut; senkronizasyon mevcut kaydı değiştirmedi.");
             return;
         }
 
@@ -40,7 +40,7 @@ public class InternalCompanyServiceImpl implements IInternalCompanyService {
                 .build();
 
         companyRepository.save(company);
-        log.info("SERVICE: Kurumsal firma ({}) sisteme senkronize edildi.", request.getCompanyIdentityNumber());
+        log.info("SERVICE: Yeni şirket kaydı senkronize edildi.");
     }
 
     @Override
@@ -57,7 +57,7 @@ public class InternalCompanyServiceImpl implements IInternalCompanyService {
         }
 
         companyRepository.save(company);
-        log.info("SERVICE: Kurumsal firma ({}) bilgileri başarıyla güncellendi.", identityNumber);
+        log.info("SERVICE: Şirket bilgileri güncellendi.");
     }
 
     @Override
@@ -74,7 +74,7 @@ public class InternalCompanyServiceImpl implements IInternalCompanyService {
 
         // 3. Şirketi sil
         companyRepository.delete(company);
-        log.info("SERVICE: Kurumsal firma ({}) ve bağlı tüm çalışanları başarıyla silindi.", identityNumber);
+        log.info("SERVICE: Şirket ve bağlı çalışan kayıtları silindi.");
     }
 
     // 🚀 YENİ EKLENDİ: Karargahın bilgi okuyabilmesi için

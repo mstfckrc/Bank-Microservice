@@ -23,5 +23,5 @@ public interface ITransactionService {
     TransactionResponse approveTransaction(String referenceNo);
     TransactionResponse rejectTransaction(String referenceNo);
     // 🚀 İç Hatlar: Diğer mikroservislerden gelen para kesme emirleri
-    void processInternalPayment(String identityNumber, InternalPaymentRequest request);
+    void processInternalPayment(InternalPaymentRequest request);
 }

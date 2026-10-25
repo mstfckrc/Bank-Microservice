@@ -8,4 +8,5 @@ public class InternalPaymentRequest {
     private Long accountId;
     private BigDecimal amount;
     private String description;
+    private String identityNumber;
 }

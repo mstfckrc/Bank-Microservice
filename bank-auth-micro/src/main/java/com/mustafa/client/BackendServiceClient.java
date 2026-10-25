@@ -3,9 +3,10 @@ package com.mustafa.client;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import com.mustafa.client.config.CoreServiceClientConfig;
 
 // 🚀 Karargahın adresi ve iç hat yolu
-@FeignClient(name = "bank-demo-backend", path = "/api/v1/internal")
+@FeignClient(name = "bank-demo-backend", path = "/api/v1/internal", configuration = CoreServiceClientConfig.class)
 public interface BackendServiceClient {
 
     // 🚀 İçinde para varsa Backend'in hata fırlatacağı o kilitli kapı

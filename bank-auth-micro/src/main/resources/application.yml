@@ -5,6 +5,28 @@ spring:
   application:
     name: auth-service
 
+  security:
+    oauth2:
+      client:
+        registration:
+          bank-service:
+            provider: bank-keycloak
+            client-id: ${BANK_SERVICE_CLIENT_ID:bank-auth-service}
+            client-secret: ${BANK_SERVICE_CLIENT_SECRET}
+            authorization-grant-type: client_credentials
+            scope:
+              - bank.customer.accounts.close
+              - bank.company.write
+              - bank.company.read
+              - bank.company.delete
+        provider:
+          bank-keycloak:
+            token-uri: ${BANK_SERVICE_TOKEN_URI}
+      resourceserver:
+        jwt:
+          issuer-uri: ${OAUTH_ISSUER_URI}
+          jwk-set-uri: ${OAUTH_JWK_SET_URI}
+
   datasource:
     # 🚀 SADECE DEĞİŞKEN ADLARI:
     url: ${DB_URL}
@@ -43,8 +65,12 @@ keycloak:
   # 🚀 İÇ AĞ ROTASI DEĞİŞKENE BAĞLANDI:
   auth-server-url: ${KEYCLOAK_INTERNAL_URL}
   realm: bank-realm
-  client-id: bank-auth-client
-  client-secret: ${KEYCLOAK_CLIENT_SECRET}
+  admin-client-id: ${KEYCLOAK_ADMIN_CLIENT_ID:bank-auth-admin}
+  admin-client-secret: ${KEYCLOAK_ADMIN_CLIENT_SECRET}
+
+app:
+  security:
+    audience: ${OAUTH_AUDIENCE:bank-api}
 
 recaptcha:
   secret: ${RECAPTCHA_SECRET}

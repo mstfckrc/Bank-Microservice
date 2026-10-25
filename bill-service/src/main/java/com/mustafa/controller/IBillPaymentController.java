@@ -2,8 +2,8 @@ package com.mustafa.controller;
 
 import com.mustafa.dto.request.BillInstructionRequest;
 import com.mustafa.dto.response.BillInstructionResponse;
-import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -11,10 +11,9 @@ import java.util.Map;
 
 public interface IBillPaymentController {
 
-    // 🚀 MİKROSERVİS DEVRİMİ: Principal yerine Header'dan kimlik okuyoruz!
-    ResponseEntity<BillInstructionResponse> createInstruction(String identityNumber, BillInstructionRequest request);
+    ResponseEntity<BillInstructionResponse> createInstruction(Jwt principal, BillInstructionRequest request);
 
-    ResponseEntity<List<BillInstructionResponse>> getMyInstructions(String identityNumber);
+    ResponseEntity<List<BillInstructionResponse>> getMyInstructions(Jwt principal);
 
-    ResponseEntity<Map<String, String>> deleteInstruction(String identityNumber, Long id);
+    ResponseEntity<Map<String, String>> deleteInstruction(Jwt principal, Long id);
 }
