@@ -21,8 +21,6 @@ ARG NEXT_PUBLIC_KEYCLOAK_URL
 ARG NEXT_PUBLIC_RECAPTCHA_SITE_KEY
 RUN --mount=type=cache,id=bank-demo-nextjs-node24,target=/app/.next/cache,sharing=locked \
     : "${NEXT_PUBLIC_FRONTEND_URL:?Required public build setting}" \
-      "${NEXT_PUBLIC_API_URL:?Required public build setting}" \
-      "${NEXT_PUBLIC_KEYCLOAK_URL:?Required public build setting}" \
       "${NEXT_PUBLIC_RECAPTCHA_SITE_KEY:?Required public build setting}" \
     && npm run build
 

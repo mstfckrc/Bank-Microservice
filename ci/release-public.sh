@@ -1,5 +1,5 @@
 # Public browser configuration for the Bank-Demo release frontend image.
-# These NEXT_PUBLIC_* values are intentionally included in the browser bundle;
+# These public settings are intentionally included in the browser bundle;
 # never add runtime secrets such as KEYCLOAK_CLIENT_SECRET to this file.
 NEXT_PUBLIC_FRONTEND_URL="https://app.bank.local"
 NEXT_PUBLIC_API_URL="https://api.bank.local/api/v1"

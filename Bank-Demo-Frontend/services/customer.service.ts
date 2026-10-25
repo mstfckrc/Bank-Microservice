@@ -13,13 +13,9 @@ export const customerService = {
     return response.data;
   },
 
-  // Token ile kullanıcının kendi profilini çekmesi
-  getProfile: async (token: string) => {
-    const response = await api.get('/customers/profile', {
-      headers: {
-        Authorization: `Bearer ${token}`
-      }
-    });
+  // Auth bilgisi tarayıcıdan değil, Next.js BFF oturumundan taşınır.
+  getProfile: async () => {
+    const response = await api.get('/customers/profile');
     return response.data;
   },
 

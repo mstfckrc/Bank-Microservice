@@ -114,12 +114,8 @@ export function useUserDashboard() {
       
       await customerService.appealRejection();
       
-      const token = useAuthStore.getState().token;
-      
-      if (token) {
-        const freshProfile = await customerService.getProfile(token);
-        useAuthStore.setState({ user: freshProfile });
-      }
+      const freshProfile = await customerService.getProfile();
+      useAuthStore.setState({ user: freshProfile });
 
       toast.success("Talebiniz alınmıştır", {
         description: "Hesabınız tekrar değerlendirmeye gönderildi."

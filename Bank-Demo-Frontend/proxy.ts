@@ -1,98 +1,89 @@
-import { NextResponse } from 'next/server';
-import type { NextRequest } from 'next/server';
+import { nextProxyCookies } from "iron-session";
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+import { BANK_ACTIVITY_COOKIE, BANK_SESSION_COOKIE, getActiveBankSession } from "@/lib/server/session";
 
-export function proxy(request: NextRequest) {
-  const { pathname } = request.nextUrl;
-  const token = request.cookies.get('token')?.value;
-  const idToken = request.cookies.get('id_token')?.value; // Çıkış için eklendi
-
-  const isAuthRoute = pathname.startsWith('/login') || pathname.startsWith('/register');
-  const isAdminRoute = pathname.startsWith('/admin');
-  const isUserRoute = pathname.startsWith('/user') || pathname.startsWith('/dashboard');
-  const isCompanyRoute = pathname.startsWith('/company');
-
-  // 1. Token Yoksa: Korumalı alanlara girişi engelle
-  if (!token) {
-    if (isAdminRoute || isUserRoute || isCompanyRoute) {
-      return NextResponse.redirect(new URL('/login', request.url));
-    }
-    return NextResponse.next();
+function copyCookies(source: NextResponse, target: NextResponse): void {
+  for (const cookie of source.cookies.getAll()) {
+    target.cookies.set(cookie.name, cookie.value, cookie);
   }
+}
 
-  // 2. Token Varsa: Rolü ve SÜREYİ kontrol et
+function expireLegacyCookies(request: NextRequest, response: NextResponse): void {
+  for (const name of ["token", "id_token"]) {
+    if (request.cookies.has(name)) {
+      response.cookies.set(name, "", { path: "/", maxAge: 0, httpOnly: true, secure: true, sameSite: "lax" });
+    }
+  }
+}
+
+function expireBankSessionCookies(request: NextRequest, response: NextResponse): void {
+  const names = request.cookies.getAll().map((cookie) => cookie.name);
+  const sessionNames = [BANK_SESSION_COOKIE, ...Array.from({ length: 4 }, (_, index) => `${BANK_SESSION_COOKIE}.${index}`), BANK_ACTIVITY_COOKIE];
+  for (const name of sessionNames) {
+    if (names.includes(name)) {
+      response.cookies.set(name, "", { path: "/", maxAge: 0, httpOnly: true, secure: true, sameSite: "lax" });
+    }
+  }
+}
+
+function redirect(request: NextRequest, pathname: string, previous: NextResponse): NextResponse {
+  const response = NextResponse.redirect(new URL(pathname, request.url));
+  copyCookies(previous, response);
+  expireLegacyCookies(request, response);
+  return response;
+}
+
+function homeForRole(role: string): string {
+  if (role === "ADMIN") return "/admin/dashboard";
+  if (role === "CORPORATE_MANAGER") return "/company/dashboard";
+  return "/user/dashboard";
+}
+
+export async function proxy(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+  const isAuthRoute = pathname === "/login" || pathname.startsWith("/register");
+  const isAdminRoute = pathname.startsWith("/admin");
+  const isUserRoute = pathname.startsWith("/user") || pathname.startsWith("/dashboard");
+  const isCompanyRoute = pathname.startsWith("/company");
+  const isProtectedRoute = isAdminRoute || isUserRoute || isCompanyRoute;
+
+  const response = NextResponse.next();
+  expireLegacyCookies(request, response);
+
+  let session;
   try {
-    const payloadBase64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
-    const pad = payloadBase64.length % 4;
-    const paddedBase64 = pad > 0 ? payloadBase64 + '='.repeat(4 - pad) : payloadBase64;
-    
-    const decodedJson = atob(paddedBase64);
-    const payload = JSON.parse(decodedJson);
-    
-    // 🚀 SÜRE KONTROLÜ (Expiration Check)
-    const currentTimestamp = Math.floor(Date.now() / 1000);
-    if (payload.exp && payload.exp < currentTimestamp) {
-      // Token ölmüş! Keycloak çıkış URL'sini hazırla
-      const keycloakUrl = process.env.NEXT_PUBLIC_KEYCLOAK_URL || "http://localhost:9090";
-      const frontendUrl = process.env.NEXT_PUBLIC_FRONTEND_URL || "http://localhost:3000";
-      const redirectUri = encodeURIComponent(frontendUrl + "/");
-      let logoutUrl = `${keycloakUrl}/realms/bank-realm/protocol/openid-connect/logout?post_logout_redirect_uri=${redirectUri}&client_id=bank-auth-client`;
-      
-      if (idToken) {
-        logoutUrl += `&id_token_hint=${idToken}`;
-      }
-
-      // Çerezleri sil ve doğrudan Keycloak'a fırlat
-      const response = NextResponse.redirect(logoutUrl);
-      response.cookies.delete('token');
-      response.cookies.delete('id_token');
-      return response;
-    }
-
-    // Süre dolmamışsa rollere bakmaya devam et
-    const roles: string[] = payload.realm_access?.roles || [];
-    const isAdmin = roles.includes("ADMIN");
-    const isCorporate = roles.includes("CORPORATE_MANAGER");
-
-    if (isAuthRoute) {
-      let redirectUrl = '/user/dashboard'; 
-      if (isAdmin) redirectUrl = '/admin/dashboard';
-      if (isCorporate) redirectUrl = '/company/dashboard'; 
-      
-      return NextResponse.redirect(new URL(redirectUrl, request.url));
-    }
-
-    // --- YETKİ DUVARLARI ---
-    if (isAdminRoute && !isAdmin) {
-      return NextResponse.redirect(new URL('/login', request.url));
-    }
-
-    if (isCompanyRoute && !isCorporate) {
-      return NextResponse.redirect(new URL('/user/dashboard', request.url));
-    }
-
-    if (isUserRoute) {
-       if (isAdmin) return NextResponse.redirect(new URL('/admin/dashboard', request.url));
-       if (isCorporate) return NextResponse.redirect(new URL('/company/dashboard', request.url));
-    }
-
-  } catch (error) {
-    console.error("Middleware Token Çözme Hatası:", error);
-    const response = NextResponse.redirect(new URL('/login', request.url));
-    response.cookies.delete('token');
-    response.cookies.delete('id_token');
+    session = await getActiveBankSession(nextProxyCookies(request, response));
+  } catch {
+    // A missing or invalid BFF configuration must fail closed for protected UI.
+    expireBankSessionCookies(request, response);
+    if (isProtectedRoute) return redirect(request, "/login?error=session_unavailable", response);
     return response;
   }
 
-  return NextResponse.next();
+  if (!session) {
+    if (isProtectedRoute) return redirect(request, "/login", response);
+    return response;
+  }
+
+  const role = session.user.role;
+  if (isAuthRoute) return redirect(request, homeForRole(role), response);
+  if (isAdminRoute && role !== "ADMIN") return redirect(request, homeForRole(role), response);
+  if (isCompanyRoute && role !== "CORPORATE_MANAGER") return redirect(request, homeForRole(role), response);
+  if (isUserRoute && (role === "ADMIN" || role === "CORPORATE_MANAGER")) {
+    return redirect(request, homeForRole(role), response);
+  }
+
+  return response;
 }
 
 export const config = {
   matcher: [
-    '/login', 
-    '/register', 
-    '/admin/:path*', 
-    '/user/:path*', 
-    '/dashboard/:path*', 
-    '/company/:path*'
+    "/login",
+    "/register/:path*",
+    "/admin/:path*",
+    "/user/:path*",
+    "/dashboard/:path*",
+    "/company/:path*",
   ],
 };

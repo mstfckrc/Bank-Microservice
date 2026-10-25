@@ -1,5 +1,7 @@
 package com.mustafa.service.impl;
 
+import com.mustafa.client.CompanyServiceClient;
+import com.mustafa.dto.request.CompanySyncRequest;
 import com.mustafa.dto.message.NotificationMessage;
 import com.mustafa.dto.request.UpdateProfileRequest;
 import com.mustafa.dto.response.UserProfileResponse;
@@ -11,12 +13,16 @@ import com.mustafa.repository.IAppUserRepository;
 import com.mustafa.repository.IRetailCustomerRepository;
 import com.mustafa.service.ICustomerService;
 import com.mustafa.security.BankUserAccess;
+import feign.FeignException;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import org.springframework.stereotype.Service;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 @Slf4j
 @Service
@@ -27,6 +33,7 @@ public class CustomerServiceImpl implements ICustomerService {
     private final BankUserAccess bankUserAccess;
     private final IRetailCustomerRepository retailCustomerRepository;
     private final RabbitMQPublisher rabbitPublisher;
+    private final CompanyServiceClient companyServiceClient;
 
     private String maskIdentity(String identity) {
         if (identity == null || identity.length() <= 4) return "****";
@@ -48,8 +55,9 @@ public class CustomerServiceImpl implements ICustomerService {
         String profileName = "";
         String email = "";
 
-        if (appUser.getRole() == AppUser.Role.RETAIL_CUSTOMER) {
-            RetailCustomer retail = retailCustomerRepository.findByAppUser_IdentityNumber(appUser.getIdentityNumber()).get();
+        if (appUser.getRole() == AppUser.Role.RETAIL_CUSTOMER || appUser.getRole() == AppUser.Role.ADMIN) {
+            RetailCustomer retail = retailCustomerRepository.findByAppUser_IdentityNumber(appUser.getIdentityNumber())
+                    .orElseThrow(() -> new BankOperationException("Düzenlenebilir yerel profil bulunamadı. Yönetici profilini merkezi kimlik yönetiminden güncelleyin."));
 
             if (request.getEmail() != null && !request.getEmail().isBlank()) {
                 retail.setEmail(request.getEmail());
@@ -106,19 +114,38 @@ public class CustomerServiceImpl implements ICustomerService {
         String maskedId = maskIdentity(appUser.getIdentityNumber());
         log.info("Profil detayları getiriliyor. Kullanıcı: {}", maskedId);
 
-        String profileName = "";
-        String email = "";
+        String profileName;
+        String email;
 
-        if (appUser.getRole() == AppUser.Role.RETAIL_CUSTOMER) {
-            RetailCustomer retail = retailCustomerRepository.findByAppUser_IdentityNumber(appUser.getIdentityNumber()).get();
-            profileName = retail.getFirstName() + " " + retail.getLastName();
-            email = retail.getEmail();
-        } else if (appUser.getRole() == AppUser.Role.CORPORATE_MANAGER) {
-            profileName = "Kurumsal Müşteri (" + appUser.getIdentityNumber() + ")";
-            email = "kurumsal@sistem.com";
+        if (appUser.getRole() == AppUser.Role.CORPORATE_MANAGER) {
+            CompanySyncRequest company;
+            try {
+                company = companyServiceClient.getCompanyInfo(appUser.getIdentityNumber());
+            } catch (FeignException exception) {
+                log.warn("Kurumsal profil şu anda yüklenemiyor. Kullanıcı: {}", maskedId);
+                throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Profil bilgileri şu anda yüklenemiyor.");
+            }
+            if (company == null || !appUser.getIdentityNumber().equals(company.getCompanyIdentityNumber())
+                    || company.getCompanyName() == null || company.getCompanyName().isBlank()) {
+                throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Kurumsal profil yanıtı doğrulanamadı.");
+            }
+            profileName = company.getCompanyName();
+            email = company.getContactEmail() != null ? company.getContactEmail() : "";
         } else {
-            profileName = "Sistem Yöneticisi";
-            email = "admin@bank.com";
+            RetailCustomer retail = retailCustomerRepository.findByAppUser_IdentityNumber(appUser.getIdentityNumber())
+                    .orElse(null);
+            if (retail != null) {
+                profileName = (retail.getFirstName() + " " + retail.getLastName()).trim();
+                email = retail.getEmail();
+            } else if (appUser.getRole() == AppUser.Role.ADMIN) {
+                Jwt token = bankUserAccess.currentVerifiedToken();
+                String tokenName = token.getClaimAsString("name");
+                String tokenEmail = token.getClaimAsString("email");
+                profileName = tokenName != null && !tokenName.isBlank() ? tokenName : "Sistem Yöneticisi";
+                email = tokenEmail != null ? tokenEmail : "";
+            } else {
+                throw new BankOperationException("Bireysel müşteri profili bulunamadı.");
+            }
         }
 
         return UserProfileResponse.builder()
