@@ -343,8 +343,6 @@ services:
       # Yalnizca public tarayici ayarlari build'e verilir; secret verilmez.
       args:
         NEXT_PUBLIC_FRONTEND_URL: ${NEXT_PUBLIC_FRONTEND_URL:-}
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
-        NEXT_PUBLIC_KEYCLOAK_URL: ${NEXT_PUBLIC_KEYCLOAK_URL:-}
         NEXT_PUBLIC_RECAPTCHA_SITE_KEY: ${NEXT_PUBLIC_RECAPTCHA_SITE_KEY:-}
     container_name: bank_frontend_micro
     restart: always
@@ -355,16 +353,16 @@ services:
     # Private degerler build'e degil, container calisma ortamina aktarilir.
     environment:
       NEXT_PUBLIC_FRONTEND_URL: ${NEXT_PUBLIC_FRONTEND_URL:-}
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
-      NEXT_PUBLIC_KEYCLOAK_URL: ${NEXT_PUBLIC_KEYCLOAK_URL:-}
       NEXT_PUBLIC_RECAPTCHA_SITE_KEY: ${NEXT_PUBLIC_RECAPTCHA_SITE_KEY:-}
-      KEYCLOAK_REALM: ${FRONTEND_KEYCLOAK_REALM:-bank-realm}
       KEYCLOAK_CLIENT_ID: ${FRONTEND_KEYCLOAK_CLIENT_ID:-bank-auth-client}
-      KEYCLOAK_INTERNAL_URL: ${KC_INTERNAL_URL}
       KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET}
+      OAUTH_ISSUER_URI: ${OAUTH_ISSUER_URI}
+      BFF_API_BASE_URL: ${BFF_API_BASE_URL:?Set BFF_API_BASE_URL in root .env}
+      BFF_SESSION_PASSWORD: ${BFF_SESSION_PASSWORD:?Set BFF_SESSION_PASSWORD in root .env}
+      NODE_EXTRA_CA_CERTS: /etc/ssl/certs/bank-demo-root-ca.pem
+    volumes:
+      - ./certs/rootCA.pem:/etc/ssl/certs/bank-demo-root-ca.pem:ro
     extra_hosts:
-      - "app.bank.local:host-gateway"
-      - "api.bank.local:host-gateway"
       - "auth.bank.local:host-gateway"
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then((response) => process.exit(response.status < 400 ? 0 : 1)).catch(() => process.exit(1))"]

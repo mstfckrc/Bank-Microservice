@@ -46,9 +46,9 @@ public class AdminUserServiceImpl implements IAdminUserService {
         AppUser appUser = appUserRepository.findByIdentityNumber(identityNumber)
                 .orElseThrow(() -> new BankOperationException("Güncellenecek kullanıcı bulunamadı!"));
 
-        if (appUser.getRole() == AppUser.Role.RETAIL_CUSTOMER) {
+        if (appUser.getRole() == AppUser.Role.RETAIL_CUSTOMER || appUser.getRole() == AppUser.Role.ADMIN) {
             RetailCustomer retail = retailCustomerRepository.findByAppUser_IdentityNumber(identityNumber)
-                    .orElseThrow(() -> new BankOperationException("Bireysel profil bulunamadı!"));
+                    .orElseThrow(() -> new BankOperationException("Düzenlenebilir yerel profil bulunamadı. Yönetici profilini merkezi kimlik yönetiminden güncelleyin."));
 
             if (request.getEmail() != null && !request.getEmail().isBlank()) {
                 retail.setEmail(request.getEmail());

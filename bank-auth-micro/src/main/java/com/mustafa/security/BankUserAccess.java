@@ -7,6 +7,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authorization.AuthorizationDecision;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.security.web.access.intercept.RequestAuthorizationContext;
 import org.springframework.stereotype.Component;
@@ -43,6 +44,16 @@ public class BankUserAccess {
     public AppUser currentUser() {
         return findBoundUser(SecurityContextHolder.getContext().getAuthentication())
                 .orElseThrow(() -> new AccessDeniedException("Bank user mapping is unavailable."));
+    }
+
+    // Display-only fallback for an administrator without a local retail profile.
+    // The Resource Server has already verified this JWT; this is not role lookup.
+    public Jwt currentVerifiedToken() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication instanceof JwtAuthenticationToken token) {
+            return token.getToken();
+        }
+        throw new AccessDeniedException("Verified token is unavailable.");
     }
 
     private Optional<AppUser> findBoundUser(Authentication auth) {

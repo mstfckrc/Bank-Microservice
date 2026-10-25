@@ -2,88 +2,77 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Cookies from "js-cookie";
-import { customerService } from "@/services/customer.service";
-import { useAuthStore } from "@/store/useAuthStore";
 import { Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useAuthStore } from "@/store/useAuthStore";
+import type { UserProfileResponse } from "@/types";
+
+interface SessionResponse {
+  user: UserProfileResponse;
+  csrfToken: string;
+  idleExpiresAt: number;
+  absoluteExpiresAt: number;
+}
 
 export default function AuthSyncPage() {
   const router = useRouter();
-  const { login } = useAuthStore();
+  const login = useAuthStore((state) => state.login);
+  const logout = useAuthStore((state) => state.logout);
   const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
-    const syncProfile = async () => {
+    const syncSession = async () => {
       try {
-        // 1. Cüzdandaki (Cookie) bileti al
-        const token = Cookies.get("token");
-        if (!token) throw new Error("Güvenlik jetonu bulunamadı!");
-
-        // 2. Karargahtan (Backend) Ham Profili Çek (Backend 'Sistem Yöneticisi' dese bile umurumuzda değil)
-        const backendProfile = await customerService.getProfile(token);
-
-        // 🚀 3. MİMARİ STANDART: Next.js elindeki bileti açar ve gerçek kimliği okur!
-        const payloadBase64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
-        const pad = payloadBase64.length % 4;
-        const paddedBase64 = pad > 0 ? payloadBase64 + '='.repeat(4 - pad) : payloadBase64;
-        
-        // 🚀 TÜRKÇE KARAKTER ZIRHI (UTF-8 Decoding)
-        const binaryString = atob(paddedBase64);
-        const decodedJson = decodeURIComponent(
-          binaryString.split('').map(function(c) {
-            return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-          }).join('')
-        );
-        
-        const keycloakData = JSON.parse(decodedJson);
-
-        // Keycloak'un biletindeki GERÇEK verileri al
-        const realName = keycloakData.name || (keycloakData.given_name ? `${keycloakData.given_name} ${keycloakData.family_name}` : null);
-        const realEmail = keycloakData.email;
-
-        // 4. Backend'den gelen veriyi, Token'dan gelen GERÇEK veriyle harmanla
-        const finalProfile = {
-          ...backendProfile,
-          // Eğer token'da isim varsa onu kullan, yoksa backend'in dediğini kullan
-          profileName: realName || backendProfile.profileName, 
-          email: realEmail || backendProfile.email
-        };
-
-        // 5. Zustand Kapsülüne (State) GERÇEK PROFİLİ Kaydet
-        login(finalProfile, token);
-
-        // 6. Yetkiye Göre İlgili Karargaha Fırlat!
-        if (finalProfile.role.includes("ADMIN")) {
-          router.push("/admin/dashboard");
-        } else if (finalProfile.role.includes("CORPORATE_MANAGER")) {
-          router.push("/company/dashboard");
-        } else {
-          router.push("/user/dashboard");
+        const response = await fetch("/api/auth/session", {
+          cache: "no-store",
+          credentials: "same-origin",
+        });
+        if (response.status === 401) {
+          logout();
+          router.replace("/login?session=expired");
+          return;
         }
-        
-        router.refresh();
+        if (!response.ok) throw new Error("The server session is unavailable");
 
-      } catch (err) {
-        console.error("Senkronizasyon Hatası:", err);
-        setError("Profil bilgileri alınamadı. Lütfen tekrar giriş yapın.");
-        setTimeout(() => router.push("/login"), 3000);
+        const session = await response.json() as SessionResponse;
+        if (!session.user || !session.csrfToken || !Number.isFinite(session.idleExpiresAt)
+          || !Number.isFinite(session.absoluteExpiresAt)) {
+          throw new Error("The server session response is incomplete");
+        }
+
+        login(session.user, session.csrfToken, session.idleExpiresAt, session.absoluteExpiresAt);
+        if (session.user.role === "ADMIN") {
+          router.replace("/admin/dashboard");
+        } else if (session.user.role === "CORPORATE_MANAGER") {
+          router.replace("/company/dashboard");
+        } else {
+          router.replace("/user/dashboard");
+        }
+        router.refresh();
+      } catch {
+        setError("Oturum bilgileriniz şu anda yüklenemiyor. Lütfen tekrar deneyin.");
       }
     };
 
-    syncProfile();
-  }, [login, router]);
+    void syncSession();
+  }, [attempt, login, logout, router]);
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
       {error ? (
-        <div className="text-red-600 font-bold p-4 bg-red-50 rounded-lg border border-red-200">
-          {error}
+        <div className="text-center space-y-4">
+          <p role="alert" className="text-red-600 font-bold p-4 bg-red-50 rounded-lg border border-red-200">{error}</p>
+          <Button onClick={() => {
+            setError("");
+            setAttempt((value) => value + 1);
+          }}>Tekrar Dene</Button>
         </div>
       ) : (
         <div className="flex flex-col items-center animate-in fade-in zoom-in duration-500">
           <Loader2 className="w-12 h-12 text-blue-600 animate-spin mb-4" />
           <h2 className="text-xl font-bold text-slate-800">Güvenli Bağlantı Kuruluyor</h2>
-          <p className="text-slate-500 mt-2 font-medium">Profiliniz senkronize ediliyor, lütfen bekleyin...</p>
+          <p className="text-slate-500 mt-2 font-medium">Oturumunuz doğrulanıyor...</p>
         </div>
       )}
     </div>

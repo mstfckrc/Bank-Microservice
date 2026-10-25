@@ -58,31 +58,20 @@ Modern **App Router** mimarisini kullanarak **Next.js 14+** üzerinde inşa edil
 ## 🚀 Başlarken
 
 ### Gereksinimler
-- Node.js 18.17+
-- npm, yarn, veya bun
+- Projenin Docker Compose ortamı (frontend BFF oturumu, internal Gateway erişimi ve yerel CA güveni gerektirir)
 
 ### Kurulum
 
-1. **Projeyi klonlayın.**
-2. **Bağımlılıkları Yükleyin:**
-   ```bash
-   npm install
-   # veya
-   yarn install
-   ```
-3. **Ortam (Environment) Ayarları:**
-   Kök dizinde bir `.env.local` dosyası oluşturun ve Backend API adresinizi girin:
-   ```env
-   NEXT_PUBLIC_API_URL=http://localhost:8080/api/v1
-   ```
-4. **Geliştirme Sunucusunu Başlatın:**
-   ```bash
-   npm run dev
-   ```
+Frontend, tarayıcıdan doğrudan API Gateway veya Keycloak'a token göndermez. Giriş,
+şifreli HttpOnly BFF cookie'si ve aynı-origin `/api/bank` uçları üzerinden yürür.
+Bu nedenle frontend'i tek başına `npm run dev` ile çalıştırmak desteklenen yerel
+akış değildir; BFF'nin Compose ağına, kök `.env` runtime ayarlarına ve yerel CA
+sertifikasına ihtiyacı vardır. Projeyi repository-root `docker-compose.yml` ile
+başlatın; BFF ayarlarının açıklaması root `.env.example` içindedir.
 
 ### 🌍 Uygulamaya Erişim
 
-Tarayıcınızda [http://localhost:3000](http://localhost:3000) adresine gidin. 
+Tarayıcıda canonical HTTPS adresi `https://app.bank.local` kullanılır.
 - Bireysel bir müşteri hesabı açarak sistemi deneyebilir veya backend tarafında yetkilendirilmiş bir admin hesabı ile giriş yapıp tüm özellikleri test edebilirsiniz.
 
 ---

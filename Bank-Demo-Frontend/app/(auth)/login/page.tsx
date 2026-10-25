@@ -1,28 +1,34 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ShieldCheck, ArrowLeft, Loader2 } from "lucide-react";
 
-export default function LoginPage() {
+const LOGIN_ERRORS: Record<string, string> = {
+  identity_provider_unavailable: "Giriş hizmetine şu anda ulaşılamıyor. Lütfen biraz sonra tekrar deneyin.",
+  invalid_authentication_response: "Giriş isteğinizin süresi dolmuş veya yanıt doğrulanamamış. Lütfen tekrar giriş yapın.",
+  authentication_failed: "Giriş tamamlanamadı. Lütfen yeniden deneyin.",
+  profile_unavailable: "Profil bilgileriniz şu anda yüklenemiyor. Lütfen biraz sonra tekrar giriş yapın.",
+  session_unavailable: "Güvenli oturum oluşturulamadı. Sorun devam ederse uygulama yöneticisiyle iletişime geçin.",
+};
+
+function LoginContent() {
   const [loading, setLoading] = useState(false);
+  const params = useSearchParams();
+  const errorCode = params.get("error");
+  const errorMessage = errorCode ? LOGIN_ERRORS[errorCode] ?? LOGIN_ERRORS.authentication_failed : null;
+  const notice = params.get("session") === "expired"
+    ? "Oturumunuz sona erdi. Devam etmek için tekrar giriş yapın."
+    : params.get("logout") === "local"
+      ? "Uygulama oturumunuz kapatıldı. Yeniden girişte kimlik doğrulaması istenecek."
+      : null;
 
   const handleKeycloakLogin = () => {
     setLoading(true);
-    
-    // 1. Keycloak'un Yönlendirme (Authorization) Adresi
-    const keycloakUrl = process.env.NEXT_PUBLIC_KEYCLOAK_URL;
-    const realm = "bank-realm";
-    const clientId = "bank-auth-client";
-    // 🚀 BUKALEMUN YAPI: Tarayıcının adres çubuğundaki kök adresi (localhost veya 192.x) otomatik alır!
-    const redirectUri = encodeURIComponent(window.location.origin + "/api/auth/callback");
-
-    // 2. Müşteriyi Nüfus Müdürlüğüne Fırlat!
-    const authUrl = `${keycloakUrl}/realms/${realm}/protocol/openid-connect/auth?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=openid`;
-    
-    window.location.href = authUrl;
+    window.location.assign("/api/auth/login");
   };
 
   return (
@@ -47,7 +53,9 @@ export default function LoginPage() {
           </CardDescription>
         </CardHeader>
         
-        <CardContent className="pt-8 pb-8 bg-white flex justify-center">
+        <CardContent className="pt-8 pb-8 bg-white flex flex-col gap-4">
+            {errorMessage && <p role="alert" className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{errorMessage}</p>}
+            {!errorMessage && notice && <p role="status" className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">{notice}</p>}
             <Button 
               onClick={handleKeycloakLogin}
               className="w-full h-14 text-lg font-bold bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all"
@@ -59,5 +67,13 @@ export default function LoginPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen grid place-items-center bg-slate-50">Giriş ekranı yükleniyor...</div>}>
+      <LoginContent />
+    </Suspense>
   );
 }
