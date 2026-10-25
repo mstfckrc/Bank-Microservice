@@ -147,9 +147,12 @@ public class TransactionServiceImpl implements ITransactionService {
 
     @Override
     @Transactional
-    public void processInternalPayment(String identityNumber, InternalPaymentRequest request) {
+    public void processInternalPayment(InternalPaymentRequest request) {
         Account account = accountRepository.findById(request.getAccountId()).orElseThrow(() -> new BankOperationException("Kasa bulunamadı!"));
-        if (!account.getOwnerIdentityNumber().equals(identityNumber)) throw new BankOperationException("Yetkisiz işlem: Kasa sahibi eşleşmiyor!");
+        if (request.getIdentityNumber() == null || request.getIdentityNumber().isBlank()
+                || !account.getOwnerIdentityNumber().equals(request.getIdentityNumber())) {
+            throw new BankOperationException("Yetkisiz işlem: Kasa sahibi eşleşmiyor!");
+        }
 
         BigDecimal amountToDeduct = account.getCurrency().toString().equals("TRY") ? request.getAmount() :
                 BigDecimal.valueOf(currencyService.convertAmount(request.getAmount().doubleValue(), "TRY", account.getCurrency().toString()));

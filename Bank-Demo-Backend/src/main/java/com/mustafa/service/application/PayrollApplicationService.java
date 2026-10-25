@@ -11,7 +11,6 @@ import com.mustafa.service.transfer.MoneyTransferService;
 import com.mustafa.service.transfer.TransferCommand;
 import com.mustafa.service.transfer.TransferPurpose;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,7 +32,11 @@ public class PayrollApplicationService {
                 .orElseThrow(() -> new BankOperationException("Çıkış kasası bulunamadı!"));
         if (!sender.isActive()) throw new BankOperationException("Çıkış kasası pasif durumdadır!");
 
-        String identity = SecurityContextHolder.getContext().getAuthentication().getName();
+        String companyIdentityNumber = request.getCompanyIdentityNumber();
+        if (companyIdentityNumber == null || companyIdentityNumber.isBlank()
+                || !sender.getOwnerIdentityNumber().equals(companyIdentityNumber)) {
+            throw new BankOperationException("Maaş kasası şirket kimliğiyle eşleşmiyor!");
+        }
         BigDecimal totalSalaryInTry = request.getSalaryItems().stream()
                 .map(SalaryPaymentItem::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
         boolean foreignSender = sender.getCurrency() != Account.Currency.TRY;
@@ -55,7 +58,7 @@ public class PayrollApplicationService {
             String description = "Maaş Ödemesi - " + request.getCompanyName();
             if (foreignSender) description += " (Orijinal: " + item.getAmount() + " TRY)";
             TransferCommand command = new TransferCommand(sender.getIban(), item.getReceiverIban(),
-                    amount, description, identity);
+                    amount, description, companyIdentityNumber);
             results.add(moneyTransferService.execute(command, TransferPurpose.SALARY));
         }
         return results;

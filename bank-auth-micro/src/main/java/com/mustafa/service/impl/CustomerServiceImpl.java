@@ -10,11 +10,11 @@ import com.mustafa.messaging.publisher.RabbitMQPublisher;
 import com.mustafa.repository.IAppUserRepository;
 import com.mustafa.repository.IRetailCustomerRepository;
 import com.mustafa.service.ICustomerService;
+import com.mustafa.security.BankUserAccess;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,6 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class CustomerServiceImpl implements ICustomerService {
 
     private final IAppUserRepository appUserRepository;
+    private final BankUserAccess bankUserAccess;
     private final IRetailCustomerRepository retailCustomerRepository;
     private final RabbitMQPublisher rabbitPublisher;
 
@@ -32,14 +33,9 @@ public class CustomerServiceImpl implements ICustomerService {
         return "*******" + identity.substring(identity.length() - 4);
     }
 
-    // 🚀 Gateway'in SecurityContext'e koyduğu TC Kimlik numarası ile kullanıcıyı bulur
+    // Resolve the verified subject; a request header is not authentication.
     private AppUser getAuthenticatedAppUser() {
-        String identityNumber = SecurityContextHolder.getContext().getAuthentication().getName();
-        return appUserRepository.findByIdentityNumber(identityNumber)
-                .orElseThrow(() -> {
-                    log.error("Kimlik doğrulama hatası: Context'te bulunan TC/Vergi No ({}) veritabanında yok!", maskIdentity(identityNumber));
-                    return new BankOperationException("Kullanıcı bulunamadı!");
-                });
+        return bankUserAccess.currentUser();
     }
 
     @Override

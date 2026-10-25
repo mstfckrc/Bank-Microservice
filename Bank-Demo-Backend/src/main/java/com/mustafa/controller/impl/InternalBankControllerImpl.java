@@ -6,16 +6,11 @@ import com.mustafa.dto.response.AccountValidationResponse;
 import com.mustafa.dto.response.TransactionResponse;
 import com.mustafa.service.IInternalBankService;
 import com.mustafa.service.application.PayrollApplicationService;
-import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.Collections;
 import java.util.List;
 
 @Slf4j
@@ -26,7 +21,6 @@ public class InternalBankControllerImpl implements IInternalBankController {
 
     private final IInternalBankService internalBankService;
     private final PayrollApplicationService payrollApplicationService;
-    private final HttpServletRequest request;
 
     @Override
     @GetMapping("/accounts/validate") // 🚀 Metot seviyesine taşındı
@@ -38,19 +32,6 @@ public class InternalBankControllerImpl implements IInternalBankController {
     @Override
     @PostMapping("/transactions/bulk-salary") // 🚀 Metot seviyesine taşındı
     public ResponseEntity<List<TransactionResponse>> payBulkSalaries(@RequestBody BulkSalaryRequest bulkRequest) {
-
-        String internalIdentity = request.getHeader("X-Internal-Identity");
-
-        if (internalIdentity != null) {
-            log.debug("Toplu maaş isteğinin mevcut iç hat kimlik bilgisi alındı.");
-            UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
-                    internalIdentity, null, Collections.singletonList(new SimpleGrantedAuthority("ROLE_CORPORATE_MANAGER"))
-            );
-            SecurityContextHolder.getContext().setAuthentication(auth);
-        } else {
-            log.warn("🚨 İÇ HAT UYARISI: X-Internal-Identity başlığı gelmedi, işlem anonim olarak devam edecek!");
-        }
-
         log.info("INTERNAL REST İsteği: Toplu maaş dağıtım emri alındı.");
         return ResponseEntity.ok(payrollApplicationService.payBulkSalaries(bulkRequest));
     }
@@ -58,7 +39,7 @@ public class InternalBankControllerImpl implements IInternalBankController {
     @Override
     @DeleteMapping("/accounts/customer/{identityNumber}") // 🚀 Metot seviyesine taşındı
     public ResponseEntity<Void> deleteCustomerAccounts(@PathVariable("identityNumber") String identityNumber) {
-        log.info("INTERNAL REST İsteği: Kimlik Üssünden hesap iptal emri geldi. TC: {}", identityNumber);
+        log.info("INTERNAL REST İsteği: müşteri hesap kapatma emri alındı.");
         internalBankService.deleteCustomerAccounts(identityNumber);
         return ResponseEntity.ok().build();
     }

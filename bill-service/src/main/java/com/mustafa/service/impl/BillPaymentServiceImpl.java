@@ -19,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Objects;
 
 @Slf4j
 @Service
@@ -41,6 +42,9 @@ public class BillPaymentServiceImpl implements IBillPaymentService {
     public void payBillAutomatically(Long instructionId, String identityNumber) {
         BillPaymentInstruction instruction = instructionRepository.findById(instructionId)
                 .orElseThrow(() -> new BankOperationException("Talimat bulunamadı!"));
+        if (!Objects.equals(instruction.getIdentityNumber(), identityNumber)) {
+            throw new BankOperationException("Fatura talimatı sahibi eşleşmiyor!");
+        }
 
         // 1. ÇİFTE ÖDEME KONTROLÜ
         if (instruction.getLastPaymentDate() != null &&
@@ -59,10 +63,11 @@ public class BillPaymentServiceImpl implements IBillPaymentService {
                 .accountId(instruction.getAccountId())
                 .amount(debtInTry)
                 .description(instruction.getBillType().name() + " Faturası (Abone: " + instruction.getSubscriberNo() + ")")
+                .identityNumber(instruction.getIdentityNumber())
                 .build();
 
         try {
-            backendServiceClient.deductBillPayment(identityNumber, paymentRequest);
+            backendServiceClient.deductBillPayment(paymentRequest);
         } catch (Exception e) {
             log.error("Fatura ödemesi Karargah tarafından reddedildi! Sebep: {}", e.getMessage());
             throw new BankOperationException("Kasa yetersiz veya Karargah işlemi reddetti!");

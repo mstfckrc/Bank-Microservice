@@ -182,6 +182,7 @@ public class CompanyEmployeeServiceImpl implements ICompanyEmployeeService {
         BulkSalaryRequest bulkRequest = BulkSalaryRequest.builder()
                 .senderIban(senderIban)
                 .companyName(company.getCompanyName())
+                .companyIdentityNumber(company.getCompanyIdentityNumber())
                 .salaryItems(salaryItems)
                 .build();
 

@@ -38,6 +38,10 @@ CONTROL_ONLY_PATHS = {
     "ci/validate-release-catalog.sh",
 }
 DOC_PATHS = {"README.md", "README"}
+# Root runtime configuration is outside the current per-service build contexts.
+# Frontend image arguments come from ci/release-public.sh, not root .env.example
+# or Compose. Context matching below takes precedence if the catalog ever uses '.'.
+RUNTIME_ONLY_PATHS = {".env.example", "docker-compose.yml", "nginx.conf"}
 
 
 class ReleaseError(ValueError):
@@ -215,7 +219,8 @@ def compute_plan(
                 selected.setdefault(row.service, "trusted publisher definition changed")
             continue
 
-        if path in CONTROL_ONLY_PATHS or path in DOC_PATHS or path.startswith("docs/"):
+        if (path in CONTROL_ONLY_PATHS or path in DOC_PATHS
+                or path in RUNTIME_ONLY_PATHS or path.startswith("docs/")):
             continue
 
         # A removed context is still a known old image input; it cannot affect a

@@ -7,5 +7,6 @@ import java.util.Optional;
 
 public interface IAppUserRepository extends JpaRepository<AppUser, Long> {
     Optional<AppUser> findByIdentityNumber(String identityNumber);
+    Optional<AppUser> findByKeycloakId(String keycloakId);
     boolean existsByIdentityNumber(String identityNumber);
 }

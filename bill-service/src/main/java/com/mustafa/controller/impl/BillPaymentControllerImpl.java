@@ -9,6 +9,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -23,48 +25,48 @@ public class BillPaymentControllerImpl implements IBillPaymentController {
 
     private final IBillPaymentService billPaymentService;
 
-    // 🛡️ GÜVENLİK KALKANI: Gateway aşılsa bile içeride TC doğrulaması yapıyoruz!
+    // The identity is taken from the JWT already verified by this service, not from a caller-supplied header.
     private void validateIdentityNumber(String identityNumber) {
         if (identityNumber == null || !identityNumber.matches("^[0-9]{11}$")) {
             throw new IllegalArgumentException("Geçersiz Kimlik Numarası! TC/Vergi No tam 11 haneli rakamlardan oluşmalıdır.");
         }
     }
 
+    private String identityNumber(Jwt principal) {
+        String identityNumber = principal.getClaimAsString("bank_identity_number");
+        validateIdentityNumber(identityNumber);
+        return identityNumber;
+    }
+
     @Override
     @PostMapping
     public ResponseEntity<BillInstructionResponse> createInstruction(
-            @RequestHeader("X-Identity-Number") String identityNumber, // 🛡️ Gateway'den gelen gizli not
+            @AuthenticationPrincipal Jwt principal,
             @Valid @RequestBody BillInstructionRequest request) {
+        String identityNumber = identityNumber(principal);
 
-        // 🚀 KAPI KONTROLÜ: İstek içeri girmeden önce TC kontrol ediliyor
-        validateIdentityNumber(identityNumber);
-
-        log.info("REST İsteği: Yeni fatura otomatik ödeme talimatı oluşturma. İstek Sahibi: {}", identityNumber);
+        log.info("REST İsteği: Yeni fatura otomatik ödeme talimatı oluşturma.");
         return new ResponseEntity<>(billPaymentService.createInstruction(identityNumber, request), HttpStatus.CREATED);
     }
 
     @Override
     @GetMapping
     public ResponseEntity<List<BillInstructionResponse>> getMyInstructions(
-            @RequestHeader("X-Identity-Number") String identityNumber) {
+            @AuthenticationPrincipal Jwt principal) {
+        String identityNumber = identityNumber(principal);
 
-        // 🚀 KAPI KONTROLÜ
-        validateIdentityNumber(identityNumber);
-
-        log.info("REST İsteği: Kullanıcının fatura talimatları listeleniyor. İstek Sahibi: {}", identityNumber);
+        log.info("REST İsteği: Kullanıcının fatura talimatları listeleniyor.");
         return ResponseEntity.ok(billPaymentService.getMyInstructions(identityNumber));
     }
 
     @Override
     @DeleteMapping("/{id}")
     public ResponseEntity<Map<String, String>> deleteInstruction(
-            @RequestHeader("X-Identity-Number") String identityNumber,
+            @AuthenticationPrincipal Jwt principal,
             @PathVariable Long id) {
+        String identityNumber = identityNumber(principal);
 
-        // 🚀 KAPI KONTROLÜ
-        validateIdentityNumber(identityNumber);
-
-        log.info("REST İsteği: Fatura talimatı silme (Talimat ID: {}, İstek Sahibi: {})", id, identityNumber);
+        log.info("REST İsteği: Fatura talimatı silme (Talimat ID: {}).", id);
         billPaymentService.deleteInstruction(identityNumber, id);
 
         Map<String, String> response = new HashMap<>();

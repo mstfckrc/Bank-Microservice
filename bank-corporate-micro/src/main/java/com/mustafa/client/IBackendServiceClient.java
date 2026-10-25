@@ -4,6 +4,7 @@ import com.mustafa.dto.request.BulkSalaryRequest;
 import com.mustafa.dto.response.AccountValidationResponse;
 import com.mustafa.dto.response.CustomerProfileResponse;
 import com.mustafa.dto.response.TransactionResponse;
+import com.mustafa.client.config.CoreServiceClientConfig;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -14,7 +15,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import java.util.List;
 
 // 🚀 Karargahı (bank-demo-backend) ismiyle bul ve gizli yeraltı kapısına (/api/v1/internal) bağlan!
-@FeignClient(name = "bank-demo-backend", path = "/api/v1/internal")
+@FeignClient(name = "bank-demo-backend", path = "/api/v1/internal", configuration = CoreServiceClientConfig.class)
 public interface IBackendServiceClient {
 
     // 1. Kasa (IBAN) Sahibini ve Durumunu Doğrula

@@ -34,6 +34,7 @@ import java.util.Collections;
 @RequiredArgsConstructor
 public class AuthServiceImpl implements IAuthService {
 
+    private static final String BANK_IDENTITY_NUMBER_ATTRIBUTE = "bank_identity_number";
     private final IAppUserRepository appUserRepository;
     private final IRetailCustomerRepository retailCustomerRepository;
     private final RabbitMQPublisher rabbitPublisher;
@@ -89,6 +90,13 @@ public class AuthServiceImpl implements IAuthService {
             log.warn("Kayıt Reddedildi: {} kimlik numarası sistemde zaten mevcut!", maskedId);
             throw new BankOperationException("Bu Kimlik/Vergi Numarası sistemde zaten kayıtlı!");
         }
+        // Reject known local conflicts before creating an external identity.
+        // Database uniqueness constraints still protect concurrent registrations.
+        if (registrationRole == AppUser.Role.RETAIL_CUSTOMER
+                && retailCustomerRepository.existsByEmail(request.getEmail())) {
+            log.warn("Kayıt reddedildi: bireysel müşteri e-posta adresi zaten kullanımda.");
+            throw new BankOperationException("Bu Email adresi zaten kullanımda!");
+        }
 
         // 2. KEYCLOAK KAYDI: Önce Nüfus Müdürlüğüne (Keycloak) adamı kaydet ve UUID'sini al!
         String keycloakId = createKeycloakUser(request, registrationRole);
@@ -105,10 +113,6 @@ public class AuthServiceImpl implements IAuthService {
 
         // 4. BİREYSEL / KURUMSAL AYRIMI
         if (appUser.getRole() == AppUser.Role.RETAIL_CUSTOMER) {
-            if (retailCustomerRepository.existsByEmail(request.getEmail())) {
-                log.warn("Kayıt Reddedildi: {} e-posta adresi bireysel hesaplar için kullanımda!", request.getEmail());
-                throw new BankOperationException("Bu Email adresi zaten kullanımda!");
-            }
             RetailCustomer retailCustomer = RetailCustomer.builder()
                     .appUser(appUser)
                     .firstName(request.getFirstName())
@@ -159,9 +163,24 @@ public class AuthServiceImpl implements IAuthService {
     // 🚀 KEYCLOAK YARDIMCI METODU
     private String createKeycloakUser(RegisterRequest request, AppUser.Role registrationRole) {
 
+        // A missing realm role must fail before a user is created.
+        RoleRepresentation realmRole;
+        try {
+            realmRole = keycloak.realm(realm).roles().get(registrationRole.name()).toRepresentation();
+        } catch (Exception e) {
+            log.error("Keycloak kayıt rolü doğrulanamadı. Rol: {}", registrationRole);
+            throw new BankOperationException("Kayıt yetkisi güvenlik sunucusunda doğrulanamadı; lütfen tekrar deneyin.");
+        }
+
         UserRepresentation user = new UserRepresentation();
         user.setUsername(request.getIdentityNumber());
         user.setEmail(request.getEmail());
+        // Keep the legacy business identifier explicit and separate from the OIDC subject.
+        // The Keycloak User Profile attribute and token mapper are configured separately.
+        user.setAttributes(Collections.singletonMap(
+                BANK_IDENTITY_NUMBER_ATTRIBUTE,
+                Collections.singletonList(request.getIdentityNumber())
+        ));
 
         // 🚀 TAKTİK 1: Kurumsal şirketleri Keycloak'ta isimsiz bırakmıyoruz (Kapıdaki Formu Engelleme)
         if (registrationRole == AppUser.Role.CORPORATE_MANAGER) {
@@ -181,23 +200,24 @@ public class AuthServiceImpl implements IAuthService {
 
         user.setCredentials(Collections.singletonList(credential));
 
-        Response response = keycloak.realm(realm).users().create(user);
+        String keycloakUserId;
+        try (Response response = keycloak.realm(realm).users().create(user)) {
+            if (response.getStatus() != 201) {
+                log.error("Keycloak Kullanıcı Kaydı Başarısız! Status Code: {}", response.getStatus());
+                throw new BankOperationException("Güvenlik sunucusunda hesap oluşturulamadı! Status: " + response.getStatus());
+            }
 
-        if (response.getStatus() != 201) {
-            log.error("Keycloak Kullanıcı Kaydı Başarısız! Status Code: {}", response.getStatus());
-            throw new BankOperationException("Güvenlik sunucusunda hesap oluşturulamadı! Status: " + response.getStatus());
+            if (response.getLocation() == null) {
+                throw new BankOperationException("Güvenlik sunucusu oluşturulan hesabın referansını döndürmedi.");
+            }
+            String path = response.getLocation().getPath();
+            keycloakUserId = path.substring(path.lastIndexOf('/') + 1);
         }
-
-        String path = response.getLocation().getPath();
-        String keycloakUserId = path.substring(path.lastIndexOf('/') + 1);
 
         log.info("Keycloak kaydı başarılı. Üretilen Keycloak ID: {}", keycloakUserId);
 
         // 🚀 DÜZELTME: Middleware'in (Frontend) doğru yönlendirme yapabilmesi için Rol/Rütbe Ataması!
         try {
-            RoleRepresentation realmRole =
-                    keycloak.realm(realm).roles().get(registrationRole.name()).toRepresentation();
-            
             keycloak.realm(realm).users().get(keycloakUserId).roles().realmLevel()
                     .add(Collections.singletonList(realmRole));
             
