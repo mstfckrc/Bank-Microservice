@@ -1,6 +1,7 @@
 package com.mustafa.exception;
 
 import feign.FeignException;
+import com.mustafa.security.BankAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -11,6 +12,11 @@ import java.util.Map;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    @ExceptionHandler(BankAccessException.class)
+    public ResponseEntity<Map<String, String>> handleBankAccessException(BankAccessException ex) {
+        return ResponseEntity.status(ex.getStatus()).body(Map.of("code", ex.getCode()));
+    }
 
     // Karargahtan (Feign'den) gelen hataları yakalar ve Karargahın asıl mesajını UI'a iletir
     @ExceptionHandler(FeignException.class)

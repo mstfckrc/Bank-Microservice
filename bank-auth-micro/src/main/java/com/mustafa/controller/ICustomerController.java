@@ -12,4 +12,5 @@ public interface ICustomerController {
     ResponseEntity<UserProfileResponse> getMyProfile();
     ResponseEntity<UserProfileResponse> updateProfile(@RequestBody UpdateProfileRequest request);
     ResponseEntity<Map<String, String>> appealRejection();
+    ResponseEntity<Map<String, String>> requestAccessReview();
 }

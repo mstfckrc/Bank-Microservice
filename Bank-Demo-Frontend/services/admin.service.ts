@@ -24,6 +24,14 @@ export const adminService = {
     return response.data;
   },
 
+  updateCustomerAccessRestriction: async (identityNumber: string, restricted: boolean): Promise<void> => {
+    await api.put(`/admin/customers/${identityNumber}/access-restriction`, { restricted });
+  },
+
+  decideCustomerAccessReview: async (identityNumber: string, decision: 'APPROVE' | 'REJECT'): Promise<void> => {
+    await api.post(`/admin/customers/${identityNumber}/access-review`, { decision });
+  },
+
   // Müşteriyi sil
   deleteCustomer: async (identityNumber: string): Promise<void> => {
     await api.delete(`/admin/customers/${identityNumber}`);
@@ -60,13 +68,13 @@ export const adminService = {
 
   // Bekleyen işlemi ONAYLA
   approveTransaction: async (referenceNo: string): Promise<TransactionResponse> => {
-    const response = await api.put(`/admin/transactions/${referenceNo}/approve`);
+    const response = await api.put(`/admin/transactions/${referenceNo}/approve`, {});
     return response.data;
   },
 
   // Bekleyen işlemi REDDET ve iade et
   rejectTransaction: async (referenceNo: string): Promise<TransactionResponse> => {
-    const response = await api.put(`/admin/transactions/${referenceNo}/reject`);
+    const response = await api.put(`/admin/transactions/${referenceNo}/reject`, {});
     return response.data;
   },
 

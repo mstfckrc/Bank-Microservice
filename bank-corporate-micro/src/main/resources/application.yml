@@ -18,6 +18,7 @@ spring:
               - bank.customer.profile.read
               - bank.account.validate
               - bank.salary.pay
+              - bank.access.read
         provider:
           bank-keycloak:
             token-uri: ${BANK_SERVICE_TOKEN_URI}

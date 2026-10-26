@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { AccountResponse } from '@/types';
 import { X, Receipt, Zap, Droplets, Wifi, Flame } from 'lucide-react';
 import { toast } from 'sonner';
+import { DIALOG_OVERLAY_CLASS_NAME } from '@/components/ui/dialog';
 
 interface CreateBillInstructionModalProps {
   isOpen: boolean;
@@ -56,7 +57,7 @@ export function CreateBillInstructionModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm transition-opacity">
+    <div className={`fixed inset-0 z-50 flex items-center justify-center p-4 transition-opacity ${DIALOG_OVERLAY_CLASS_NAME}`}>
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all animate-in fade-in zoom-in-95 duration-200">
         
         {/* ÜST BİLGİ */}

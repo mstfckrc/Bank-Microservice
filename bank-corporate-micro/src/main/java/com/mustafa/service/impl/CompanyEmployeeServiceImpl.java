@@ -8,6 +8,7 @@ import com.mustafa.dto.response.*;
 import com.mustafa.entity.Company;
 import com.mustafa.entity.CompanyEmployee;
 import com.mustafa.exception.BankOperationException;
+import com.mustafa.security.CorporateAccess;
 import com.mustafa.messaging.publisher.RabbitMQPublisher;
 import com.mustafa.repository.ICompanyEmployeeRepository;
 import com.mustafa.repository.ICompanyRepository;
@@ -33,6 +34,7 @@ public class CompanyEmployeeServiceImpl implements ICompanyEmployeeService {
     private final IBackendServiceClient backendServiceClient;
     private final RabbitMQPublisher rabbitPublisher;
     private final IAuthServiceClient authServiceClient;
+    private final CorporateAccess corporateAccess;
 
     private String maskIdentity(String identity) {
         if (identity == null || identity.length() <= 4) return "****";
@@ -162,6 +164,8 @@ public class CompanyEmployeeServiceImpl implements ICompanyEmployeeService {
     public List<TransactionResponse> paySalariesAutomatically(Long companyId, String senderIban) {
         Company company = companyRepository.findById(companyId)
                 .orElseThrow(() -> new BankOperationException("Şirket bulunamadı!"));
+
+        corporateAccess.requireCompanyAccess(company.getCompanyIdentityNumber());
 
         // 🚀 Ghost Login SİLİNDİ! Artık Karargahın (Monolith'in) Security duvarını aşmaya çalışmıyoruz.
         // O işi Karargahın içindeki Internal Endpoint halledecek!

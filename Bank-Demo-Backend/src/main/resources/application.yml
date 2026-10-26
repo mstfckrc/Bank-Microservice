@@ -7,6 +7,18 @@ spring:
 
   security:
     oauth2:
+      client:
+        registration:
+          bank-service:
+            provider: bank-keycloak
+            client-id: ${BANK_SERVICE_CLIENT_ID:bank-core-service}
+            client-secret: ${BANK_SERVICE_CLIENT_SECRET}
+            authorization-grant-type: client_credentials
+            scope:
+              - bank.access.read
+        provider:
+          bank-keycloak:
+            token-uri: ${BANK_SERVICE_TOKEN_URI}
       resourceserver:
         jwt:
           issuer-uri: ${OAUTH_ISSUER_URI}

@@ -8,4 +8,5 @@ public interface ICustomerService {
     UserProfileResponse updateProfile(UpdateProfileRequest request);
     UserProfileResponse getMyProfile();
     void appealRejection();
+    void requestAccessReview();
 }

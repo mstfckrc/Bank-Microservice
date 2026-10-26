@@ -1,6 +1,7 @@
 package com.mustafa.client;
 
 import com.mustafa.dto.response.CustomerProfileResponse;
+import com.mustafa.dto.response.CustomerAccessContextResponse;
 import com.mustafa.client.config.AuthServiceClientConfig;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -13,4 +14,7 @@ public interface IAuthServiceClient {
     // TC Kimlik No ile Bireysel Müşteri Profilini Getir
     @GetMapping("/profile/{identityNumber}")
     CustomerProfileResponse getCustomerProfile(@PathVariable("identityNumber") String identityNumber);
+
+    @GetMapping("/access-context/{identityNumber}")
+    CustomerAccessContextResponse getAccessContext(@PathVariable("identityNumber") String identityNumber);
 }

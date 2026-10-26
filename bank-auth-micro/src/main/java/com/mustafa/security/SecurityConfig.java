@@ -19,6 +19,7 @@ public class SecurityConfig {
 
     private final BankUserAccess bankUserAccess;
     private final JwtAuthenticationConverter bankJwtAuthenticationConverter;
+    private final BankUserAccessDeniedHandler bankUserAccessDeniedHandler;
 
     @Bean
     @Order(0)
@@ -32,6 +33,8 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.GET, "/api/v1/internal/users/profile/*")
                         .access(bankUserAccess::authorizeCorporateProfileRead)
+                        .requestMatchers(HttpMethod.GET, "/api/v1/internal/users/access-context/*")
+                        .access(bankUserAccess::authorizeAccessContextRead)
                         .anyRequest().denyAll());
         return http.build();
     }
@@ -61,6 +64,7 @@ public class SecurityConfig {
         http.csrf(AbstractHttpConfigurer::disable)
                 .cors(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .exceptionHandling(exceptions -> exceptions.accessDeniedHandler(bankUserAccessDeniedHandler))
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt ->
                         jwt.jwtAuthenticationConverter(bankJwtAuthenticationConverter)))
                 .authorizeHttpRequests(auth -> auth
@@ -68,8 +72,10 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/v1/customers/profile")
                         .access(bankUserAccess::authorizeUser)
                         .requestMatchers(HttpMethod.PUT, "/api/v1/customers/profile")
-                        .access(bankUserAccess::authorizeUser)
+                        .access(bankUserAccess::authorizeUnrestrictedUser)
                         .requestMatchers(HttpMethod.POST, "/api/v1/customers/appeal")
+                        .access(bankUserAccess::authorizeUnrestrictedUser)
+                        .requestMatchers(HttpMethod.POST, "/api/v1/customers/access-review")
                         .access(bankUserAccess::authorizeUser)
                         .anyRequest().denyAll());
         return http.build();

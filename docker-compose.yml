@@ -102,6 +102,9 @@ services:
       - ELASTICSEARCH_URL=${ES_URL}
       - OAUTH_ISSUER_URI=${OAUTH_ISSUER_URI}
       - OAUTH_JWK_SET_URI=${KC_INTERNAL_URL}/realms/bank-realm/protocol/openid-connect/certs
+      - BANK_SERVICE_CLIENT_ID=bank-core-service
+      - BANK_SERVICE_CLIENT_SECRET=${CORE_BANK_SERVICE_CLIENT_SECRET}
+      - BANK_SERVICE_TOKEN_URI=${KC_INTERNAL_URL}/realms/bank-realm/protocol/openid-connect/token
     healthcheck:
       test: ["CMD", "curl", "--fail", "--silent", "--show-error", "--max-time", "5", "--output", "/dev/null", "http://127.0.0.1:8080/actuator/health"]
       interval: 30s

@@ -41,7 +41,14 @@ export default function AuthSyncPage() {
           throw new Error("The server session response is incomplete");
         }
 
+        if (!session.user.accessRestrictionStatus) {
+          throw new Error("The current access status is unavailable");
+        }
         login(session.user, session.csrfToken, session.idleExpiresAt, session.absoluteExpiresAt);
+        if (session.user.accessRestrictionStatus !== "UNRESTRICTED") {
+          router.replace("/account-restricted");
+          return;
+        }
         if (session.user.role === "ADMIN") {
           router.replace("/admin/dashboard");
         } else if (session.user.role === "CORPORATE_MANAGER") {

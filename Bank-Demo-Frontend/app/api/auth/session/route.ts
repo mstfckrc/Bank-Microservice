@@ -28,7 +28,7 @@ export async function GET(request: Request) {
     // Refresh display/status on session restore, not on every Bank API request.
     // This does not extend either the idle deadline or the absolute deadline.
     const user = await fetchBankProfile(tokenResult.accessToken, trustedClientIp(request));
-    const fields = ["identityNumber", "profileName", "email", "role", "status"] as const;
+    const fields = ["identityNumber", "profileName", "email", "role", "status", "accessRestrictionStatus"] as const;
     if (fields.some((field) => session.user[field] !== user[field])) {
       session.tokens.user = user;
       await session.saveTokens();

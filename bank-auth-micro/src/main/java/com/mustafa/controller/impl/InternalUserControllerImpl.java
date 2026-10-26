@@ -2,6 +2,7 @@ package com.mustafa.controller.impl;
 
 import com.mustafa.controller.IInternalUserController;
 import com.mustafa.dto.response.CustomerProfileResponse;
+import com.mustafa.dto.response.CustomerAccessContextResponse;
 import com.mustafa.service.IInternalUserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -21,5 +22,11 @@ public class InternalUserControllerImpl implements IInternalUserController {
     public CustomerProfileResponse getCustomerProfile(@PathVariable("identityNumber") String identityNumber) {
         log.info("INTERNAL KAPISI: Yetkili servisten müşteri profili talebi geldi.");
         return internalUserService.getCustomerProfile(identityNumber);
+    }
+
+    @Override
+    public CustomerAccessContextResponse getCustomerAccessContext(
+            @PathVariable("identityNumber") String identityNumber) {
+        return internalUserService.getCustomerAccessContext(identityNumber);
     }
 }

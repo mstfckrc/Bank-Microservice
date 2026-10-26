@@ -1,28 +1,92 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
+import { DropdownMenu } from "radix-ui";
 import { useAuthStore } from "@/store/useAuthStore";
 import { UserProfileResponse, ApprovalStatus, Role } from "@/types"; 
 import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { 
   Loader2, Trash2, UserSearch, Settings, CheckCircle2, XCircle, 
-  Users, Building2, Clock, Search, Filter 
+  Users, Building2, Clock, Search, Filter, ChevronDown, ShieldCheck, ShieldOff
 } from "lucide-react";
 
 import { PageHeader } from "@/components/shared/PageHeader";
 import { EditCustomerModal } from "@/components/admin/modals/EditCustomerModal";
 import { useCustomers } from "@/hooks/useCustomers";
 
+type AccessAction = "restrict" | "lift" | "approve" | "reject";
+
+const actionMenuItemClassName = "flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm outline-none data-[highlighted]:bg-slate-100 data-[disabled]:pointer-events-none data-[disabled]:opacity-40";
+
+const accessActionCopy = {
+  restrict: {
+    title: "Hesap erişimi kısıtlansın mı?",
+    description: "Bankacılık işlemleri durdurulacak. Kullanıcı erişim durumunu görebilecek ve inceleme talebi gönderebilecek.",
+    confirmLabel: "Erişimi kısıtla",
+    destructive: true,
+  },
+  lift: {
+    title: "Erişim kısıtlaması kaldırılsın mı?",
+    description: "Erişim kısıtlaması kaldırılacak. Mevcut müşteri onayı ve işlem yetkileri geçerli kalacak.",
+    confirmLabel: "Kısıtlamayı kaldır",
+    destructive: false,
+  },
+  approve: {
+    title: "İnceleme talebi onaylansın mı?",
+    description: "İnceleme talebi onaylanacak ve kullanıcının erişim kısıtlaması kaldırılacak.",
+    confirmLabel: "Erişimi onayla",
+    destructive: false,
+  },
+  reject: {
+    title: "İnceleme talebi reddedilsin mi?",
+    description: "Erişim kısıtlaması sürecek. Kullanıcı bu kısıtlama dönemi için yeni bir inceleme talebi gönderemeyecek.",
+    confirmLabel: "Talebi reddet",
+    destructive: true,
+  },
+};
+
 export default function CustomerListPage() {
   const { user: currentUser } = useAuthStore();
-  const { customers, loading, fetchCustomers, removeCustomer, editCustomer, updateCustomerStatus } = useCustomers();
+  const { customers, loading, fetchCustomers, removeCustomer, editCustomer, updateCustomerStatus, updateAccessRestriction, decideAccessReview } = useCustomers();
 
   const [editingCustomer, setEditingCustomer] = useState<UserProfileResponse | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [accessConfirmation, setAccessConfirmation] = useState<{
+    identityNumber: string;
+    profileName: string;
+    action: AccessAction;
+  } | null>(null);
+  const [isAccessConfirming, setIsAccessConfirming] = useState(false);
+  const accessActionInFlight = useRef(false);
+  const customerDialogOpening = useRef(false);
+  const lastActionTrigger = useRef<HTMLButtonElement | null>(null);
+  const confirmationCopy = accessConfirmation ? accessActionCopy[accessConfirmation.action] : null;
+
+  const requestAccessAction = (customer: UserProfileResponse, action: AccessAction) => {
+    customerDialogOpening.current = true;
+    setAccessConfirmation({ identityNumber: customer.identityNumber, profileName: customer.profileName, action });
+  };
+
+  const confirmAccessAction = async () => {
+    if (!accessConfirmation || accessActionInFlight.current) return;
+    accessActionInFlight.current = true;
+    setIsAccessConfirming(true);
+    try {
+      const { identityNumber, action } = accessConfirmation;
+      const success = action === "restrict" || action === "lift"
+        ? await updateAccessRestriction(identityNumber, action === "restrict")
+        : await decideAccessReview(identityNumber, action === "approve" ? "APPROVE" : "REJECT");
+      if (success) setAccessConfirmation(null);
+    } finally {
+      accessActionInFlight.current = false;
+      setIsAccessConfirming(false);
+    }
+  };
 
   // 🚀 YENİ: FİLTRELEME STATE'LERİ
   const [statusFilter, setStatusFilter] = useState<ApprovalStatus | "ALL">("ALL");
@@ -158,13 +222,14 @@ export default function CustomerListPage() {
                     <th className="px-4 py-4 font-bold text-slate-700">Kimlik / Vergi No</th>
                     <th className="px-4 py-4 font-bold text-slate-700">E-posta</th>
                     <th className="px-4 py-4 font-bold text-slate-700 text-center">Durum</th>
-                    <th className="px-4 py-4 font-bold text-slate-700 text-right">İşlemler</th>
+                    <th className="px-4 py-4 font-bold text-slate-700 text-center">Erişim</th>
+                    <th className="w-32 px-4 py-4 font-bold text-slate-700 text-right">İşlemler</th>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredCustomers.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center py-20 text-slate-400">
+                      <TableCell colSpan={6} className="text-center py-20 text-slate-400">
                         <Search className="w-12 h-12 mx-auto mb-3 opacity-10" />
                         Aradığınız kriterlere uygun kayıt bulunamadı.
                       </TableCell>
@@ -199,57 +264,96 @@ export default function CustomerListPage() {
                             {customer.status === "REJECTED" && <Badge className="bg-red-100 text-red-700 hover:bg-red-100 border-red-200 shadow-none">Reddedildi</Badge>}
                           </TableCell>
 
+                          <TableCell className="px-4 py-4 text-center">
+                            {!customer.accessRestrictionStatus
+                              ? <Badge variant="outline">Bilinmiyor</Badge>
+                              : customer.accessRestrictionStatus === "UNRESTRICTED"
+                                ? <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100 border-emerald-200 shadow-none">Açık</Badge>
+                                : <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100 border-orange-200 shadow-none">
+                                {customer.accessRestrictionStatus === "REVIEW_PENDING" ? "İnceleme bekliyor"
+                                  : customer.accessRestrictionStatus === "REVIEW_REJECTED" ? "İnceleme reddedildi" : "Kısıtlı"}
+                              </Badge>}
+                          </TableCell>
+
                           <TableCell className="px-4 py-4 text-right">
-                            <div className="flex justify-end gap-1">
-                              {(customer.status === "PENDING" || customer.status === "REJECTED") && !isMe && (
-                                <Button 
-                                  size="icon" variant="ghost" className="text-green-600 hover:text-green-700 hover:bg-green-50"
-                                  onClick={() => updateCustomerStatus && updateCustomerStatus(customer.identityNumber, 'APPROVED')}
-                                  title="Onayla"
-                                >
-                                  <CheckCircle2 className="h-4 w-4" />
+                            <DropdownMenu.Root modal={false}>
+                              <DropdownMenu.Trigger asChild>
+                                <Button size="sm" variant="outline" className="w-28" aria-label={`${customer.profileName} için işlemler`} onFocus={(event) => {
+                                  lastActionTrigger.current = event.currentTarget;
+                                }}>
+                                  İşlemler <ChevronDown className="ml-1 h-4 w-4" />
                                 </Button>
-                              )}
+                              </DropdownMenu.Trigger>
+                              <DropdownMenu.Portal>
+                                <DropdownMenu.Content align="end" sideOffset={6} collisionPadding={12} className="z-50 w-60 rounded-lg border border-slate-200 bg-white p-1 text-slate-700 shadow-lg" onCloseAutoFocus={(event) => {
+                                  if (customerDialogOpening.current) {
+                                    event.preventDefault();
+                                    customerDialogOpening.current = false;
+                                  }
+                                }}>
+                                  <DropdownMenu.Item asChild className={actionMenuItemClassName}>
+                                    <Link href={`/admin/customers/${customer.identityNumber}/accounts`}>
+                                      <UserSearch className="h-4 w-4" /> Hesapları gör
+                                    </Link>
+                                  </DropdownMenu.Item>
+                                  <DropdownMenu.Item className={actionMenuItemClassName} disabled={isMe} onSelect={() => {
+                                    customerDialogOpening.current = true;
+                                    setEditingCustomer(customer);
+                                    setIsEditModalOpen(true);
+                                  }}>
+                                    <Settings className="h-4 w-4" /> Bilgileri düzenle
+                                  </DropdownMenu.Item>
 
-                              {(customer.status === "PENDING" || customer.status === "APPROVED") && !isMe && (
-                                <Button 
-                                  size="icon" variant="ghost" className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                                  onClick={() => updateCustomerStatus && updateCustomerStatus(customer.identityNumber, 'REJECTED')}
-                                  title="Reddet"
-                                >
-                                  <XCircle className="h-4 w-4" />
-                                </Button>
-                              )}
+                                  {!isMe && customer.role !== "ADMIN" && (
+                                    <>
+                                      {(customer.status === "PENDING" || customer.status === "REJECTED") && (
+                                        <>
+                                          <DropdownMenu.Separator className="my-1 h-px bg-slate-100" />
+                                          <DropdownMenu.Label className="px-3 py-1 text-xs font-semibold text-slate-400">Kayıt onayı</DropdownMenu.Label>
+                                          <DropdownMenu.Item className={`${actionMenuItemClassName} text-green-700`} onSelect={() => void updateCustomerStatus(customer.identityNumber, "APPROVED")}>
+                                            <CheckCircle2 className="h-4 w-4" /> {customer.status === "PENDING" ? "Kaydı onayla" : "Kaydı yeniden onayla"}
+                                          </DropdownMenu.Item>
+                                          {customer.status === "PENDING" && (
+                                            <DropdownMenu.Item className={`${actionMenuItemClassName} text-red-700`} onSelect={() => void updateCustomerStatus(customer.identityNumber, "REJECTED")}>
+                                              <XCircle className="h-4 w-4" /> Kaydı reddet
+                                            </DropdownMenu.Item>
+                                          )}
+                                        </>
+                                      )}
+                                      {customer.accessRestrictionStatus && (
+                                        <>
+                                          <DropdownMenu.Separator className="my-1 h-px bg-slate-100" />
+                                          <DropdownMenu.Label className="px-3 py-1 text-xs font-semibold text-slate-400">Bankacılık erişimi</DropdownMenu.Label>
+                                          {customer.accessRestrictionStatus === "REVIEW_PENDING" ? (
+                                            <>
+                                              <DropdownMenu.Item className={`${actionMenuItemClassName} text-green-700`} onSelect={() => requestAccessAction(customer, "approve")}>
+                                                <ShieldCheck className="h-4 w-4" /> İncelemeyi onayla
+                                              </DropdownMenu.Item>
+                                              <DropdownMenu.Item className={`${actionMenuItemClassName} text-red-700`} onSelect={() => requestAccessAction(customer, "reject")}>
+                                                <ShieldOff className="h-4 w-4" /> İncelemeyi reddet
+                                              </DropdownMenu.Item>
+                                            </>
+                                          ) : customer.accessRestrictionStatus === "UNRESTRICTED" ? (
+                                            <DropdownMenu.Item className={`${actionMenuItemClassName} text-red-700`} onSelect={() => requestAccessAction(customer, "restrict")}>
+                                              <ShieldOff className="h-4 w-4" /> Erişimi kısıtla
+                                            </DropdownMenu.Item>
+                                          ) : (
+                                            <DropdownMenu.Item className={`${actionMenuItemClassName} text-green-700`} onSelect={() => requestAccessAction(customer, "lift")}>
+                                              <ShieldCheck className="h-4 w-4" /> Kısıtlamayı kaldır
+                                            </DropdownMenu.Item>
+                                          )}
+                                        </>
+                                      )}
+                                    </>
+                                  )}
 
-                              <Link href={`/admin/customers/${customer.identityNumber}/accounts`}>
-                                <Button variant="ghost" size="icon" className="text-blue-600 hover:bg-blue-50" title="Hesapları Gör">
-                                  <UserSearch className="h-4 w-4" />
-                                </Button>
-                              </Link>
-
-                              <Button
-                                variant="ghost" size="icon"
-                                className={`text-orange-600 ${isMe ? "opacity-30 cursor-not-allowed" : "hover:bg-orange-50"}`}
-                                onClick={() => {
-                                  setEditingCustomer(customer);
-                                  setIsEditModalOpen(true);
-                                }}
-                                disabled={isMe}
-                                title="Düzenle"
-                              >
-                                <Settings className="h-4 w-4" />
-                              </Button>
-
-                              <Button
-                                variant="ghost" size="icon"
-                                className={`text-red-600 ${isMe ? "opacity-30 cursor-not-allowed" : "hover:bg-red-50"}`}
-                                onClick={() => handleDelete(customer.identityNumber)}
-                                disabled={isMe}
-                                title="Sil"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
+                                  <DropdownMenu.Separator className="my-1 h-px bg-slate-100" />
+                                  <DropdownMenu.Item className={`${actionMenuItemClassName} text-red-700`} disabled={isMe} onSelect={() => void handleDelete(customer.identityNumber)}>
+                                    <Trash2 className="h-4 w-4" /> Müşteriyi sil
+                                  </DropdownMenu.Item>
+                                </DropdownMenu.Content>
+                              </DropdownMenu.Portal>
+                            </DropdownMenu.Root>
                           </TableCell>
                         </TableRow>
                       );
@@ -261,6 +365,31 @@ export default function CustomerListPage() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={accessConfirmation !== null} onOpenChange={(open) => {
+        if (!open && !accessActionInFlight.current) setAccessConfirmation(null);
+      }}>
+        <DialogContent showCloseButton={!isAccessConfirming} onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          lastActionTrigger.current?.focus();
+        }}>
+          <DialogHeader>
+            <DialogTitle>{confirmationCopy?.title}</DialogTitle>
+            <DialogDescription>
+              <strong className="text-slate-900">{accessConfirmation?.profileName}</strong>
+              {" — "}{confirmationCopy?.description}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="outline" autoFocus disabled={isAccessConfirming} onClick={() => setAccessConfirmation(null)}>
+              Vazgeç
+            </Button>
+            <Button type="button" variant={confirmationCopy?.destructive ? "destructive" : "default"} disabled={isAccessConfirming} onClick={() => void confirmAccessAction()}>
+              {isAccessConfirming ? "İşleniyor…" : confirmationCopy?.confirmLabel}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <EditCustomerModal
         isOpen={isEditModalOpen}

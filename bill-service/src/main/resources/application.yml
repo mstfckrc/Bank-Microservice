@@ -16,6 +16,7 @@ spring:
             authorization-grant-type: client_credentials
             scope:
               - bank.bill.collect
+              - bank.access.read
         provider:
           bank-keycloak:
             token-uri: ${BANK_SERVICE_TOKEN_URI}

@@ -6,10 +6,13 @@ import com.mustafa.dto.message.NotificationMessage;
 import com.mustafa.dto.request.UpdateProfileRequest;
 import com.mustafa.dto.response.UserProfileResponse;
 import com.mustafa.entity.AppUser;
+import com.mustafa.entity.AccessRestrictionAudit;
 import com.mustafa.entity.RetailCustomer;
+import com.mustafa.exception.AccessRestrictionConflictException;
 import com.mustafa.exception.BankOperationException;
 import com.mustafa.messaging.publisher.RabbitMQPublisher;
 import com.mustafa.repository.IAppUserRepository;
+import com.mustafa.repository.IAccessRestrictionAuditRepository;
 import com.mustafa.repository.IRetailCustomerRepository;
 import com.mustafa.service.ICustomerService;
 import com.mustafa.security.BankUserAccess;
@@ -24,12 +27,15 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.Instant;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class CustomerServiceImpl implements ICustomerService {
 
     private final IAppUserRepository appUserRepository;
+    private final IAccessRestrictionAuditRepository accessRestrictionAuditRepository;
     private final BankUserAccess bankUserAccess;
     private final IRetailCustomerRepository retailCustomerRepository;
     private final RabbitMQPublisher rabbitPublisher;
@@ -43,6 +49,15 @@ public class CustomerServiceImpl implements ICustomerService {
     // Resolve the verified subject; a request header is not authentication.
     private AppUser getAuthenticatedAppUser() {
         return bankUserAccess.currentUser();
+    }
+
+    private AppUser getAuthenticatedAppUserForUpdate() {
+        // Lock before loading state so a queued request observes the committed review decision.
+        AppUser appUser = appUserRepository.findByKeycloakIdForUpdate(
+                        bankUserAccess.currentVerifiedToken().getSubject())
+                .orElseThrow(() -> new BankOperationException("Kullanıcı bulunamadı!"));
+        getAuthenticatedAppUser(); // Recheck identity and role binding against the locked row.
+        return appUser;
     }
 
     @Override
@@ -103,6 +118,7 @@ public class CustomerServiceImpl implements ICustomerService {
                 .email(email)
                 .role(appUser.getRole().name())
                 .status(appUser.getStatus().name())
+                .accessRestrictionStatus(appUser.getAccessRestrictionStatus().name())
                 .build();
     }
 
@@ -154,13 +170,14 @@ public class CustomerServiceImpl implements ICustomerService {
                 .email(email)
                 .role(appUser.getRole().name())
                 .status(appUser.getStatus().name())
+                .accessRestrictionStatus(appUser.getAccessRestrictionStatus().name())
                 .build();
     }
 
     @Override
     @Transactional
     public void appealRejection() {
-        AppUser appUser = getAuthenticatedAppUser();
+        AppUser appUser = getAuthenticatedAppUserForUpdate();
         String maskedId = maskIdentity(appUser.getIdentityNumber());
         log.info("Yeniden değerlendirme (appeal) talebi alındı. Kullanıcı: {}", maskedId);
 
@@ -182,5 +199,35 @@ public class CustomerServiceImpl implements ICustomerService {
                 .build();
 
         rabbitPublisher.sendNotification(appealMessage);
+    }
+
+    @Override
+    @Transactional
+    public void requestAccessReview() {
+        AppUser appUser = getAuthenticatedAppUserForUpdate();
+
+        AppUser.AccessRestrictionStatus previous = appUser.getAccessRestrictionStatus();
+        if (previous != AppUser.AccessRestrictionStatus.RESTRICTED) {
+            String code = previous == AppUser.AccessRestrictionStatus.REVIEW_PENDING
+                    ? "ACCESS_REVIEW_ALREADY_PENDING"
+                    : previous == AppUser.AccessRestrictionStatus.REVIEW_REJECTED
+                    ? "ACCESS_REVIEW_ALREADY_DECIDED"
+                    : "ACCOUNT_NOT_RESTRICTED";
+            throw new AccessRestrictionConflictException(code,
+                    "Bu hesap için yeni bir erişim inceleme talebi gönderilemez.");
+        }
+
+        AppUser.AccessRestrictionStatus resulting = AppUser.AccessRestrictionStatus.REVIEW_PENDING;
+        appUser.setAccessRestrictionStatus(resulting);
+        appUserRepository.save(appUser);
+        accessRestrictionAuditRepository.save(AccessRestrictionAudit.builder()
+                .targetAppUserId(appUser.getId())
+                .actorAppUserId(appUser.getId())
+                .action(AccessRestrictionAudit.Action.REVIEW_REQUESTED)
+                .previousState(previous)
+                .resultingState(resulting)
+                .occurredAt(Instant.now())
+                .build());
+        log.info("Erişim inceleme talebi kaydedildi. targetAppUserId={} state={}", appUser.getId(), resulting);
     }
 }

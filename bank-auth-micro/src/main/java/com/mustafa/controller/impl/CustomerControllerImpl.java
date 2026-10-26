@@ -45,4 +45,14 @@ public class CustomerControllerImpl implements ICustomerController {
         response.put("message", "Yeniden değerlendirme talebiniz alınmıştır.");
         return ResponseEntity.ok(response);
     }
+
+    @PostMapping("/access-review")
+    @Override
+    public ResponseEntity<Map<String, String>> requestAccessReview() {
+        customerService.requestAccessReview();
+        Map<String, String> response = new HashMap<>();
+        response.put("code", "ACCESS_REVIEW_SUBMITTED");
+        response.put("message", "Erişim inceleme talebiniz alınmıştır.");
+        return ResponseEntity.accepted().body(response);
+    }
 }

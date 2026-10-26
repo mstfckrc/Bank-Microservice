@@ -59,5 +59,33 @@ export function useCustomers() {
     }
   };
 
-  return { customers, loading, fetchCustomers, removeCustomer, editCustomer, updateCustomerStatus };
+  const updateAccessRestriction = async (identityNumber: string, restricted: boolean) => {
+    try {
+      await adminService.updateCustomerAccessRestriction(identityNumber, restricted);
+      toast.success(restricted ? "Hesap erişimi kısıtlandı." : "Hesap erişim kısıtlaması kaldırıldı.");
+      await fetchCustomers();
+      return true;
+    } catch (error: unknown) {
+      toast.error("Erişim durumu güncellenemedi.", {
+        description: getApiErrorMessage(error, "Bilinmeyen bir hata oluştu."),
+      });
+      return false;
+    }
+  };
+
+  const decideAccessReview = async (identityNumber: string, decision: 'APPROVE' | 'REJECT') => {
+    try {
+      await adminService.decideCustomerAccessReview(identityNumber, decision);
+      toast.success(decision === 'APPROVE' ? "Erişim incelemesi onaylandı." : "Erişim incelemesi reddedildi.");
+      await fetchCustomers();
+      return true;
+    } catch (error: unknown) {
+      toast.error("Erişim incelemesi sonuçlandırılamadı.", {
+        description: getApiErrorMessage(error, "Bilinmeyen bir hata oluştu."),
+      });
+      return false;
+    }
+  };
+
+  return { customers, loading, fetchCustomers, removeCustomer, editCustomer, updateCustomerStatus, updateAccessRestriction, decideAccessReview };
 }

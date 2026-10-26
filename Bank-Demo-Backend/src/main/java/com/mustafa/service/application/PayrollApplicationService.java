@@ -6,6 +6,7 @@ import com.mustafa.dto.response.TransactionResponse;
 import com.mustafa.entity.Account;
 import com.mustafa.exception.BankOperationException;
 import com.mustafa.repository.IAccountRepository;
+import com.mustafa.security.CoreUserAccess;
 import com.mustafa.service.ICurrencyService;
 import com.mustafa.service.transfer.MoneyTransferService;
 import com.mustafa.service.transfer.TransferCommand;
@@ -24,10 +25,12 @@ public class PayrollApplicationService {
     private final IAccountRepository accountRepository;
     private final ICurrencyService currencyService;
     private final MoneyTransferService moneyTransferService;
+    private final CoreUserAccess coreUserAccess;
 
     // One Core DB transaction for the whole batch; employee transfers must join it.
     @Transactional
     public List<TransactionResponse> payBulkSalaries(BulkSalaryRequest request) {
+        coreUserAccess.requireBusinessAccess(request.getCompanyIdentityNumber(), "CORPORATE_MANAGER");
         Account sender = accountRepository.findByIban(request.getSenderIban())
                 .orElseThrow(() -> new BankOperationException("Çıkış kasası bulunamadı!"));
         if (!sender.isActive()) throw new BankOperationException("Çıkış kasası pasif durumdadır!");

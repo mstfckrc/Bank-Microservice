@@ -12,6 +12,7 @@ import com.mustafa.repository.IAccountRepository;
 import com.mustafa.repository.ITransactionRepository;
 import com.mustafa.service.ICurrencyService;
 import com.mustafa.service.ITransactionService;
+import com.mustafa.security.CoreUserAccess;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -34,6 +35,7 @@ public class TransactionServiceImpl implements ITransactionService {
     private final ITransactionRepository transactionRepository;
     private final ICurrencyService currencyService;
     private final RabbitMQPublisher rabbitPublisher;
+    private final CoreUserAccess coreUserAccess;
 
 
     private String maskIdentity(String identity) {
@@ -148,6 +150,7 @@ public class TransactionServiceImpl implements ITransactionService {
     @Override
     @Transactional
     public void processInternalPayment(InternalPaymentRequest request) {
+        coreUserAccess.requireBusinessAccess(request.getIdentityNumber(), "RETAIL_CUSTOMER");
         Account account = accountRepository.findById(request.getAccountId()).orElseThrow(() -> new BankOperationException("Kasa bulunamadı!"));
         if (request.getIdentityNumber() == null || request.getIdentityNumber().isBlank()
                 || !account.getOwnerIdentityNumber().equals(request.getIdentityNumber())) {

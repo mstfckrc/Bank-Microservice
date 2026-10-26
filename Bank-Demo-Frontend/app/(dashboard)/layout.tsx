@@ -55,9 +55,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         if (!response.ok) throw new Error("Server session unavailable");
         const session = await response.json() as SessionResponse;
         if (!session.user || !session.csrfToken || !Number.isFinite(session.idleExpiresAt)
-          || !Number.isFinite(session.absoluteExpiresAt)) throw new Error("Invalid server session response");
+          || !Number.isFinite(session.absoluteExpiresAt) || !session.user.accessRestrictionStatus) {
+          throw new Error("Invalid server session response");
+        }
         if (!cancelled) {
           login(session.user, session.csrfToken, session.idleExpiresAt, session.absoluteExpiresAt);
+          if (session.user.accessRestrictionStatus !== "UNRESTRICTED") {
+            router.replace("/account-restricted");
+            return;
+          }
           setSessionReady(true);
         }
       } catch {

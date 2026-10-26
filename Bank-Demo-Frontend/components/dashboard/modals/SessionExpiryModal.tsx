@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { DIALOG_OVERLAY_CLASS_NAME } from "@/components/ui/dialog";
 
 interface SessionExpiryModalProps {
   isOpen: boolean;
@@ -11,7 +12,7 @@ export default function SessionExpiryModal({ isOpen, onLogout }: SessionExpiryMo
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-100 flex items-center justify-center bg-slate-900/40 backdrop-blur-md transition-all duration-500">
+    <div className={`fixed inset-0 z-100 flex items-center justify-center ${DIALOG_OVERLAY_CLASS_NAME}`}>
       <div className="bg-white p-8 rounded-2xl shadow-2xl max-w-md w-full text-center border border-slate-200 animate-in fade-in zoom-in duration-300">
         <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
           <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
