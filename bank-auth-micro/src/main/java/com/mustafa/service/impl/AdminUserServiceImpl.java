@@ -3,14 +3,19 @@ package com.mustafa.service.impl;
 import com.mustafa.client.BackendServiceClient;
 import com.mustafa.client.CompanyServiceClient;
 import com.mustafa.dto.request.CompanySyncRequest;
+import com.mustafa.dto.request.AccessReviewDecisionRequest;
 import com.mustafa.dto.request.UpdateProfileRequest;
 import com.mustafa.dto.response.UserProfileResponse;
 import com.mustafa.entity.AppUser;
+import com.mustafa.entity.AccessRestrictionAudit;
 import com.mustafa.entity.RetailCustomer;
 import com.mustafa.exception.BankOperationException;
+import com.mustafa.exception.AccessRestrictionConflictException;
 import com.mustafa.messaging.publisher.RabbitMQPublisher;
 import com.mustafa.repository.IAppUserRepository;
+import com.mustafa.repository.IAccessRestrictionAuditRepository;
 import com.mustafa.repository.IRetailCustomerRepository;
+import com.mustafa.security.BankUserAccess;
 import com.mustafa.service.IAdminUserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -18,6 +23,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.time.Instant;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -26,12 +32,14 @@ import java.util.stream.Collectors;
 public class AdminUserServiceImpl implements IAdminUserService {
 
     private final IAppUserRepository appUserRepository;
+    private final IAccessRestrictionAuditRepository accessRestrictionAuditRepository;
     private final IRetailCustomerRepository retailCustomerRepository;
     private final CompanyServiceClient companyServiceClient;
     private final RabbitMQPublisher rabbitPublisher;
 
     // 🚀 YENİ EKLENDİ: Karargaha giden doğrudan telsiz hattı
     private final BackendServiceClient backendServiceClient;
+    private final BankUserAccess bankUserAccess;
 
     @Override
     public List<UserProfileResponse> getAllCustomers() {
@@ -90,17 +98,117 @@ public class AdminUserServiceImpl implements IAdminUserService {
                 .email(request.getEmail() != null ? request.getEmail() : getOwnerEmail(appUser))
                 .role(appUser.getRole().name())
                 .status(appUser.getStatus().name())
+                .accessRestrictionStatus(appUser.getAccessRestrictionStatus().name())
                 .build();
     }
 
     @Override
     @Transactional
     public void updateCustomerStatus(String identityNumber, String status) {
-        AppUser appUser = appUserRepository.findByIdentityNumber(identityNumber)
+        AppUser actor = bankUserAccess.currentUser();
+        AppUser appUser = appUserRepository.findByIdentityNumberForUpdate(identityNumber)
                 .orElseThrow(() -> new BankOperationException("Kullanıcı bulunamadı!"));
-        appUser.setStatus(AppUser.ApprovalStatus.valueOf(status.toUpperCase()));
+        if (actor.getId().equals(appUser.getId())) {
+            throw new AccessRestrictionConflictException("SELF_ACCOUNT_STATUS_CHANGE_FORBIDDEN",
+                    "Yönetici kendi hesap durumunu bu işlemle değiştiremez.");
+        }
+        if (appUser.getRole() == AppUser.Role.ADMIN) {
+            throw new AccessRestrictionConflictException("ADMIN_ACCOUNT_PROTECTED",
+                    "Yönetici hesabı müşteri onay işlemiyle değiştirilemez.");
+        }
+        AppUser.ApprovalStatus requestedStatus = AppUser.ApprovalStatus.valueOf(status.toUpperCase());
+        if (appUser.getStatus() == AppUser.ApprovalStatus.APPROVED
+                && requestedStatus != AppUser.ApprovalStatus.APPROVED) {
+            throw new AccessRestrictionConflictException("APPROVED_ACCOUNT_STATUS_CHANGE_FORBIDDEN",
+                    "Onaylı müşteri kaydının onay durumu değiştirilemez. Erişimi durdurmak için erişim kısıtlamasını kullanın.");
+        }
+
+        appUser.setStatus(requestedStatus);
         appUserRepository.save(appUser);
-        log.info("Admin İşlemi: {} kimlik numaralı kullanıcının statüsü {} olarak güncellendi.", identityNumber, status);
+        log.info("Müşteri başvuru durumu değişti. actorAppUserId={} targetAppUserId={} status={}",
+                actor.getId(), appUser.getId(), appUser.getStatus());
+    }
+
+    @Override
+    @Transactional
+    public void updateAccessRestriction(String identityNumber, boolean restricted) {
+        AppUser actor = bankUserAccess.currentUser();
+        AppUser target = appUserRepository.findByIdentityNumberForUpdate(identityNumber)
+                .orElseThrow(() -> new BankOperationException("Kullanıcı bulunamadı!"));
+
+        if (actor.getId().equals(target.getId())) {
+            throw new AccessRestrictionConflictException("SELF_RESTRICTION_FORBIDDEN",
+                    "Yönetici kendi erişim durumunu bu işlemle değiştiremez.");
+        }
+        if (target.getRole() == AppUser.Role.ADMIN) {
+            throw new AccessRestrictionConflictException("ADMIN_ACCOUNT_PROTECTED",
+                    "Yönetici hesabı müşteri erişim kısıtı işlemiyle değiştirilemez.");
+        }
+
+        AppUser.AccessRestrictionStatus previous = target.getAccessRestrictionStatus();
+        AppUser.AccessRestrictionStatus resulting;
+        AccessRestrictionAudit.Action action;
+
+        if (restricted) {
+            if (previous != AppUser.AccessRestrictionStatus.UNRESTRICTED) return;
+            resulting = AppUser.AccessRestrictionStatus.RESTRICTED;
+            action = AccessRestrictionAudit.Action.RESTRICTED;
+        } else {
+            if (previous == AppUser.AccessRestrictionStatus.UNRESTRICTED) return;
+            resulting = AppUser.AccessRestrictionStatus.UNRESTRICTED;
+            action = AccessRestrictionAudit.Action.RESTRICTION_LIFTED;
+        }
+
+        target.setAccessRestrictionStatus(resulting);
+        appUserRepository.save(target);
+        recordRestrictionAudit(target, actor, action, previous, resulting);
+        log.info("Erişim kısıtı değişti. actorAppUserId={} targetAppUserId={} action={} state={}",
+                actor.getId(), target.getId(), action, resulting);
+    }
+
+    @Override
+    @Transactional
+    public void decideAccessReview(String identityNumber, AccessReviewDecisionRequest.Decision decision) {
+        AppUser actor = bankUserAccess.currentUser();
+        AppUser target = appUserRepository.findByIdentityNumberForUpdate(identityNumber)
+                .orElseThrow(() -> new BankOperationException("Kullanıcı bulunamadı!"));
+
+        if (target.getRole() == AppUser.Role.ADMIN) {
+            throw new AccessRestrictionConflictException("ADMIN_ACCOUNT_PROTECTED",
+                    "Yönetici hesabı erişim incelemesine alınamaz.");
+        }
+        if (target.getAccessRestrictionStatus() != AppUser.AccessRestrictionStatus.REVIEW_PENDING) {
+            throw new AccessRestrictionConflictException("ACCESS_REVIEW_NOT_PENDING",
+                    "Bu hesap için bekleyen bir erişim inceleme talebi yok.");
+        }
+
+        AppUser.AccessRestrictionStatus previous = target.getAccessRestrictionStatus();
+        AppUser.AccessRestrictionStatus resulting = decision == AccessReviewDecisionRequest.Decision.APPROVE
+                ? AppUser.AccessRestrictionStatus.UNRESTRICTED
+                : AppUser.AccessRestrictionStatus.REVIEW_REJECTED;
+        AccessRestrictionAudit.Action action = decision == AccessReviewDecisionRequest.Decision.APPROVE
+                ? AccessRestrictionAudit.Action.REVIEW_APPROVED
+                : AccessRestrictionAudit.Action.REVIEW_REJECTED;
+
+        target.setAccessRestrictionStatus(resulting);
+        appUserRepository.save(target);
+        recordRestrictionAudit(target, actor, action, previous, resulting);
+        log.info("Erişim inceleme kararı kaydedildi. actorAppUserId={} targetAppUserId={} action={} state={}",
+                actor.getId(), target.getId(), action, resulting);
+    }
+
+    private void recordRestrictionAudit(AppUser target, AppUser actor,
+                                        AccessRestrictionAudit.Action action,
+                                        AppUser.AccessRestrictionStatus previous,
+                                        AppUser.AccessRestrictionStatus resulting) {
+        accessRestrictionAuditRepository.save(AccessRestrictionAudit.builder()
+                .targetAppUserId(target.getId())
+                .actorAppUserId(actor.getId())
+                .action(action)
+                .previousState(previous)
+                .resultingState(resulting)
+                .occurredAt(Instant.now())
+                .build());
     }
 
     @Override
@@ -183,6 +291,7 @@ public class AdminUserServiceImpl implements IAdminUserService {
                 .email(getOwnerEmail(appUser))
                 .role(appUser.getRole().name())
                 .status(appUser.getStatus().name())
+                .accessRestrictionStatus(appUser.getAccessRestrictionStatus().name())
                 .build();
     }
 }

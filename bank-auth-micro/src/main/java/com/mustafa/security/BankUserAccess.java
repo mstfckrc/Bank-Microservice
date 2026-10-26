@@ -13,11 +13,15 @@ import org.springframework.security.web.access.intercept.RequestAuthorizationCon
 import org.springframework.stereotype.Component;
 
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Supplier;
 
 @Component
 @RequiredArgsConstructor
 public class BankUserAccess {
+    private static final Set<String> ACCESS_CONTEXT_CLIENTS = Set.of(
+            "bank-core-service", "bank-corporate-service", "bank-bill-service");
+
     private final IAppUserRepository appUserRepository;
 
     public AuthorizationDecision authorizeUser(Supplier<? extends Authentication> authentication,
@@ -28,7 +32,14 @@ public class BankUserAccess {
     public AuthorizationDecision authorizeAdmin(Supplier<? extends Authentication> authentication,
                                                 RequestAuthorizationContext context) {
         return new AuthorizationDecision(findBoundUser(authentication.get())
-                .filter(user -> user.getRole() == AppUser.Role.ADMIN).isPresent());
+                .filter(user -> user.getRole() == AppUser.Role.ADMIN)
+                .filter(this::isUnrestricted).isPresent());
+    }
+
+    public AuthorizationDecision authorizeUnrestrictedUser(Supplier<? extends Authentication> authentication,
+                                                           RequestAuthorizationContext context) {
+        return new AuthorizationDecision(findBoundUser(authentication.get())
+                .filter(this::isUnrestricted).isPresent());
     }
 
     public AuthorizationDecision authorizeCorporateProfileRead(
@@ -38,6 +49,19 @@ public class BankUserAccess {
                 && "bank-corporate-service".equals(token.getToken().getClaimAsString("azp"))
                 && auth.getAuthorities().stream().anyMatch(authority ->
                         "SCOPE_bank.customer.profile.read".equals(authority.getAuthority()));
+        return new AuthorizationDecision(allowed);
+    }
+
+    public AuthorizationDecision authorizeAccessContextRead(
+            Supplier<? extends Authentication> authentication, RequestAuthorizationContext context) {
+        Authentication auth = authentication.get();
+        boolean allowed = false;
+        if (auth instanceof JwtAuthenticationToken token) {
+            String clientId = token.getToken().getClaimAsString("azp");
+            allowed = clientId != null && ACCESS_CONTEXT_CLIENTS.contains(clientId)
+                    && auth.getAuthorities().stream().anyMatch(authority ->
+                            "SCOPE_bank.access.read".equals(authority.getAuthority()));
+        }
         return new AuthorizationDecision(allowed);
     }
 
@@ -68,5 +92,13 @@ public class BankUserAccess {
                 .filter(user -> user.getRole() != null && auth.getAuthorities().stream()
                         .anyMatch(authority -> ("ROLE_" + user.getRole().name())
                                 .equals(authority.getAuthority())));
+    }
+
+    private boolean isUnrestricted(AppUser user) {
+        return user.getAccessRestrictionStatus() == AppUser.AccessRestrictionStatus.UNRESTRICTED;
+    }
+
+    public boolean isCurrentUserRestricted(Authentication authentication) {
+        return findBoundUser(authentication).filter(user -> !isUnrestricted(user)).isPresent();
     }
 }

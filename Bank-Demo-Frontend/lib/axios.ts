@@ -24,9 +24,15 @@ api.interceptors.response.use(
     if (!axios.isAxiosError(error)) return Promise.reject(error);
 
     const status = error.response?.status;
+    const code = error.response?.data?.code;
     const message = error.response?.data?.message || "Beklenmedik bir hata oluştu.";
 
-    if (status === 403) {
+    if (status === 403 && code === "ACCOUNT_ACCESS_RESTRICTED") {
+      useAuthStore.getState().updateUser({ accessRestrictionStatus: "RESTRICTED" });
+      if (typeof window !== "undefined" && window.location.pathname !== "/account-restricted") {
+        window.location.assign("/account-restricted");
+      }
+    } else if (status === 403) {
       toast.error("İşlem için yetkiniz yok", { description: message });
     } else if (status === 401) {
       const auth = useAuthStore.getState();

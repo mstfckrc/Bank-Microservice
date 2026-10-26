@@ -21,7 +21,7 @@ export const customerService = {
 
   // Reddedilen kullanıcının itiraz etmesi
   appealRejection: async () => {
-    const response = await api.post('/customers/appeal');
+    const response = await api.post('/customers/appeal', {});
     return response.data;
   }
 };

@@ -22,7 +22,11 @@ export function isUserProfile(value: unknown): value is UserProfileResponse {
     && typeof profile.profileName === "string"
     && typeof profile.email === "string"
     && (profile.role === "ADMIN" || profile.role === "RETAIL_CUSTOMER" || profile.role === "CORPORATE_MANAGER")
-    && (profile.status === "PENDING" || profile.status === "APPROVED" || profile.status === "REJECTED");
+    && (profile.status === "PENDING" || profile.status === "APPROVED" || profile.status === "REJECTED")
+    && (profile.accessRestrictionStatus === "UNRESTRICTED"
+      || profile.accessRestrictionStatus === "RESTRICTED"
+      || profile.accessRestrictionStatus === "REVIEW_PENDING"
+      || profile.accessRestrictionStatus === "REVIEW_REJECTED");
 }
 
 export class BankProfileError extends Error {

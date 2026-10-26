@@ -1,6 +1,7 @@
 package com.mustafa.config;
 
 import com.mustafa.security.CorporateAccess;
+import com.mustafa.security.BankAccessDeniedHandler;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -21,6 +22,7 @@ import org.springframework.security.web.SecurityFilterChain;
 public class SecurityConfig {
 
     private final CorporateAccess corporateAccess;
+    private final BankAccessDeniedHandler bankAccessDeniedHandler;
     private final Converter<Jwt, AbstractAuthenticationToken> corporateJwtAuthenticationConverter;
 
     @Bean
@@ -72,6 +74,7 @@ public class SecurityConfig {
         http.csrf(AbstractHttpConfigurer::disable)
                 .cors(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .exceptionHandling(exceptions -> exceptions.accessDeniedHandler(bankAccessDeniedHandler))
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt ->
                         jwt.jwtAuthenticationConverter(corporateJwtAuthenticationConverter)))
                 .authorizeHttpRequests(auth -> auth

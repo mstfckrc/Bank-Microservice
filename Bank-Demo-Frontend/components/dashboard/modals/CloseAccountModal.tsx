@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { DIALOG_OVERLAY_CLASS_NAME } from "@/components/ui/dialog";
 
 interface CloseAccountModalProps {
   accountToClose: string | null;
@@ -14,7 +15,7 @@ export function CloseAccountModal({ accountToClose, isClosing, onConfirm, onCanc
   if (!accountToClose) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+    <div className={`fixed inset-0 z-50 flex items-center justify-center p-4 ${DIALOG_OVERLAY_CLASS_NAME}`}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 animate-in fade-in zoom-in-95 duration-200">
         <h3 className="text-xl font-black text-slate-900 mb-2">Hesabı Kapat</h3>
         <p className="text-sm text-slate-500 mb-6">

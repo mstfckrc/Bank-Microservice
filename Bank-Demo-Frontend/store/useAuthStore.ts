@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { devtools } from "zustand/middleware";
-import type { ApprovalStatus, Role, UserProfileResponse } from "@/types";
+import type { AccessRestrictionStatus, ApprovalStatus, Role, UserProfileResponse } from "@/types";
 
 export interface AuthUser {
   identityNumber: string;
@@ -8,6 +8,7 @@ export interface AuthUser {
   email: string;
   role: Role;
   status: ApprovalStatus;
+  accessRestrictionStatus?: AccessRestrictionStatus;
 }
 
 interface AuthState {
@@ -41,6 +42,7 @@ function asAuthUser(user: UserProfileResponse): AuthUser {
     email: user.email,
     role: user.role,
     status: user.status,
+    accessRestrictionStatus: user.accessRestrictionStatus,
   };
 }
 

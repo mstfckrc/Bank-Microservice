@@ -120,7 +120,12 @@ function isUserProfile(value: unknown): value is UserProfileResponse {
     && typeof user.profileName === "string"
     && typeof user.email === "string"
     && (user.role === "ADMIN" || user.role === "RETAIL_CUSTOMER" || user.role === "CORPORATE_MANAGER")
-    && (user.status === "PENDING" || user.status === "APPROVED" || user.status === "REJECTED");
+    && (user.status === "PENDING" || user.status === "APPROVED" || user.status === "REJECTED")
+    && (user.accessRestrictionStatus === undefined
+      || user.accessRestrictionStatus === "UNRESTRICTED"
+      || user.accessRestrictionStatus === "RESTRICTED"
+      || user.accessRestrictionStatus === "REVIEW_PENDING"
+      || user.accessRestrictionStatus === "REVIEW_REJECTED");
 }
 
 function isBankSession(value: Partial<BankSessionData>): value is BankSessionData {

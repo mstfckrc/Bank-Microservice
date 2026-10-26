@@ -9,6 +9,7 @@ import com.mustafa.exception.BankOperationException;
 import com.mustafa.messaging.publisher.RabbitMQPublisher;
 import com.mustafa.repository.IAccountRepository;
 import com.mustafa.repository.ITransactionRepository;
+import com.mustafa.security.CoreUserAccess;
 import com.mustafa.service.ICurrencyService;
 import com.mustafa.service.transfer.MoneyTransferService;
 import com.mustafa.service.transfer.TransferCommand;
@@ -132,6 +133,11 @@ class TransferFlowIT {
     @EnableJpaRepositories(basePackageClasses = IAccountRepository.class)
     @Import({TransferApplicationService.class, PayrollApplicationService.class, MoneyTransferService.class})
     static class Config {
+        @Bean
+        CoreUserAccess coreUserAccess() {
+            return mock(CoreUserAccess.class);
+        }
+
         @Bean
         DataSource dataSource() {
             String url = System.getProperty("test.db.url", "");

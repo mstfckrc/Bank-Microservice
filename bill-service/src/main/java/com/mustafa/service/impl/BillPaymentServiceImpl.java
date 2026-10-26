@@ -1,6 +1,7 @@
 package com.mustafa.service.impl;
 
 import com.mustafa.client.BackendServiceClient;
+import com.mustafa.security.BillUserAccess;
 import com.mustafa.dto.message.NotificationMessage;
 import com.mustafa.dto.request.BillInstructionRequest;
 import com.mustafa.dto.request.InternalPaymentRequest;
@@ -29,6 +30,7 @@ public class BillPaymentServiceImpl implements IBillPaymentService {
     private final IBillPaymentInstructionRepository instructionRepository;
     private final IExternalBillService externalBillService;
     private final BackendServiceClient backendServiceClient; // 📻 Telsizimiz
+    private final BillUserAccess billUserAccess;
     private final RabbitMQPublisher rabbitPublisher;       // 🕊️ Posta Güvercinimiz
 
     // KVKK Maskeleme Kalkanı
@@ -45,6 +47,7 @@ public class BillPaymentServiceImpl implements IBillPaymentService {
         if (!Objects.equals(instruction.getIdentityNumber(), identityNumber)) {
             throw new BankOperationException("Fatura talimatı sahibi eşleşmiyor!");
         }
+        billUserAccess.requireRetailAccess(identityNumber);
 
         // 1. ÇİFTE ÖDEME KONTROLÜ
         if (instruction.getLastPaymentDate() != null &&

@@ -6,6 +6,7 @@ export type AccountCurrency = 'TRY' | 'USD' | 'EUR';
 
 // Müşteri Onay Durumları
 export type ApprovalStatus = "PENDING" | "APPROVED" | "REJECTED";
+export type AccessRestrictionStatus = "UNRESTRICTED" | "RESTRICTED" | "REVIEW_PENDING" | "REVIEW_REJECTED";
 
 // İşlem Onay Durumları (MASAK)
 export type TransactionStatus = "COMPLETED" | "PENDING_APPROVAL" | "REJECTED";
@@ -41,6 +42,8 @@ export interface UserProfileResponse {
   email: string;
   role: Role;
   status: ApprovalStatus; 
+  // Optional only for encrypted BFF cookies written before this field existed.
+  accessRestrictionStatus?: AccessRestrictionStatus;
 }
 
 export interface UpdateProfileRequest {

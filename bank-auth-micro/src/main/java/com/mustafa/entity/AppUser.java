@@ -39,6 +39,14 @@ public class AppUser{
     @Column(nullable = false, length = 20, columnDefinition = "varchar(20) default 'PENDING'")
     private ApprovalStatus status = ApprovalStatus.PENDING;
 
+    // Independent from the registration approval status. The database default
+    // keeps existing rows unrestricted when Hibernate adds this column.
+    @Builder.Default
+    @Enumerated(EnumType.STRING)
+    @Column(name = "access_restriction_status", nullable = false, length = 24,
+            columnDefinition = "varchar(24) default 'UNRESTRICTED'")
+    private AccessRestrictionStatus accessRestrictionStatus = AccessRestrictionStatus.UNRESTRICTED;
+
     // --- ENUMLAR ---
     public enum Role {
         ADMIN,
@@ -48,5 +56,12 @@ public class AppUser{
 
     public enum ApprovalStatus {
         PENDING, APPROVED, REJECTED
+    }
+
+    public enum AccessRestrictionStatus {
+        UNRESTRICTED,
+        RESTRICTED,
+        REVIEW_PENDING,
+        REVIEW_REJECTED
     }
 }

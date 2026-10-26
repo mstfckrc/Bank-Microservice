@@ -6,6 +6,7 @@ import com.mustafa.dto.request.SalaryPaymentItem;
 import com.mustafa.entity.Account;
 import com.mustafa.exception.BankOperationException;
 import com.mustafa.repository.IAccountRepository;
+import com.mustafa.security.CoreUserAccess;
 import com.mustafa.service.ICurrencyService;
 import com.mustafa.service.IInternalBankService;
 import com.mustafa.service.transfer.MoneyTransferService;
@@ -32,7 +33,8 @@ class PayrollApplicationServiceTest {
     private final IAccountRepository accounts = mock(IAccountRepository.class);
     private final ICurrencyService currency = mock(ICurrencyService.class);
     private final MoneyTransferService transfers = mock(MoneyTransferService.class);
-    private final PayrollApplicationService service = new PayrollApplicationService(accounts, currency, transfers);
+    private final CoreUserAccess userAccess = mock(CoreUserAccess.class);
+    private final PayrollApplicationService service = new PayrollApplicationService(accounts, currency, transfers, userAccess);
 
     @BeforeEach
     void authenticate() {

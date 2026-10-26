@@ -5,6 +5,7 @@ import com.mustafa.entity.BillPaymentInstruction;
 import com.mustafa.exception.BankOperationException;
 import com.mustafa.messaging.publisher.RabbitMQPublisher;
 import com.mustafa.repository.IBillPaymentInstructionRepository;
+import com.mustafa.security.BillUserAccess;
 import com.mustafa.service.IExternalBillService;
 import org.junit.jupiter.api.Test;
 
@@ -24,10 +25,11 @@ class BillPaymentServiceTest {
     private final IBillPaymentInstructionRepository instructionRepository = mock(IBillPaymentInstructionRepository.class);
     private final IExternalBillService externalBillService = mock(IExternalBillService.class);
     private final BackendServiceClient backendServiceClient = mock(BackendServiceClient.class);
+    private final BillUserAccess userAccess = mock(BillUserAccess.class);
     private final RabbitMQPublisher rabbitPublisher = mock(RabbitMQPublisher.class);
 
     private final BillPaymentServiceImpl service = new BillPaymentServiceImpl(
-            instructionRepository, externalBillService, backendServiceClient, rabbitPublisher);
+            instructionRepository, externalBillService, backendServiceClient, userAccess, rabbitPublisher);
 
     @Test
     void cannotDeleteAnotherCustomersInstruction() {

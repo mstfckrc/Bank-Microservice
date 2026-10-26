@@ -22,6 +22,7 @@ public class SecurityConfig {
     private final CoreUserAccess coreUserAccess;
     private final InternalServiceAccess internalServiceAccess;
     private final Converter<Jwt, JwtAuthenticationToken> bankJwtAuthenticationConverter;
+    private final BankAccessDeniedHandler bankAccessDeniedHandler;
 
     @Bean
     @Order(0)
@@ -75,6 +76,7 @@ public class SecurityConfig {
                 .cors(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .exceptionHandling(exceptions -> exceptions.accessDeniedHandler(bankAccessDeniedHandler))
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt ->
                         jwt.jwtAuthenticationConverter(bankJwtAuthenticationConverter)))
                 .authorizeHttpRequests(auth -> auth

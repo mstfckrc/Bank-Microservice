@@ -1,6 +1,7 @@
 package com.mustafa.exception;
 
 import com.mustafa.dto.response.ErrorResponse;
+import com.mustafa.security.BankAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -49,6 +50,11 @@ public class GlobalExceptionHandler {
                 request.getDescription(false)
         );
         return new ResponseEntity<>(errorDetails, HttpStatus.BAD_REQUEST); // 400 Bad Request döneriz
+    }
+
+    @ExceptionHandler(BankAccessException.class)
+    public ResponseEntity<Map<String, String>> handleBankAccessException(BankAccessException ex) {
+        return ResponseEntity.status(ex.getStatus()).body(Map.of("code", ex.getCode()));
     }
 
     // 4. Veritabanı Benzersizlik (Unique Constraint) Hataları (Örn: Aynı email)

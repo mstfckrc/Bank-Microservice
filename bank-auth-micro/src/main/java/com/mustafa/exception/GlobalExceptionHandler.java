@@ -51,6 +51,13 @@ public class GlobalExceptionHandler {
         return new ResponseEntity<>(errorDetails, HttpStatus.BAD_REQUEST); // 400 Bad Request döneriz
     }
 
+    @ExceptionHandler(AccessRestrictionConflictException.class)
+    public ResponseEntity<Map<String, String>> handleAccessRestrictionConflict(
+            AccessRestrictionConflictException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(Map.of("code", ex.getCode(), "message", ex.getMessage()));
+    }
+
     // 4. Veritabanı Benzersizlik (Unique Constraint) Hataları (Örn: Aynı email)
     @ExceptionHandler(org.springframework.dao.DataIntegrityViolationException.class)
     public ResponseEntity<ErrorResponse> handleDataIntegrityViolationException(org.springframework.dao.DataIntegrityViolationException ex, WebRequest request) {

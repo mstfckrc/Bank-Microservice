@@ -35,6 +35,7 @@ const rules: RouteRule[] = [
   { method: "GET", parts: ["customers", "profile"], access: "authenticated" },
   { method: "PUT", parts: ["customers", "profile"], access: "authenticated" },
   { method: "POST", parts: ["customers", "appeal"], access: "authenticated" },
+  { method: "POST", parts: ["customers", "access-review"], access: "authenticated" },
 
   { method: "GET", parts: ["accounts"], access: "authenticated" },
   { method: "POST", parts: ["accounts"], access: "authenticated" },
@@ -62,6 +63,8 @@ const rules: RouteRule[] = [
   { method: "PUT", parts: ["admin", "customers", identity], access: "authenticated" },
   { method: "DELETE", parts: ["admin", "customers", identity], access: "authenticated" },
   { method: "PUT", parts: ["admin", "customers", identity, "status"], access: "authenticated", query: { status: /^(APPROVED|REJECTED|PENDING)$/ } },
+  { method: "PUT", parts: ["admin", "customers", identity, "access-restriction"], access: "authenticated" },
+  { method: "POST", parts: ["admin", "customers", identity, "access-review"], access: "authenticated" },
   { method: "GET", parts: ["admin", "accounts", account, "transactions"], access: "authenticated" },
   { method: "GET", parts: ["admin", "transactions"], access: "authenticated", query: { status: /^[A-Z_]{1,40}$/ } },
   { method: "PUT", parts: ["admin", "transactions", reference, "approve"], access: "authenticated" },
@@ -220,7 +223,8 @@ async function handle(request: Request, method: Method, context: { params: Promi
       return jsonError(401, "SESSION_INVALID", "Your session is no longer valid. Please sign in again.");
     }
     if (upstream.status >= 500) {
-      return jsonError(502, "UPSTREAM_UNAVAILABLE", "The Bank API is temporarily unavailable.");
+      const status = upstream.status === 503 ? 503 : 502;
+      return jsonError(status, "UPSTREAM_UNAVAILABLE", "The Bank API is temporarily unavailable.");
     }
 
     const responseHeaders = new Headers({ "Cache-Control": "no-store" });
