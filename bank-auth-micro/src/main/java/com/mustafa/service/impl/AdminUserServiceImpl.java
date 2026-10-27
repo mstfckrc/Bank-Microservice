@@ -17,8 +17,13 @@ import com.mustafa.repository.IAccessRestrictionAuditRepository;
 import com.mustafa.repository.IRetailCustomerRepository;
 import com.mustafa.security.BankUserAccess;
 import com.mustafa.service.IAdminUserService;
+import com.mustafa.validation.ProfileUpdateValidator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import jakarta.ws.rs.NotFoundException;
+import org.keycloak.admin.client.Keycloak;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -40,6 +45,10 @@ public class AdminUserServiceImpl implements IAdminUserService {
     // 🚀 YENİ EKLENDİ: Karargaha giden doğrudan telsiz hattı
     private final BackendServiceClient backendServiceClient;
     private final BankUserAccess bankUserAccess;
+    private final Keycloak keycloak;
+
+    @Value("${keycloak.realm}")
+    private String realm;
 
     @Override
     public List<UserProfileResponse> getAllCustomers() {
@@ -51,55 +60,41 @@ public class AdminUserServiceImpl implements IAdminUserService {
     @Override
     @Transactional
     public UserProfileResponse updateCustomer(String identityNumber, UpdateProfileRequest request) {
-        AppUser appUser = appUserRepository.findByIdentityNumber(identityNumber)
+        AppUser appUser = appUserRepository.findByIdentityNumberForUpdate(identityNumber)
                 .orElseThrow(() -> new BankOperationException("Güncellenecek kullanıcı bulunamadı!"));
+        ProfileUpdateValidator.validate(request, appUser.getRole());
 
         if (appUser.getRole() == AppUser.Role.RETAIL_CUSTOMER || appUser.getRole() == AppUser.Role.ADMIN) {
             RetailCustomer retail = retailCustomerRepository.findByAppUser_IdentityNumber(identityNumber)
                     .orElseThrow(() -> new BankOperationException("Düzenlenebilir yerel profil bulunamadı. Yönetici profilini merkezi kimlik yönetiminden güncelleyin."));
 
             if (request.getEmail() != null && !request.getEmail().isBlank()) {
-                retail.setEmail(request.getEmail());
+                retail.setEmail(request.getEmail().trim());
             }
 
-            if (request.getProfileName() != null && !request.getProfileName().isBlank()) {
-                String fullName = request.getProfileName().trim();
-                int lastSpaceIndex = fullName.lastIndexOf(" ");
-
-                if (lastSpaceIndex == -1) {
-                    retail.setFirstName(fullName);
-                    retail.setLastName("");
-                } else {
-                    retail.setFirstName(fullName.substring(0, lastSpaceIndex).trim());
-                    retail.setLastName(fullName.substring(lastSpaceIndex + 1).trim());
-                }
+            if (request.getFirstName() != null) {
+                retail.setFirstName(request.getFirstName().trim());
+                retail.setLastName(request.getLastName().trim());
             }
             retailCustomerRepository.save(retail);
-            log.info("Admin İşlemi: Bireysel müşteri ({}) güncellendi.", identityNumber);
+            log.info("Admin profil güncelleme kaydı hazırlandı. targetAppUserId={}", appUser.getId());
 
         } else if (appUser.getRole() == AppUser.Role.CORPORATE_MANAGER) {
             CompanySyncRequest syncRequest = CompanySyncRequest.builder()
-                    .companyName(request.getProfileName())
-                    .contactEmail(request.getEmail())
+                    .companyName(request.getProfileName() == null ? null : request.getProfileName().trim())
+                    .contactEmail(request.getEmail() == null ? null : request.getEmail().trim())
                     .companyIdentityNumber(identityNumber)
                     .build();
             try {
                 companyServiceClient.updateCompanyInfo(identityNumber, syncRequest);
-                log.info("Admin İşlemi: Kurumsal müşteri ({}) bilgileri Kurumsal Serviste güncellendi.", identityNumber);
+                log.info("Admin kurumsal profil güncellemesi uzak serviste tamamlandı. targetAppUserId={}", appUser.getId());
             } catch (Exception e) {
-                log.error("Kurumsal servis güncellenemedi: {}", e.getMessage());
+                log.error("Kurumsal profil güncellenemedi. errorType={}", e.getClass().getSimpleName());
                 throw new BankOperationException("Kurumsal servis ile bağlantı kurulamadı, güncelleme iptal edildi!");
             }
         }
 
-        return UserProfileResponse.builder()
-                .identityNumber(appUser.getIdentityNumber())
-                .profileName(request.getProfileName() != null ? request.getProfileName() : getOwnerName(appUser))
-                .email(request.getEmail() != null ? request.getEmail() : getOwnerEmail(appUser))
-                .role(appUser.getRole().name())
-                .status(appUser.getStatus().name())
-                .accessRestrictionStatus(appUser.getAccessRestrictionStatus().name())
-                .build();
+        return mapToUserProfileResponse(appUser);
     }
 
     @Override
@@ -214,39 +209,72 @@ public class AdminUserServiceImpl implements IAdminUserService {
     @Override
     @Transactional
     public void deleteCustomer(String identityNumber) {
-        AppUser appUser = appUserRepository.findByIdentityNumber(identityNumber)
-                .orElseThrow(() -> new BankOperationException("Kullanıcı bulunamadı!"));
+        AppUser actor = bankUserAccess.currentUser();
+        if (actor.getRole() != AppUser.Role.ADMIN
+                || actor.getAccessRestrictionStatus() != AppUser.AccessRestrictionStatus.UNRESTRICTED) {
+            throw new AccessDeniedException("Customer deletion requires an unrestricted administrator.");
+        }
+        var target = appUserRepository.findByIdentityNumberForUpdate(identityNumber);
+        if (target.isEmpty()) {
+            log.info("Müşteri silme isteği tekrarlandı; yerel kayıt zaten bulunmuyor. actorAppUserId={}", actor.getId());
+            return;
+        }
+        AppUser appUser = target.get();
+        if (actor.getId().equals(appUser.getId())) {
+            throw new AccessRestrictionConflictException("SELF_DELETE_FORBIDDEN",
+                    "Yönetici kendi hesabını müşteri silme işlemiyle silemez.");
+        }
+        if (appUser.getRole() == AppUser.Role.ADMIN) {
+            throw new AccessRestrictionConflictException("ADMIN_ACCOUNT_PROTECTED",
+                    "Yönetici hesabı müşteri silme işlemiyle silinemez.");
+        }
+        if (appUser.getKeycloakId() == null || appUser.getKeycloakId().isBlank()) {
+            throw new BankOperationException("Kullanıcının merkezi kimlik eşlemesi eksik; silmeden önce yönetici incelemesi gerekiyor.");
+        }
 
-        // 1. ADIM: İlgili servisteki (Corporate/Retail) profil verisini sil
-        if (appUser.getRole() == AppUser.Role.RETAIL_CUSTOMER) {
-            retailCustomerRepository.findByAppUser_IdentityNumber(identityNumber)
-                    .ifPresent(retailCustomer -> {
-                        retailCustomerRepository.delete(retailCustomer);
-                        log.info("Admin İşlemi: {} numaralı bireysel profil silindi.", identityNumber);
-                    });
-        } else if (appUser.getRole() == AppUser.Role.CORPORATE_MANAGER) {
+        // Core validates balances and pending transfers before any profile is removed.
+        try {
+            backendServiceClient.deleteCustomerAccounts(identityNumber);
+        } catch (Exception e) {
+            log.warn("Müşteri silme Core adımında durdu. targetAppUserId={} errorType={}",
+                    appUser.getId(), e.getClass().getSimpleName());
+            throw new BankOperationException("Banka hesapları kapatılamadı. Bakiye ve onay bekleyen transferleri kontrol edin; servis hatasında işlemi tekrar deneyin.");
+        }
+
+        if (appUser.getRole() == AppUser.Role.CORPORATE_MANAGER) {
             try {
                 companyServiceClient.deleteCompanyInfo(identityNumber);
-                log.info("Admin İşlemi: {} numaralı şirket Kurumsal Servisten silindi.", identityNumber);
             } catch (Exception e) {
-                log.error("Kurumsal servis silinirken hata oluştu: {}", e.getMessage());
-                throw new BankOperationException("Kurumsal servisteki veriler silinemedi, işlem iptal edildi!");
+                log.error("Müşteri silme Corporate adımında durdu. targetAppUserId={} errorType={}",
+                        appUser.getId(), e.getClass().getSimpleName());
+                throw new BankOperationException("Şirket kaydı silinemedi. Banka hesapları kapatılmış olabilir; sorun giderildikten sonra silme işlemini tekrar deneyin.");
             }
         }
 
-        // 🚀 2. ADIM: KARARGAHA TELSİZ ÇEK VE KASALARI YOK ET
+        // Flush local constraints before removing the external identity; local work is still uncommitted.
         try {
-            backendServiceClient.deleteCustomerAccounts(identityNumber);
-            log.info("Admin İşlemi: {} numaralı müşterinin Karargah (Backend) üzerindeki tüm kasaları imha edildi.", identityNumber);
-        } catch (Exception e) {
-            log.error("Backend hesapları silinirken hata fırlattı: {}", e.getMessage());
-            // Eğer hesabı varsa veya ağ koptuysa işlem burada durur ve rollback atar!
-            throw new BankOperationException("Müşterinin Karargahta içi dolu kasası var veya ağa ulaşılamadı. Silme işlemi İPTAL EDİLDİ!");
+            retailCustomerRepository.findByAppUser_IdentityNumber(identityNumber)
+                    .ifPresent(retailCustomerRepository::delete);
+            appUserRepository.delete(appUser);
+            appUserRepository.flush();
+        } catch (RuntimeException e) {
+            log.error("Müşteri silme yerel veritabanı adımında durdu. targetAppUserId={} errorType={}",
+                    appUser.getId(), e.getClass().getSimpleName());
+            throw new BankOperationException("Yerel kullanıcı kaydı silinemedi. Önceki adımlar tamamlanmış olabilir; sorun giderildikten sonra işlemi tekrar deneyin.");
         }
 
-        // 3. ADIM: Her şey yolundaysa en son Kimliği (AppUser) yok et
-        appUserRepository.delete(appUser);
-        log.info("Admin İşlemi: {} sistemden (Giriş Yetkisi) tamamen temizlendi.", identityNumber);
+        try {
+            keycloak.realm(realm).users().get(appUser.getKeycloakId()).remove();
+        } catch (NotFoundException e) {
+            log.info("Silinecek merkezi kimlik zaten bulunmuyor. targetAppUserId={}", appUser.getId());
+        } catch (RuntimeException e) {
+            log.error("Müşteri silme Keycloak adımında durdu. targetAppUserId={} errorType={}",
+                    appUser.getId(), e.getClass().getSimpleName());
+            throw new BankOperationException("Merkezi giriş yetkisi kaldırılamadı. Önceki adımlar tamamlanmış olabilir; bağlantı düzeldiğinde silme işlemini tekrar deneyin.");
+        }
+
+        log.info("Müşteri silme adımları tamamlandı; yerel commit bekleniyor. actorAppUserId={} targetAppUserId={}",
+                actor.getId(), appUser.getId());
     }
 
     private String getOwnerName(AppUser appUser) {
@@ -260,7 +288,8 @@ public class AdminUserServiceImpl implements IAdminUserService {
                 CompanySyncRequest company = companyServiceClient.getCompanyInfo(appUser.getIdentityNumber());
                 return company.getCompanyName() != null ? company.getCompanyName() : "İsimsiz Kurum";
             } catch (Exception e) {
-                log.warn("Kurumsal firma ({}) bilgileri çekilemedi: {}", appUser.getIdentityNumber(), e.getMessage());
+                log.warn("Kurumsal profil sorgusu başarısız. targetAppUserId={} errorType={}",
+                        appUser.getId(), e.getClass().getSimpleName());
                 return "Kurumsal Müşteri (" + appUser.getIdentityNumber() + ")";
             }
         }
@@ -285,10 +314,15 @@ public class AdminUserServiceImpl implements IAdminUserService {
     }
 
     private UserProfileResponse mapToUserProfileResponse(AppUser appUser) {
+        RetailCustomer retail = appUser.getRole() == AppUser.Role.CORPORATE_MANAGER ? null
+                : retailCustomerRepository.findByAppUser_IdentityNumber(appUser.getIdentityNumber()).orElse(null);
         return UserProfileResponse.builder()
                 .identityNumber(appUser.getIdentityNumber())
-                .profileName(getOwnerName(appUser))
-                .email(getOwnerEmail(appUser))
+                .profileName(retail == null ? getOwnerName(appUser) : (retail.getFirstName() + " " + retail.getLastName()).trim())
+                .email(retail == null ? getOwnerEmail(appUser) : retail.getEmail())
+                .firstName(retail == null ? null : retail.getFirstName())
+                .lastName(retail == null ? null : retail.getLastName())
+                .profileEditable(appUser.getRole() == AppUser.Role.CORPORATE_MANAGER || retail != null)
                 .role(appUser.getRole().name())
                 .status(appUser.getStatus().name())
                 .accessRestrictionStatus(appUser.getAccessRestrictionStatus().name())

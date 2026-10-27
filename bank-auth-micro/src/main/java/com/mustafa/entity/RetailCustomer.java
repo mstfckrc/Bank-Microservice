@@ -16,7 +16,7 @@ public class RetailCustomer {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @OneToOne(fetch = FetchType.LAZY, cascade = CascadeType.ALL)
+    @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "app_user_id", nullable = false, unique = true)
     private AppUser appUser;
 

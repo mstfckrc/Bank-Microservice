@@ -25,7 +25,7 @@ public class InternalBankControllerImpl implements IInternalBankController {
     @Override
     @GetMapping("/accounts/validate") // 🚀 Metot seviyesine taşındı
     public ResponseEntity<AccountValidationResponse> validateAccount(@RequestParam("iban") String iban) {
-        log.info("INTERNAL REST İsteği: Kasa (IBAN) doğrulama talebi geldi. IBAN: {}", iban);
+        log.info("INTERNAL REST İsteği: Hesap doğrulama talebi alındı.");
         return ResponseEntity.ok(internalBankService.validateAccount(iban));
     }
 

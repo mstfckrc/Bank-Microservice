@@ -8,6 +8,11 @@ export const currencyService = {
     const response = await api.get<ExchangeRateResponse>('/currencies/rates', {
       params: { base }
     });
-    return response.data;
+    const data = response.data;
+    if (!data || data.base_code !== base.toUpperCase() || !data.rates
+      || typeof data.rates !== "object" || Array.isArray(data.rates)) {
+      throw new Error("Kur verisi beklenen biçimde değil.");
+    }
+    return data;
   },
 };

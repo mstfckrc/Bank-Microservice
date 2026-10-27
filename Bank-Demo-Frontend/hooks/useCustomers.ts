@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { getApiErrorMessage } from '@/lib/api-error';
 import { adminService } from "@/services/admin.service";
-import { UserProfileResponse } from "@/types"; // 🚀 V2: CustomerResponse yerine UserProfileResponse
+import { UserProfileResponse, UpdateProfileRequest } from "@/types";
 import { toast } from "sonner";
 
 export function useCustomers() {
@@ -38,7 +38,7 @@ export function useCustomers() {
   };
 
   // 🚀 V2: fullName yerine profileName
-  const editCustomer = async (identityNumber: string, updatedData: { profileName: string; email: string }) => {
+  const editCustomer = async (identityNumber: string, updatedData: UpdateProfileRequest) => {
     const updatedCustomer = await adminService.updateCustomer(identityNumber, updatedData);
     toast.success("Bilgiler başarıyla güncellendi!");
     setCustomers((prev) => prev.map((c) => (c.identityNumber === identityNumber ? { ...c, ...updatedCustomer } : c)));

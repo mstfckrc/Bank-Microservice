@@ -26,7 +26,7 @@ public class CurrencyServiceImpl implements ICurrencyService {
             log.info("✅ Kurlar yeni mikroservisten başarıyla çekildi.");
             return response;
         } catch (Exception e) {
-            log.error("🚨 YENİ KUR SERVİSİNE BAĞLANILAMADI! Hata: {}", e.getMessage());
+            log.error("Kur servisi çağrısı başarısız. errorType={}", e.getClass().getSimpleName());
             throw new BankOperationException("Kur servisine ulaşılamıyor: " + e.getMessage());
         }
     }
@@ -38,7 +38,7 @@ public class CurrencyServiceImpl implements ICurrencyService {
             return amount;
         }
 
-        log.info("Döviz çevirim motoru çalıştı: {} {} -> {}", amount, fromCurrency.toUpperCase(), toCurrency.toUpperCase());
+        log.info("Döviz dönüşümü başlatıldı. from={} to={}", fromCurrency.toUpperCase(), toCurrency.toUpperCase());
 
         // Burası artık üstteki yepyeni telsizli metodu (getLiveRates) çağırıyor!
         ExchangeRateResponse response = getLiveRates(fromCurrency);
@@ -51,7 +51,7 @@ public class CurrencyServiceImpl implements ICurrencyService {
         }
 
         Double result = amount * rate;
-        log.info("✅ Çevirim Başarılı: {} {} = {} {}", amount, fromCurrency.toUpperCase(), String.format("%.2f", result), toCurrency.toUpperCase());
+        log.info("Döviz dönüşümü hesaplandı. from={} to={}", fromCurrency.toUpperCase(), toCurrency.toUpperCase());
 
         return result;
     }

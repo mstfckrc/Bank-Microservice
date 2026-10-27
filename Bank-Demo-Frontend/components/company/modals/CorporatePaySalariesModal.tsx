@@ -9,6 +9,7 @@ interface CorporatePaySalariesModalProps {
   employees: CompanyEmployeeResponse[];
   onConfirm: (senderIban: string) => Promise<void>;
   isProcessing: boolean;
+  error: string | null;
 }
 
 export default function CorporatePaySalariesModal({
@@ -17,9 +18,11 @@ export default function CorporatePaySalariesModal({
   accounts,
   employees,
   onConfirm,
-  isProcessing
+  isProcessing,
+  error,
 }: CorporatePaySalariesModalProps) {
   const [selectedIban, setSelectedIban] = useState<string>('');
+  const [attempted, setAttempted] = useState(false);
 
   if (!isOpen) return null;
 
@@ -43,6 +46,7 @@ export default function CorporatePaySalariesModal({
 
     // 🚀 Bakiye kontrolünü TAMAMEN Backend'e bıraktık! 
     // Eğer bakiye yetmezse Backend Exception fırlatacak, hook'umuz bunu yakalayıp ekrana basacak.
+    setAttempted(true);
     await onConfirm(selectedIban);
   };
 
@@ -80,7 +84,7 @@ export default function CorporatePaySalariesModal({
               <p className="text-2xl font-black text-emerald-600">{totalSalaryTRY.toLocaleString('tr-TR')} <span className="text-sm">TL</span></p>
               {/* 🚀 DÖVİZ BİLGİLENDİRMESİ BURAYA EKLENDİ */}
               <p className="text-[10px] text-slate-400 mt-1.5 leading-tight max-w-45 ml-auto">
-                (USD/EUR gibi farklı döviz kasalarından yapılan ödemelerde <b>anlık canlı kur</b> uygulanarak bakiyeden düşülür.)
+                (USD/EUR gibi farklı döviz kasalarından yapılan ödemelerde sağlayıcının kuru uygulanarak bakiyeden düşülür.)
               </p>
             </div>
           </div>
@@ -108,8 +112,12 @@ export default function CorporatePaySalariesModal({
           </div>
 
           <div className="bg-blue-50 border-l-4 border-blue-500 p-3 text-sm text-blue-800 rounded-r">
-            <strong>Bilgi:</strong> 50.000 TL üzeri olan maaş ödemeleri Banka/MASAK onayına takılabilir. Diğer personellerin ödemeleri anında hesaplarına geçecektir.
+            <strong>Bilgi:</strong> Maaş ödemeleri toplu olarak işlenir. Hesaplardan biri geçersiz veya kapalıysa dağıtım tamamlanmaz.
           </div>
+
+          {attempted && error && !isProcessing && (
+            <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>
+          )}
 
           {/* AKSİYON BUTONLARI */}
           <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-100">

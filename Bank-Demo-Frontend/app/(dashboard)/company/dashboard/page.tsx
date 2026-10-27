@@ -7,6 +7,7 @@ import { useAuthStore } from "@/store/useAuthStore";
 import { useCompanyEmployees } from "@/hooks/useCompanyEmployees";
 import { useAccounts } from "@/hooks/useAccounts";
 import { companyService } from "@/services/company.service"; // 🚀 YENİ SERVİS
+import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 
 // Modallar
 import EmployeeModal from "@/components/company/modals/EmployeeModal";
@@ -85,6 +86,7 @@ export default function CompanyDashboardPage() {
     currency: string;
   } | null>(null);
   const [accountToClose, setAccountToClose] = useState<string | null>(null);
+  const [employeeToRemove, setEmployeeToRemove] = useState<{ identityNumber: string; fullName: string } | null>(null);
 
   useEffect(() => {
     fetchEmployees();
@@ -93,16 +95,6 @@ export default function CompanyDashboardPage() {
   }, []);
 
   // --- İŞLEM YÖNETİCİLERİ ---
-  const handleDelete = async (identityNumber: string, fullName: string) => {
-    if (
-      window.confirm(
-        `${fullName} isimli personeli işten çıkarmak (sistemden silmek) istediğinize emin misiniz?`,
-      )
-    ) {
-      await removeEmployee(identityNumber);
-    }
-  };
-
   const handleAddNewEmployee = () => {
     setSelectedEmployee(null);
     setIsEmployeeModalOpen(true);
@@ -570,10 +562,7 @@ export default function CompanyDashboardPage() {
                       </button>
                       <button
                         onClick={() =>
-                          handleDelete(
-                            emp.identityNumber,
-                            `${emp.firstName} ${emp.lastName}`,
-                          )
+                          setEmployeeToRemove({ identityNumber: emp.identityNumber, fullName: `${emp.firstName} ${emp.lastName}` })
                         }
                         disabled={!isApproved || empProcessing}
                         className="text-red-500 hover:text-red-700 font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed"
@@ -590,6 +579,15 @@ export default function CompanyDashboardPage() {
       </div>
 
       {/* --- MODALLAR --- */}
+      <ConfirmationDialog
+        open={employeeToRemove !== null}
+        title="Personel çıkarılsın mı?"
+        description={`${employeeToRemove?.fullName ?? "Personel"} şirketin personel listesinden çıkarılacak.`}
+        confirmLabel="Personeli çıkar"
+        error={empError}
+        onClose={() => setEmployeeToRemove(null)}
+        onConfirm={() => employeeToRemove ? removeEmployee(employeeToRemove.identityNumber) : Promise.resolve(false)}
+      />
       <EmployeeModal
         isOpen={isEmployeeModalOpen}
         onClose={() => setIsEmployeeModalOpen(false)}
@@ -631,14 +629,15 @@ export default function CompanyDashboardPage() {
         onCancel={() => setAccountToClose(null)}
         onConfirm={handleCloseAccountConfirm}
       />
-      <CorporatePaySalariesModal
+      {isSalaryModalOpen && <CorporatePaySalariesModal
         isOpen={isSalaryModalOpen}
         onClose={() => setIsSalaryModalOpen(false)}
         accounts={accounts}
         employees={employees}
         onConfirm={handlePaySalaries}
         isProcessing={empProcessing}
-      />
+        error={empError}
+      />}
       {/* 🚀 YENİ: OTOMATİK ÖDEME MODALI EKLENDİ */}
       <CorporateAutoPaymentModal
         key={isAutoPaymentModalOpen ? "open" : "closed"}

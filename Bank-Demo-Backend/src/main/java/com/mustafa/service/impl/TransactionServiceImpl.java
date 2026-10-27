@@ -127,6 +127,7 @@ public class TransactionServiceImpl implements ITransactionService {
         transaction.setStatus(Transaction.TransactionStatus.COMPLETED);
         transaction.setDescription(transaction.getDescription().replace(" - [YÜKLÜ İŞLEM: YÖNETİCİ ONAYI BEKLİYOR]", "") + " - [ONAYLANDI]");
         transactionRepository.save(transaction);
+        notifyTransferDecision(transaction, "onaylandı");
         return mapToResponse(transaction);
     }
 
@@ -144,7 +145,19 @@ public class TransactionServiceImpl implements ITransactionService {
         transaction.setStatus(Transaction.TransactionStatus.REJECTED);
         transaction.setDescription(transaction.getDescription().replace(" - [YÜKLÜ İŞLEM: YÖNETİCİ ONAYI BEKLİYOR]", "") + " - [REDDEDİLDİ VE İADE EDİLDİ]");
         transactionRepository.save(transaction);
+        notifyTransferDecision(transaction, "reddedildi ve tutar iade edildi");
         return mapToResponse(transaction);
+    }
+
+    private void notifyTransferDecision(Transaction transaction, String decision) {
+        String identity = transaction.getSenderAccount().getOwnerIdentityNumber();
+        rabbitPublisher.sendNotification(NotificationMessage.builder()
+                .destination(identity)
+                .identityNumber(maskIdentity(identity))
+                .subject("Transfer kararı")
+                .content("Transfer işleminiz " + decision + ". Referans: " + transaction.getReferenceNo())
+                .notificationType(NotificationMessage.NotificationType.PUSH_NOTIFICATION)
+                .build());
     }
 
     @Override

@@ -12,4 +12,10 @@ public interface ITransactionRepository extends JpaRepository<Transaction, Long>
 
     // Bir hesabın hem gönderdiği hem de aldığı tüm işlemleri listelemek için
     List<Transaction> findBySenderAccountIdOrReceiverAccountIdOrderByTransactionDateDesc(Long senderAccountId, Long receiverAccountId);
+
+    boolean existsByStatusAndSenderAccount_OwnerIdentityNumber(
+            Transaction.TransactionStatus status, String identityNumber);
+
+    boolean existsByStatusAndReceiverAccount_OwnerIdentityNumber(
+            Transaction.TransactionStatus status, String identityNumber);
 }

@@ -42,10 +42,11 @@ public class CorporateScheduledTasks {
         for (Company company : companiesToPay) {
             try {
                 companyEmployeeService.paySalariesAutomatically(company.getId(), company.getDefaultSalaryIban());
-                log.info("  ✅ BAŞARILI: {} şirketinin personellerine maaşları aktarıldı.", company.getCompanyName());
+                log.info("Otomatik maaş çağrısı tamamlandı. companyId={}", company.getId());
 
             } catch (Exception e) {
-                log.error("  ❌ HATA: {} şirketinin otomatik maaş ödemesi BAŞARISIZ! Sebep: {}", company.getCompanyName(), e.getMessage());
+                log.error("Otomatik maaş çağrısı başarısız. companyId={} errorType={}",
+                        company.getId(), e.getClass().getSimpleName());
             }
         }
 

@@ -4,6 +4,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { currencyService } from "../services/currency.service";
+import { FEATURED_CURRENCIES, formatRateTimestamp, formatTryRate, getCurrencyName, toTryRate } from "@/lib/currency";
 import {
   Card,
   CardContent,
@@ -11,20 +12,21 @@ import {
   CardTitle,
 } from "../components/ui/card";
 import { Button } from "../components/ui/button";
-import { TrendingUp, ArrowRight, Globe, ShieldCheck, Zap } from "lucide-react";
+import { ArrowRight, Globe, ShieldCheck, Zap } from "lucide-react";
 
 export default function LandingPage() {
   const [rates, setRates] = useState<Record<string, number> | null>(null);
   const [loading, setLoading] = useState(true);
+  const [updatedAt, setUpdatedAt] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchRates = async () => {
       try {
         const response = await currencyService.getRates("TRY");
-        // Backend'den direkt rates objesi geliyorsa (response.rates)
-        setRates(response.rates || response);
-      } catch (error) {
-        console.error("Kurlar çekilirken hata oluştu:", error);
+        setRates(response.rates);
+        setUpdatedAt(formatRateTimestamp(response.time_last_update_unix));
+      } catch {
+        setRates(null);
       } finally {
         setLoading(false);
       }
@@ -44,7 +46,7 @@ export default function LandingPage() {
         </h1>
         <p className="text-lg text-slate-500 mb-10 max-w-xl mx-auto font-medium">
           Sec-Demo Bank ile hesaplarını shadow-only modern arayüzle yönet,
-          saniyeler içinde para gönder ve piyasayı anlık takip et.
+          saniyeler içinde para gönder ve piyasaları kolayca takip et.
         </p>
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
           <Link href="/login">
@@ -70,11 +72,11 @@ export default function LandingPage() {
 
       {/* 2. CANLI KURLAR (VİTRİN) BÖLÜMÜ */}
       <div className="w-full max-w-5xl">
-        <div className="flex items-center justify-between mb-8 px-2">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-8 px-2">
           <div className="flex items-center gap-2">
             <Globe className="w-5 h-5 text-blue-600" />
             <h2 className="text-2xl font-black text-slate-900 tracking-tight">
-              Canlı Piyasalar
+              Döviz Piyasaları
             </h2>
             <Link href="/currencies">
               <Button
@@ -86,9 +88,9 @@ export default function LandingPage() {
             </Link>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+            <div className="w-2 h-2 bg-blue-500 rounded-full" />
             <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">
-              Anlık Veri
+              Döviz Kurları
             </span>
           </div>
         </div>
@@ -104,10 +106,8 @@ export default function LandingPage() {
           </div>
         ) : rates ? (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {["USD", "EUR", "GBP"].map((currency) => {
-              // Backend'den 0.03 gibi geliyorsa 1/0.03 yapıp 32.50 buluyoruz
-              const rawRate = rates[currency];
-              const displayRate = rawRate < 1 ? 1 / rawRate : rawRate;
+            {FEATURED_CURRENCIES.map((currency) => {
+              const displayRate = toTryRate(rates[currency]);
 
               return (
                 <Card
@@ -118,13 +118,13 @@ export default function LandingPage() {
                     <CardTitle className="text-slate-400 text-[10px] font-black uppercase tracking-[0.2em]">
                       {currency} / TRY
                     </CardTitle>
-                    <TrendingUp className="w-4 h-4 text-green-500 opacity-0 group-hover:opacity-100 transition-opacity" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-4xl font-black text-slate-900 tracking-tighter">
-                      ₺{displayRate.toFixed(2)}
+                    <p className="text-xs font-medium text-slate-500 mb-1">{getCurrencyName(currency)}</p>
+                    <div className="text-4xl font-black text-slate-900 tracking-tighter tabular-nums">
+                      {formatTryRate(displayRate)}
                     </div>
-                    <div className="mt-4 h-1 w-full bg-slate-50 rounded-full overflow-hidden">
+                    <div aria-hidden="true" className="mt-4 h-1 w-full bg-slate-50 rounded-full overflow-hidden">
                       <div className="h-full bg-green-500 w-2/3 rounded-full" />
                     </div>
                   </CardContent>
@@ -137,6 +137,12 @@ export default function LandingPage() {
             Kurlar şu an çekilemiyor.
           </div>
         )}
+        <div className="text-xs text-slate-400 mt-4 px-2 leading-relaxed space-y-1">
+          {updatedAt && <p>Sağlayıcı güncellemesi: {updatedAt} (TSİ)</p>}
+          <p>Veri kaynağı:{" "}
+            <a href="https://www.exchangerate-api.com" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-slate-600">Rates By Exchange Rate API</a>
+          </p>
+        </div>
       </div>
 
       {/* 3. KISA ÖZELLİKLER (OPSİYONEL - GÖRSELLİĞİ ARTIRIR) */}
@@ -165,7 +171,7 @@ export default function LandingPage() {
           </div>
           <h3 className="font-bold text-slate-900">7/24 Döviz İşlemi</h3>
           <p className="text-sm text-slate-500 font-medium">
-            Piyasaları anlık takip edin, fırsatları kaçırmayın.
+            Döviz kurlarını kolayca takip edin.
           </p>
         </div>
       </div>

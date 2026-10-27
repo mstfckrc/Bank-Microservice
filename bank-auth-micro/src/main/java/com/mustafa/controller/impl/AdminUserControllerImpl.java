@@ -32,7 +32,7 @@ public class AdminUserControllerImpl implements IAdminUserController {
     @PutMapping("/{identityNumber}")
     public ResponseEntity<UserProfileResponse> updateCustomer(
             @PathVariable String identityNumber,
-            @RequestBody UpdateProfileRequest request) {
+            @jakarta.validation.Valid @RequestBody UpdateProfileRequest request) {
         log.info("REST İsteği: Admin müşteri profilini güncelliyor.");
         return ResponseEntity.ok(adminUserService.updateCustomer(identityNumber, request));
     }

@@ -1,7 +1,6 @@
 package com.mustafa.controller.impl;
 
 import com.mustafa.controller.ICustomerController;
-import com.mustafa.dto.request.ChangePasswordRequest;
 import com.mustafa.dto.request.UpdateProfileRequest;
 import com.mustafa.dto.response.UserProfileResponse;
 import com.mustafa.service.ICustomerService;

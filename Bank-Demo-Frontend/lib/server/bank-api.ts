@@ -56,5 +56,13 @@ export async function fetchBankProfile(accessToken: string, clientIp: string | n
   if (!response.ok) throw new BankProfileError(response.status);
   const profile: unknown = await response.json();
   if (!isUserProfile(profile)) throw new Error("Bank profile response was invalid");
-  return profile;
+  // Keep detailed editable profile fields out of the encrypted authentication cookies.
+  return {
+    identityNumber: profile.identityNumber,
+    profileName: profile.profileName,
+    email: profile.email,
+    role: profile.role,
+    status: profile.status,
+    accessRestrictionStatus: profile.accessRestrictionStatus,
+  };
 }

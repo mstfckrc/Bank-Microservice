@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 
 import { PageHeader } from "@/components/shared/PageHeader";
+import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { useUserDashboard } from "@/hooks/useUserDashboard";
 import { BalanceCard } from "@/components/dashboard/balance-card";
 import { AccountCard } from "@/components/dashboard/account-card";
@@ -65,6 +66,7 @@ export default function UserDashboardPage() {
   // Fatura Hook'u ve State'i
   const { instructions, fetchInstructions, createInstruction, deleteInstruction, isProcessing: billProcessing } = useBills();
   const [isBillModalOpen, setIsBillModalOpen] = useState(false);
+  const [instructionToDelete, setInstructionToDelete] = useState<number | null>(null);
 
   const [accountFilter, setAccountFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ACTIVE');
 
@@ -325,11 +327,7 @@ export default function UserDashboardPage() {
                       <p className="text-xs font-mono text-slate-400">{inst.accountNumber}</p>
                     </div>
                     <button 
-                      onClick={() => {
-                        if (window.confirm("Bu ödeme talimatını iptal etmek istediğinize emin misiniz?")) {
-                          deleteInstruction(inst.id);
-                        }
-                      }}
+                      onClick={() => setInstructionToDelete(inst.id)}
                       disabled={billProcessing}
                       className="text-red-400 hover:text-red-600 p-2 hover:bg-red-50 rounded-full transition-colors"
                       title="Talimatı İptal Et"
@@ -374,6 +372,14 @@ export default function UserDashboardPage() {
         </CardContent>
       </Card>
 
+      <ConfirmationDialog
+        open={instructionToDelete !== null}
+        title="Ödeme talimatı iptal edilsin mi?"
+        description="Bu fatura için otomatik ödeme talimatı iptal edilecek."
+        confirmLabel="Talimatı iptal et"
+        onClose={() => setInstructionToDelete(null)}
+        onConfirm={() => instructionToDelete !== null ? deleteInstruction(instructionToDelete) : Promise.resolve(false)}
+      />
       <DepositModal
         isOpen={isDepositDialogOpen}
         onOpenChange={setIsDepositDialogOpen}

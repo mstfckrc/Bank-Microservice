@@ -1,6 +1,5 @@
 package com.mustafa.controller;
 
-import com.mustafa.dto.request.ChangePasswordRequest;
 import com.mustafa.dto.request.UpdateProfileRequest;
 import com.mustafa.dto.response.UserProfileResponse;
 import org.springframework.http.ResponseEntity;

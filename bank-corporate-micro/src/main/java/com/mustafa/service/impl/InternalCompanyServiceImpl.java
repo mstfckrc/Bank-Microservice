@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Objects;
 
 @Slf4j
 @Service
@@ -25,9 +26,15 @@ public class InternalCompanyServiceImpl implements IInternalCompanyService {
     @Override
     @Transactional
     public void syncNewCompany(CompanySyncRequest request) {
-        // Mevcut Repository metoduyla kontrol
-        if (companyRepository.findByCompanyIdentityNumber(request.getCompanyIdentityNumber()).isPresent()) {
-            log.warn("Kurumsal şirket zaten mevcut; senkronizasyon mevcut kaydı değiştirmedi.");
+        var existing = companyRepository.findByCompanyIdentityNumber(request.getCompanyIdentityNumber());
+        if (existing.isPresent()) {
+            Company company = existing.get();
+            if (!Objects.equals(company.getCompanyName(), request.getCompanyName())
+                    || !Objects.equals(company.getContactEmail(), request.getContactEmail())
+                    || !Objects.equals(company.getTaxOffice(), request.getTaxOffice())) {
+                throw new BankOperationException("Mevcut şirket kaydı gönderilen bilgilerle uyuşmuyor; yönetici incelemesi gerekiyor.");
+            }
+            log.info("Aynı şirket kayıt isteği tekrarlandı; mevcut kayıt korundu.");
             return;
         }
 
@@ -63,8 +70,12 @@ public class InternalCompanyServiceImpl implements IInternalCompanyService {
     @Override
     @Transactional
     public void deleteCompanyInfo(String identityNumber) {
-        Company company = companyRepository.findByCompanyIdentityNumber(identityNumber)
-                .orElseThrow(() -> new BankOperationException("Silinecek kurumsal firma bulunamadı!"));
+        var existing = companyRepository.findByCompanyIdentityNumber(identityNumber);
+        if (existing.isEmpty()) {
+            log.info("Şirket silme isteği tekrarlandı; kayıt zaten bulunmuyor.");
+            return;
+        }
+        Company company = existing.get();
 
         // 1. Personel listesini al
         List<CompanyEmployee> employees = companyEmployeeRepository.findByCompanyId(company.getId());

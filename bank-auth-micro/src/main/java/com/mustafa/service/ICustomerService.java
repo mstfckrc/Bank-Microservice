@@ -1,6 +1,5 @@
 package com.mustafa.service;
 
-import com.mustafa.dto.request.ChangePasswordRequest;
 import com.mustafa.dto.request.UpdateProfileRequest;
 import com.mustafa.dto.response.UserProfileResponse;
 
