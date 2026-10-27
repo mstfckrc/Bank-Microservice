@@ -1,24 +1,29 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
     <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+    <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
 
-    <springProperty scope="context" name="appName" source="spring.application.name"/>
-
-    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
-        <encoder>
-            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
-        </encoder>
-    </appender>
+    <springProperty scope="context" name="appName" source="spring.application.name" defaultValue="bank-currency-micro"/>
+    <springProperty scope="context" name="logstashDestination" source="logging.logstash.destination" defaultValue="logstash:5000"/>
+    <springProperty scope="context" name="rootLogLevel" source="logging.level.root" defaultValue="WARN"/>
+    <springProperty scope="context" name="appLogLevel" source="logging.level.com.mustafa" defaultValue="INFO"/>
 
     <appender name="LOGSTASH" class="net.logstash.logback.appender.LogstashTcpSocketAppender">
-        <destination>logstash:5000</destination>
+        <destination>${logstashDestination}</destination>
+        <!-- Bounded, asynchronous delivery: a slow log server must not block banking requests. -->
+        <ringBufferSize>1024</ringBufferSize>
+        <appendTimeout>0</appendTimeout>
         <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <includeContext>false</includeContext>
+            <includeMdc>false</includeMdc>
             <customFields>{"app_name":"${appName}"}</customFields>
         </encoder>
     </appender>
 
-    <root level="INFO">
-        <appender-ref ref="CONSOLE" />
-        <appender-ref ref="LOGSTASH" />
+    <!-- Application events stay visible; recurring framework INFO traffic is suppressed. -->
+    <logger name="com.mustafa" level="${appLogLevel}"/>
+    <root level="${rootLogLevel}">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="LOGSTASH"/>
     </root>
 </configuration>

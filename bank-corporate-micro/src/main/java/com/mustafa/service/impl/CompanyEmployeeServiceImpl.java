@@ -8,15 +8,18 @@ import com.mustafa.dto.response.*;
 import com.mustafa.entity.Company;
 import com.mustafa.entity.CompanyEmployee;
 import com.mustafa.exception.BankOperationException;
+import com.mustafa.exception.SalaryPaymentException;
 import com.mustafa.security.CorporateAccess;
 import com.mustafa.messaging.publisher.RabbitMQPublisher;
 import com.mustafa.repository.ICompanyEmployeeRepository;
 import com.mustafa.repository.ICompanyRepository;
 import com.mustafa.service.ICompanyEmployeeService;
 import feign.FeignException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.http.HttpStatus;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
@@ -26,6 +29,8 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class CompanyEmployeeServiceImpl implements ICompanyEmployeeService {
+
+    private static final ObjectMapper ERROR_MAPPER = new ObjectMapper();
 
     private final ICompanyEmployeeRepository companyEmployeeRepository;
     private final ICompanyRepository companyRepository;
@@ -152,11 +157,18 @@ public class CompanyEmployeeServiceImpl implements ICompanyEmployeeService {
     // 1️⃣ MANUEL MAAŞ DAĞITIMI
     @Override
     public List<TransactionResponse> paySalaries(String managerIdentityNumber, SalaryPaymentRequest request) {
-        Company company = companyRepository.findByCompanyIdentityNumber(managerIdentityNumber)
-                .orElseThrow(() -> new BankOperationException("Kurumsal profil bulunamadı!"));
-
-        validateSenderAccount(request.getSenderIban(), managerIdentityNumber);
-        return processSalaryPayments(company, request.getSenderIban(), managerIdentityNumber);
+        try {
+            Company company = companyRepository.findByCompanyIdentityNumber(managerIdentityNumber)
+                    .orElseThrow(() -> new BankOperationException("Kurumsal profil bulunamadı!"));
+            validateSenderAccount(request.getSenderIban(), managerIdentityNumber);
+            return processSalaryPayments(company, request.getSenderIban(), managerIdentityNumber);
+        } catch (BankOperationException e) {
+            throw new SalaryPaymentException(HttpStatus.BAD_REQUEST, e.getMessage());
+        } catch (FeignException e) {
+            log.error("Maaş hesabı doğrulanamadı. httpStatus={} errorType={}", e.status(), e.getClass().getSimpleName());
+            throw new SalaryPaymentException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "Maaş hesabı doğrulanamadı. Lütfen daha sonra tekrar deneyin.");
+        }
     }
 
     // 2️⃣ OTOMATİK MAAŞ DAĞITIMI (Scheduler Tetikler)
@@ -197,14 +209,41 @@ public class CompanyEmployeeServiceImpl implements ICompanyEmployeeService {
             // 📡 FEIGN 4: FÜZEYİ ATEŞLE! (Bütün yükü Karargaha devrettik)
             results = backendServiceClient.payBulkSalaries(bulkRequest);
         } catch (FeignException e) {
-            log.error("Karargahtan hata döndü: {}", e.getMessage());
-            throw new BankOperationException("Maaş dağıtımı Karargah tarafından reddedildi! (Bakiye yetersiz veya kasa pasif olabilir)");
+            log.error("Core toplu maaş çağrısı başarısız. httpStatus={} errorType={}",
+                    e.status(), e.getClass().getSimpleName());
+            if (e.status() == 400) {
+                throw new SalaryPaymentException(HttpStatus.BAD_REQUEST, salaryRejectionMessage(e));
+            }
+            throw new SalaryPaymentException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "Maaş işleminin sonucu doğrulanamadı. Tekrar denemeden önce hesap hareketlerini kontrol edin.");
         }
 
         sendEmailNotification(company.getContactEmail(), "Toplu Maaş Dağıtımı",
                 "Maaş dağıtım işlemi kusursuz tamamlanmıştır.", managerId);
 
         return results;
+    }
+
+    private String salaryRejectionMessage(FeignException error) {
+        try {
+            String message = ERROR_MAPPER.readTree(error.contentUTF8()).path("message").asText();
+            if (message.startsWith("Kasada yeterli bakiye yok!") || message.equals("Yetersiz bakiye!")) {
+                return "Maaş dağıtımı için şirket hesabındaki bakiye yetersiz.";
+            }
+            return switch (message) {
+                case "İşlem yapılacak hesaplardan biri kapalıdır!", "Çıkış kasası pasif durumdadır!" ->
+                        "Şirket hesabı veya personelin maaş hesaplarından biri pasif. Hesap bilgilerini kontrol edin.";
+                case "Alıcı hesap bulunamadı!" ->
+                        "Personelin maaş hesaplarından biri bulunamadı. Personel hesap bilgilerini kontrol edin.";
+                case "Aynı hesaba transfer yapamazsınız." ->
+                        "Personelin maaş hesabı, seçilen şirket hesabıyla aynı olamaz.";
+                case "Transfer tutarı 0'dan büyük olmalıdır!" ->
+                        "Personel maaş tutarları sıfırdan büyük olmalıdır.";
+                default -> "Maaş dağıtımı reddedildi. Şirket ve personel hesap bilgilerini kontrol edin.";
+            };
+        } catch (Exception ignored) {
+            return "Maaş dağıtımı reddedildi. Şirket ve personel hesap bilgilerini kontrol edin.";
+        }
     }
 
     @Override

@@ -37,14 +37,14 @@ public class AccountControllerImpl implements IAccountController {
     @Override
     @GetMapping("/{accountNumber}")
     public ResponseEntity<AccountResponse> getAccountByAccountNumber(@PathVariable String accountNumber) {
-        log.info("REST İsteği: Hesap detayları sorgulanıyor. Hesap No: {}", accountNumber);
+        log.info("REST İsteği: Hesap detayları sorgulanıyor.");
         return ResponseEntity.ok(accountService.getAccountByAccountNumber(accountNumber));
     }
 
     @Override
     @DeleteMapping("/{accountNumber}")
     public ResponseEntity<String> deleteAccount(@PathVariable String accountNumber) {
-        log.info("REST İsteği: Hesap kapatma talebi alındı. Hesap No: {}", accountNumber);
+        log.info("REST İsteği: Hesap kapatma talebi alındı.");
         accountService.deleteAccount(accountNumber);
         return ResponseEntity.ok("Hesap başarıyla kapatıldı.");
     }

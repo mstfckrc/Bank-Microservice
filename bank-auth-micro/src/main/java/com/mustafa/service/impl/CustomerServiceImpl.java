@@ -16,6 +16,7 @@ import com.mustafa.repository.IAccessRestrictionAuditRepository;
 import com.mustafa.repository.IRetailCustomerRepository;
 import com.mustafa.service.ICustomerService;
 import com.mustafa.security.BankUserAccess;
+import com.mustafa.validation.ProfileUpdateValidator;
 import feign.FeignException;
 
 import lombok.RequiredArgsConstructor;
@@ -63,66 +64,55 @@ public class CustomerServiceImpl implements ICustomerService {
     @Override
     @Transactional
     public UserProfileResponse updateProfile(UpdateProfileRequest request) {
-        AppUser appUser = getAuthenticatedAppUser();
+        AppUser appUser = getAuthenticatedAppUserForUpdate();
+        ProfileUpdateValidator.validate(request, appUser.getRole());
         String maskedId = maskIdentity(appUser.getIdentityNumber());
         log.info("Profil güncelleme işlemi başlatıldı. Kullanıcı: {}", maskedId);
-
-        String profileName = "";
-        String email = "";
 
         if (appUser.getRole() == AppUser.Role.RETAIL_CUSTOMER || appUser.getRole() == AppUser.Role.ADMIN) {
             RetailCustomer retail = retailCustomerRepository.findByAppUser_IdentityNumber(appUser.getIdentityNumber())
                     .orElseThrow(() -> new BankOperationException("Düzenlenebilir yerel profil bulunamadı. Yönetici profilini merkezi kimlik yönetiminden güncelleyin."));
 
             if (request.getEmail() != null && !request.getEmail().isBlank()) {
-                retail.setEmail(request.getEmail());
+                retail.setEmail(request.getEmail().trim());
             }
 
-            if (request.getProfileName() != null && request.getProfileName().trim().length() >= 3) {
-                String fullName = request.getProfileName().trim();
-                int lastSpaceIndex = fullName.lastIndexOf(" ");
-
-                if (lastSpaceIndex == -1) {
-                    retail.setFirstName(fullName);
-                    retail.setLastName("");
-                } else {
-                    retail.setFirstName(fullName.substring(0, lastSpaceIndex).trim());
-                    retail.setLastName(fullName.substring(lastSpaceIndex + 1).trim());
-                }
+            if (request.getFirstName() != null) {
+                retail.setFirstName(request.getFirstName().trim());
+                retail.setLastName(request.getLastName().trim());
             }
             retailCustomerRepository.save(retail);
 
-            profileName = (retail.getFirstName() + " " + retail.getLastName()).trim();
-            email = retail.getEmail();
-
         } else if (appUser.getRole() == AppUser.Role.CORPORATE_MANAGER) {
-            log.warn("Profil güncelleme reddedildi: Kurumsal müşteri ({}) bilgileri Karargahtan güncellenemez.", maskedId);
-            throw new BankOperationException("Kurumsal profil bilgileri (Şirket Adı, E-posta) sadece Kurumsal Yönetim modülünden güncellenebilir!");
+            // The target is derived from the authenticated subject, never from request data.
+            try {
+                companyServiceClient.updateCompanyInfo(appUser.getIdentityNumber(), CompanySyncRequest.builder()
+                        .companyIdentityNumber(appUser.getIdentityNumber())
+                        .companyName(request.getProfileName() == null ? null : request.getProfileName().trim())
+                        .contactEmail(request.getEmail() == null ? null : request.getEmail().trim())
+                        .build());
+            } catch (FeignException exception) {
+                log.warn("Kurumsal kendi profil güncellemesi başarısız. appUserId={} httpStatus={}",
+                        appUser.getId(), exception.status());
+                throw new BankOperationException("Şirket bilgileri güncellenemedi. İletişim e-postasını kontrol edip yeniden deneyin.");
+            }
         }
 
-        log.info("Profil başarıyla güncellendi. Kullanıcı: {}", maskedId);
+        UserProfileResponse updated = getMyProfile();
+        log.info("Profil güncelleme adımları tamamlandı. appUserId={}", appUser.getId());
 
         NotificationMessage profileMessage = NotificationMessage.builder()
-                .destination(email)
+                .destination(updated.getEmail())
                 .subject("Profil Bilgileriniz Güncellendi")
-                .content("Müşteri profil bilgileriniz başarıyla güncellenmiştir. Yeni iletişim adresiniz: " + email)
+                .content("Bankacılık profil bilgileriniz güncellenmiştir.")
                 .identityNumber(maskedId)
                 .notificationType(NotificationMessage.NotificationType.EMAIL)
                 .build();
 
         rabbitPublisher.sendNotification(profileMessage);
 
-        return UserProfileResponse.builder()
-                .identityNumber(appUser.getIdentityNumber())
-                .profileName(profileName)
-                .email(email)
-                .role(appUser.getRole().name())
-                .status(appUser.getStatus().name())
-                .accessRestrictionStatus(appUser.getAccessRestrictionStatus().name())
-                .build();
+        return updated;
     }
-
-    // 🚀 SİLİNDİ: changePassword metodu tamamen kaldırıldı! Şifre işlemleri Keycloak'tadır.
 
     @Override
     public UserProfileResponse getMyProfile() {
@@ -132,6 +122,9 @@ public class CustomerServiceImpl implements ICustomerService {
 
         String profileName;
         String email;
+        String firstName = null;
+        String lastName = null;
+        boolean profileEditable = true;
 
         if (appUser.getRole() == AppUser.Role.CORPORATE_MANAGER) {
             CompanySyncRequest company;
@@ -151,9 +144,12 @@ public class CustomerServiceImpl implements ICustomerService {
             RetailCustomer retail = retailCustomerRepository.findByAppUser_IdentityNumber(appUser.getIdentityNumber())
                     .orElse(null);
             if (retail != null) {
+                firstName = retail.getFirstName();
+                lastName = retail.getLastName();
                 profileName = (retail.getFirstName() + " " + retail.getLastName()).trim();
                 email = retail.getEmail();
             } else if (appUser.getRole() == AppUser.Role.ADMIN) {
+                profileEditable = false;
                 Jwt token = bankUserAccess.currentVerifiedToken();
                 String tokenName = token.getClaimAsString("name");
                 String tokenEmail = token.getClaimAsString("email");
@@ -168,6 +164,9 @@ public class CustomerServiceImpl implements ICustomerService {
                 .identityNumber(appUser.getIdentityNumber())
                 .profileName(profileName)
                 .email(email)
+                .firstName(firstName)
+                .lastName(lastName)
+                .profileEditable(profileEditable)
                 .role(appUser.getRole().name())
                 .status(appUser.getStatus().name())
                 .accessRestrictionStatus(appUser.getAccessRestrictionStatus().name())

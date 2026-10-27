@@ -36,9 +36,10 @@ public class BillScheduledTasks {
             try {
                 // 🚀 MİKROSERVİS GÜNCELLEMESİ: Artık identityNumber da gönderiyoruz!
                 billPaymentService.payBillAutomatically(instruction.getId(), instruction.getIdentityNumber());
-                log.info("  ✅ Tetiklendi: Abone {} faturası işleme alındı.", instruction.getSubscriberNo());
+                log.info("Otomatik fatura ödeme çağrısı tamamlandı. instructionId={}", instruction.getId());
             } catch (Exception e) {
-                log.error("  ⚠️ HATA: Fatura Talimatı (Abone: {}) Başarısız: {}", instruction.getSubscriberNo(), e.getMessage());
+                log.error("Otomatik fatura ödeme çağrısı başarısız. instructionId={} errorType={}",
+                        instruction.getId(), e.getClass().getSimpleName());
             }
         }
 

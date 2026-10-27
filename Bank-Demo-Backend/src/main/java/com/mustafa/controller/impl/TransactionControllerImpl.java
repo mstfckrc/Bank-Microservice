@@ -25,7 +25,7 @@ public class TransactionControllerImpl implements ITransactionController {
     @Override
     @PostMapping("/deposit")
     public ResponseEntity<TransactionResponse> deposit(@RequestBody DepositRequest request) {
-        log.info("REST İsteği: Para yatırma (Deposit) talebi alındı. Hedef IBAN: {}", request.getIban());
+        log.info("REST İsteği: Para yatırma talebi alındı.");
         return ResponseEntity.ok(transactionService.deposit(request));
     }
 
@@ -43,7 +43,7 @@ public class TransactionControllerImpl implements ITransactionController {
             @RequestParam(required = false) String type,
             @RequestParam(required = false) String startDate,
             @RequestParam(required = false) String endDate) {
-        log.info("REST İsteği: Hesap hareketleri (Ekstre) sorgulanıyor. Hesap No: {}", accountNumber);
+        log.info("REST İsteği: Hesap hareketleri sorgulanıyor.");
         return ResponseEntity.ok(transactionService.getAccountTransactions(accountNumber, type, startDate, endDate));
     }
 }

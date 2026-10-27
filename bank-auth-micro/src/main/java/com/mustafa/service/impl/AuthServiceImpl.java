@@ -23,9 +23,12 @@ import org.keycloak.representations.idm.CredentialRepresentation;
 import org.keycloak.representations.idm.RoleRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
 import jakarta.ws.rs.core.Response;
+import jakarta.ws.rs.NotFoundException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.Collections;
 
@@ -97,6 +100,7 @@ public class AuthServiceImpl implements IAuthService {
             log.warn("Kayıt reddedildi: bireysel müşteri e-posta adresi zaten kullanımda.");
             throw new BankOperationException("Bu Email adresi zaten kullanımda!");
         }
+        validateRegistrationProfile(request, registrationRole);
 
         // 2. KEYCLOAK KAYDI: Önce Nüfus Müdürlüğüne (Keycloak) adamı kaydet ve UUID'sini al!
         String keycloakId = createKeycloakUser(request, registrationRole);
@@ -109,6 +113,7 @@ public class AuthServiceImpl implements IAuthService {
                 .status(AppUser.ApprovalStatus.PENDING)
                 .build();
         appUserRepository.save(appUser);
+        appUserRepository.flush();
         log.info("Merkezi kullanıcı (AppUser) başarıyla oluşturuldu. ID: {}", appUser.getId());
 
         // 4. BİREYSEL / KURUMSAL AYRIMI
@@ -123,7 +128,7 @@ public class AuthServiceImpl implements IAuthService {
             log.info("Bireysel Müşteri (RetailCustomer) profili oluşturuldu.");
 
         } else if (appUser.getRole() == AppUser.Role.CORPORATE_MANAGER) {
-            log.info("Kurumsal Yönetici kimliği oluşturuldu. Şirket adı: {}. Kurumsal Servise telsiz atılıyor...", request.getCompanyName());
+            log.info("Kurumsal profil oluşturma çağrısı başlatılıyor. appUserId={}", appUser.getId());
             try {
                 CompanySyncRequest syncRequest = CompanySyncRequest.builder()
                         .companyIdentityNumber(request.getIdentityNumber())
@@ -135,7 +140,7 @@ public class AuthServiceImpl implements IAuthService {
                 companyServiceClient.syncNewCompany(syncRequest);
                 log.info("✅ Kurumsal Servis ile senkronizasyon başarılı!");
             } catch (Exception e) {
-                log.error("❌ Kurumsal Servise telsiz atılamadı! Sebep: {}", e.getMessage());
+                log.error("Kurumsal profil oluşturulamadı. errorType={}", e.getClass().getSimpleName());
                 throw new BankOperationException("Kurumsal servis ile bağlantı kurulamadı, kayıt işlemi iptal edildi!");
             }
         } else {
@@ -162,6 +167,10 @@ public class AuthServiceImpl implements IAuthService {
 
     // 🚀 KEYCLOAK YARDIMCI METODU
     private String createKeycloakUser(RegisterRequest request, AppUser.Role registrationRole) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()
+                || !TransactionSynchronizationManager.isActualTransactionActive()) {
+            throw new IllegalStateException("Registration requires an active database transaction.");
+        }
 
         // A missing realm role must fail before a user is created.
         RoleRepresentation realmRole;
@@ -208,10 +217,16 @@ public class AuthServiceImpl implements IAuthService {
             }
 
             if (response.getLocation() == null) {
+                log.error("Keycloak created a user without returning its ID; manual registration reconciliation required.");
                 throw new BankOperationException("Güvenlik sunucusu oluşturulan hesabın referansını döndürmedi.");
             }
             String path = response.getLocation().getPath();
             keycloakUserId = path.substring(path.lastIndexOf('/') + 1);
+            if (keycloakUserId.isBlank()) {
+                log.error("Keycloak returned an empty created-user ID; manual registration reconciliation required.");
+                throw new BankOperationException("Güvenlik sunucusu geçerli hesap referansı döndürmedi.");
+            }
+            registerRollbackCleanup(keycloakUserId);
         }
 
         log.info("Keycloak kaydı başarılı. Üretilen Keycloak ID: {}", keycloakUserId);
@@ -223,10 +238,50 @@ public class AuthServiceImpl implements IAuthService {
             
             log.info("Keycloak rol ataması başarılı: {}", registrationRole);
         } catch (Exception e) {
-            log.error("Keycloak rol ataması sırasında hata! Rol: {}, Hata: {}", registrationRole, e.getMessage());
+            log.error("Keycloak rol ataması başarısız. role={} errorType={}",
+                    registrationRole, e.getClass().getSimpleName());
             throw new BankOperationException("Kullanıcı oluşturuldu ancak yetki (rol) atanamadı!");
         }
 
         return keycloakUserId;
+    }
+
+    private void validateRegistrationProfile(RegisterRequest request, AppUser.Role role) {
+        if (request.getEmail() == null || request.getEmail().isBlank() || request.getEmail().length() > 100) {
+            throw new BankOperationException("E-posta adresi boş olamaz ve en fazla 100 karakter olmalıdır.");
+        }
+        if (role == AppUser.Role.RETAIL_CUSTOMER) {
+            if (request.getFirstName() == null || request.getFirstName().isBlank() || request.getFirstName().length() > 100
+                    || request.getLastName() == null || request.getLastName().isBlank() || request.getLastName().length() > 100) {
+                throw new BankOperationException("Ad ve soyad boş olamaz; her biri en fazla 100 karakter olmalıdır.");
+            }
+        } else if (request.getCompanyName() == null || request.getCompanyName().isBlank()
+                || request.getCompanyName().length() > 150 || request.getTaxOffice() == null
+                || request.getTaxOffice().isBlank() || request.getTaxOffice().length() > 100) {
+            throw new BankOperationException("Şirket unvanı ve vergi dairesi zorunludur; sınırlar 150 ve 100 karakterdir.");
+        }
+    }
+
+    private void registerRollbackCleanup(String createdUserId) {
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCompletion(int status) {
+                if (status == STATUS_ROLLED_BACK) {
+                    try {
+                        keycloak.realm(realm).users().get(createdUserId).remove();
+                        log.info("Rolled-back registration identity removed. keycloakUserId={}", createdUserId);
+                    } catch (NotFoundException exception) {
+                        log.info("Rolled-back registration identity already absent. keycloakUserId={}", createdUserId);
+                    } catch (RuntimeException exception) {
+                        log.error("Registration identity cleanup failed; manual reconciliation required. keycloakUserId={} errorType={}",
+                                createdUserId, exception.getClass().getSimpleName());
+                    }
+                } else if (status == STATUS_UNKNOWN) {
+                    // Do not delete an identity when the database may actually have committed.
+                    log.error("Registration commit outcome unknown; manual reconciliation required. keycloakUserId={}",
+                            createdUserId);
+                }
+            }
+        });
     }
 }

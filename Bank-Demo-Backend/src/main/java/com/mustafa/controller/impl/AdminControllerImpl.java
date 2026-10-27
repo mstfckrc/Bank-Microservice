@@ -33,14 +33,14 @@ public class AdminControllerImpl implements IAdminController {
     @Override
     @GetMapping("/customers/{tcNo}/accounts")
     public ResponseEntity<List<AccountResponse>> getCustomerAccounts(@PathVariable String tcNo) {
-        log.info("REST İsteği: Admin tarafından belirli bir müşterinin ({}) hesapları sorgulanıyor.", tcNo);
+        log.info("REST İsteği: Admin tarafından müşteri hesapları sorgulanıyor.");
         return ResponseEntity.ok(adminService.getCustomerAccounts(tcNo));
     }
 
     @Override
     @GetMapping("/accounts/{accountNumber}/transactions")
     public ResponseEntity<List<TransactionResponse>> getAccountTransactions(@PathVariable String accountNumber) {
-        log.info("REST İsteği: Admin tarafından bir hesabın ({}) işlem geçmişi sorgulanıyor.", accountNumber);
+        log.info("REST İsteği: Admin tarafından hesap işlem geçmişi sorgulanıyor.");
         return ResponseEntity.ok(adminService.getAccountTransactions(accountNumber));
     }
 
@@ -49,7 +49,7 @@ public class AdminControllerImpl implements IAdminController {
     public ResponseEntity<AccountResponse> openAccountForCustomer(
             @PathVariable String tcNo,
             @RequestBody OpenAccountRequest request) {
-        log.info("REST İsteği: Admin tarafından müşteriye ({}) yeni hesap açma işlemi başlatıldı. Döviz: {}", tcNo, request.getCurrency());
+        log.info("REST İsteği: Admin müşteri için hesap açma talebi gönderdi. Döviz: {}", request.getCurrency());
         return ResponseEntity.ok(adminService.openAccountForCustomer(tcNo, request));
     }
 

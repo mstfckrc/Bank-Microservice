@@ -65,7 +65,7 @@ public class AccountServiceImpl implements IAccountService {
                 .build();
 
         Account savedAccount = accountRepository.save(newAccount);
-        log.info("Hesap başarıyla oluşturuldu. Hesap No: {}, IBAN: {}, Sahibi: {}", accountNumber, iban, maskedId);
+        log.info("Hesap açılış kaydı hazırlandı. accountId={} currency={}", savedAccount.getId(), savedAccount.getCurrency());
 
         NotificationMessage openAccountMessage = NotificationMessage.builder()
                 .destination(currentIdentity)
@@ -98,7 +98,7 @@ public class AccountServiceImpl implements IAccountService {
                 .orElseThrow(() -> new BankOperationException("Hesap bulunamadı!"));
 
         if (!account.getOwnerIdentityNumber().equals(currentIdentity)) {
-            log.warn("🚨 GÜVENLİK İHLALİ DENEMESİ! Kullanıcı ({}), başkasına ait {} numaralı hesaba erişmeye çalıştı!", maskedId, accountNumber);
+            log.warn("Hesap erişimi sahiplik denetiminde reddedildi. user={} accountId={}", maskedId, account.getId());
             throw new BankOperationException("Sadece kendi hesap detaylarınızı görüntüleyebilirsiniz!");
         }
 
@@ -111,7 +111,7 @@ public class AccountServiceImpl implements IAccountService {
         String currentIdentity = SecurityContextHolder.getContext().getAuthentication().getName();
         String maskedId = maskIdentity(currentIdentity);
 
-        log.info("Hesap kapatma işlemi başlatıldı. Hesap No: {}, Kullanıcı: {}", accountNumber, maskedId);
+        log.info("Hesap kapatma işlemi başlatıldı. user={}", maskedId);
 
         Account account = accountRepository.findByAccountNumber(accountNumber)
                 .orElseThrow(() -> new BankOperationException("Hesap bulunamadı!"));
@@ -135,7 +135,7 @@ public class AccountServiceImpl implements IAccountService {
 
         account.setActive(false);
         accountRepository.save(account);
-        log.info("Hesap başarıyla pasife alındı (Kapatıldı). Hesap No: {}", accountNumber);
+        log.info("Hesap kapatma kaydı hazırlandı. accountId={}", account.getId());
 
         NotificationMessage closeAccountMessage = NotificationMessage.builder()
                 .destination(account.getOwnerIdentityNumber())

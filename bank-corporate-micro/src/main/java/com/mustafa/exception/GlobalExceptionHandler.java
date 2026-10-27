@@ -13,6 +13,11 @@ import java.util.Map;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    @ExceptionHandler(SalaryPaymentException.class)
+    public ResponseEntity<Map<String, String>> handleSalaryPaymentException(SalaryPaymentException ex) {
+        return ResponseEntity.status(ex.getStatus()).body(Map.of("message", ex.getMessage()));
+    }
+
     @ExceptionHandler(BankAccessException.class)
     public ResponseEntity<Map<String, String>> handleBankAccessException(BankAccessException ex) {
         return ResponseEntity.status(ex.getStatus()).body(Map.of("code", ex.getCode()));

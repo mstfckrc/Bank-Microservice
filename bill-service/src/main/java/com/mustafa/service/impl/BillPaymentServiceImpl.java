@@ -53,13 +53,13 @@ public class BillPaymentServiceImpl implements IBillPaymentService {
         if (instruction.getLastPaymentDate() != null &&
                 instruction.getLastPaymentDate().getMonth() == LocalDate.now().getMonth() &&
                 instruction.getLastPaymentDate().getYear() == LocalDate.now().getYear()) {
-            log.info("✅ Fatura İptali: Abone {} faturası bu ay zaten ödenmiş.", instruction.getSubscriberNo());
+            log.info("Fatura ödemesi atlandı; bu ay zaten ödenmiş. instructionId={}", instruction.getId());
             return;
         }
 
         // 2. DIŞ KURUMA BORÇ SOR (Mock Service üzerinden)
         BigDecimal debtInTry = externalBillService.getDebt(instruction.getSubscriberNo(), instruction.getBillType());
-        log.info("Fatura ödemesi başlatılıyor... Tutar: {} TRY, Hedef Kasa ID: {}", debtInTry, instruction.getAccountId());
+        log.info("Fatura ödemesi başlatılıyor. instructionId={}", instruction.getId());
 
         // 3. KARARGAHA TELSİZ AÇ (Bakiye kontrolünü ve para kesmeyi onlar yapacak!)
         InternalPaymentRequest paymentRequest = InternalPaymentRequest.builder()
@@ -72,7 +72,8 @@ public class BillPaymentServiceImpl implements IBillPaymentService {
         try {
             backendServiceClient.deductBillPayment(paymentRequest);
         } catch (Exception e) {
-            log.error("Fatura ödemesi Karargah tarafından reddedildi! Sebep: {}", e.getMessage());
+            log.error("Core fatura ödeme çağrısı başarısız. instructionId={} errorType={}",
+                    instruction.getId(), e.getClass().getSimpleName());
             throw new BankOperationException("Kasa yetersiz veya Karargah işlemi reddetti!");
         }
 
@@ -80,8 +81,7 @@ public class BillPaymentServiceImpl implements IBillPaymentService {
         instruction.setLastPaymentDate(LocalDate.now());
         instructionRepository.save(instruction);
 
-        log.info("🎉 FATURA ÖDENDİ: {} ID'li kasadan {} TRY çekildi. (Abone: {})",
-                instruction.getAccountId(), debtInTry, instruction.getSubscriberNo());
+        log.info("Fatura ödeme kaydı hazırlandı. instructionId={}", instruction.getId());
 
         // 5. MÜŞTERİYE GÜVERCİN UÇUR
         NotificationMessage paymentMessage = NotificationMessage.builder()
@@ -111,7 +111,7 @@ public class BillPaymentServiceImpl implements IBillPaymentService {
                 .build();
 
         instructionRepository.save(instruction);
-        log.info("Kullanıcı ({}) yeni fatura talimatı oluşturdu. Abone: {}", maskIdentity(identityNumber), request.getSubscriberNo());
+        log.info("Fatura talimatı kaydı hazırlandı. instructionId={}", instruction.getId());
 
         NotificationMessage instructionMessage = NotificationMessage.builder()
                 .destination(identityNumber)

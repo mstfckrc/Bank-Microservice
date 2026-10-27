@@ -40,6 +40,9 @@ export interface UserProfileResponse {
   identityNumber: string; 
   profileName: string;    // 🚀 Birey için "Ad Soyad", Şirket için "Şirket Ünvanı"
   email: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  profileEditable?: boolean;
   role: Role;
   status: ApprovalStatus; 
   // Optional only for encrypted BFF cookies written before this field existed.
@@ -49,11 +52,8 @@ export interface UserProfileResponse {
 export interface UpdateProfileRequest {
   profileName?: string;   // 🚀 fullName yerine
   email?: string;
-}
-
-export interface ChangePasswordRequest {
-  oldPassword: string;
-  newPassword: string;
+  firstName?: string;
+  lastName?: string;
 }
 
 
@@ -117,8 +117,8 @@ export interface ApiErrorResponse {
 }
 
 export interface ExchangeRateResponse {
-  base: string;
-  date: string;
+  base_code: string;
+  time_last_update_unix?: number;
   rates: {
     [key: string]: number; 
   };

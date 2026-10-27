@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import Link from "next/link";
 import { DropdownMenu } from "radix-ui";
 import { useAuthStore } from "@/store/useAuthStore";
-import { UserProfileResponse, ApprovalStatus, Role } from "@/types"; 
+import { UserProfileResponse, ApprovalStatus, Role, UpdateProfileRequest } from "@/types";
 import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 
 import { PageHeader } from "@/components/shared/PageHeader";
+import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { EditCustomerModal } from "@/components/admin/modals/EditCustomerModal";
 import { useCustomers } from "@/hooks/useCustomers";
 
@@ -56,6 +57,7 @@ export default function CustomerListPage() {
 
   const [editingCustomer, setEditingCustomer] = useState<UserProfileResponse | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [customerToDelete, setCustomerToDelete] = useState<UserProfileResponse | null>(null);
   const [accessConfirmation, setAccessConfirmation] = useState<{
     identityNumber: string;
     profileName: string;
@@ -92,13 +94,7 @@ export default function CustomerListPage() {
   const [statusFilter, setStatusFilter] = useState<ApprovalStatus | "ALL">("ALL");
   const [roleFilter, setRoleFilter] = useState<Role | "ALL">("ALL");
 
-  const handleDelete = async (identityNumber: string) => {
-    if (confirm("Bu müşteri/kurumu silmek istediğinize emin misiniz?")) {
-      await removeCustomer(identityNumber);
-    }
-  };
-
-  const handleUpdate = async (identityNumber: string, updatedData: { profileName: string; email: string }) => {
+  const handleUpdate = async (identityNumber: string, updatedData: UpdateProfileRequest) => {
     const success = await editCustomer(identityNumber, updatedData);
     if (success) setIsEditModalOpen(false);
   };
@@ -348,7 +344,10 @@ export default function CustomerListPage() {
                                   )}
 
                                   <DropdownMenu.Separator className="my-1 h-px bg-slate-100" />
-                                  <DropdownMenu.Item className={`${actionMenuItemClassName} text-red-700`} disabled={isMe} onSelect={() => void handleDelete(customer.identityNumber)}>
+                                  <DropdownMenu.Item className={`${actionMenuItemClassName} text-red-700`} disabled={isMe} onSelect={() => {
+                                    customerDialogOpening.current = true;
+                                    setCustomerToDelete(customer);
+                                  }}>
                                     <Trash2 className="h-4 w-4" /> Müşteriyi sil
                                   </DropdownMenu.Item>
                                 </DropdownMenu.Content>
@@ -391,6 +390,22 @@ export default function CustomerListPage() {
         </DialogContent>
       </Dialog>
 
+      <ConfirmationDialog
+        open={customerToDelete !== null}
+        title="Müşteri silinsin mi?"
+        description={`${customerToDelete?.profileName ?? "Müşteri"} kaydı silinecek ve banka hesapları pasife alınacak.`}
+        confirmLabel="Müşteriyi sil"
+        onClose={() => setCustomerToDelete(null)}
+        onConfirm={async () => {
+          if (!customerToDelete) return false;
+          await removeCustomer(customerToDelete.identityNumber);
+          return true;
+        }}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          lastActionTrigger.current?.focus();
+        }}
+      />
       <EditCustomerModal
         isOpen={isEditModalOpen}
         onOpenChange={setIsEditModalOpen}

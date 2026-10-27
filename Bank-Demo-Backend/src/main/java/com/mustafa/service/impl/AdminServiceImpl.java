@@ -182,7 +182,7 @@ public class AdminServiceImpl implements IAdminService {
                 }
             }
         } catch (Exception e) {
-            log.error("İstihbarat ağından (Elasticsearch) veri çekilirken hata oluştu: {}", e.getMessage());
+            log.error("Elasticsearch log sorgusu başarısız. errorType={}", e.getClass().getSimpleName());
         }
 
         return parsedLogs;

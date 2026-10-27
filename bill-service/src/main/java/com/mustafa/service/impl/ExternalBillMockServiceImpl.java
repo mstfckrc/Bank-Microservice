@@ -17,7 +17,7 @@ public class ExternalBillMockServiceImpl implements IExternalBillService {
         double randomDebt = 100.0 + (Math.random() * 900.0);
         BigDecimal debt = BigDecimal.valueOf(randomDebt).setScale(2, RoundingMode.HALF_UP);
 
-        log.info("📡 DIŞ SİSTEM: {} kurumundan Abone {} için borç sorgulandı. Tutar: {} TRY", billType, subscriberNo, debt);
+        log.info("Fatura borcu sorgulaması simüle edildi. billType={}", billType);
         return debt;
     }
 }

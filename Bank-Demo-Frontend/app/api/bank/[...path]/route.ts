@@ -160,7 +160,23 @@ async function handle(request: Request, method: Method, context: { params: Promi
   if (writes && session && (!isSafeOrigin(request) || !hasValidCsrfToken(request, session.activity.csrfToken))) {
     return jsonError(403, "CSRF_REJECTED", "The request could not be verified.");
   }
-  if (writes && request.body && !request.headers.get("content-type")?.toLowerCase().startsWith("application/json")) {
+  let body: ArrayBuffer | undefined;
+  if (writes && request.body) {
+    const declaredLength = request.headers.get("content-length");
+    if (declaredLength && (!/^\d+$/.test(declaredLength) || Number(declaredLength) > MAX_REQUEST_BODY_BYTES)) {
+      return jsonError(413, "REQUEST_TOO_LARGE", "The request payload is too large.");
+    }
+    try {
+      const receivedBody = await readLimitedBody(request);
+      if (receivedBody && receivedBody.byteLength > 0) body = receivedBody;
+    } catch (error) {
+      if (error instanceof RequestBodyTooLargeError) {
+        return jsonError(413, "REQUEST_TOO_LARGE", "The request payload is too large.");
+      }
+      return jsonError(400, "INVALID_REQUEST_BODY", "The request payload could not be read.");
+    }
+  }
+  if (body && !request.headers.get("content-type")?.toLowerCase().startsWith("application/json")) {
     return jsonError(415, "UNSUPPORTED_MEDIA_TYPE", "Only JSON request bodies are accepted.");
   }
 
@@ -189,22 +205,6 @@ async function handle(request: Request, method: Method, context: { params: Promi
   headers.set("x-forwarded-proto", "https");
   headers.set("x-forwarded-host", "api.bank.local");
 
-  let body: ArrayBuffer | undefined;
-  if (writes && request.body) {
-    const declaredLength = request.headers.get("content-length");
-    if (declaredLength && (!/^\d+$/.test(declaredLength) || Number(declaredLength) > MAX_REQUEST_BODY_BYTES)) {
-      return jsonError(413, "REQUEST_TOO_LARGE", "The request payload is too large.");
-    }
-    try {
-      body = await readLimitedBody(request);
-    } catch (error) {
-      if (error instanceof RequestBodyTooLargeError) {
-        return jsonError(413, "REQUEST_TOO_LARGE", "The request payload is too large.");
-      }
-      return jsonError(400, "INVALID_REQUEST_BODY", "The request payload could not be read.");
-    }
-  }
-
   try {
     const upstream = await fetch(routeUrl(path, url.searchParams), {
       method,
@@ -224,6 +224,9 @@ async function handle(request: Request, method: Method, context: { params: Promi
     }
     if (upstream.status >= 500) {
       const status = upstream.status === 503 ? 503 : 502;
+      if (method === "POST" && path.join("/") === "companies/employees/pay-salaries") {
+        return jsonError(status, "PAYROLL_RESULT_UNKNOWN", "Maaş işleminin sonucu doğrulanamadı. Tekrar denemeden önce hesap hareketlerini kontrol edin.");
+      }
       return jsonError(status, "UPSTREAM_UNAVAILABLE", "The Bank API is temporarily unavailable.");
     }
 
@@ -238,6 +241,9 @@ async function handle(request: Request, method: Method, context: { params: Promi
       headers: responseHeaders,
     });
   } catch {
+    if (method === "POST" && path.join("/") === "companies/employees/pay-salaries") {
+      return jsonError(502, "PAYROLL_RESULT_UNKNOWN", "Maaş işleminin sonucu doğrulanamadı. Tekrar denemeden önce hesap hareketlerini kontrol edin.");
+    }
     return jsonError(502, "UPSTREAM_UNAVAILABLE", "The Bank API is temporarily unavailable.");
   }
 }

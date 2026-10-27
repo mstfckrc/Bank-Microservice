@@ -40,7 +40,7 @@ public class CurrencyServiceImpl implements ICurrencyService {
             return amount;
         }
 
-        log.info("PARA TRANSFERİ (CANLI): {} {} -> {} çevriliyor...", amount, fromCurrency.toUpperCase(), toCurrency.toUpperCase());
+        log.info("Döviz dönüşümü başlatıldı. from={} to={}", fromCurrency.toUpperCase(), toCurrency.toUpperCase());
 
         // 🚀 DİKKAT: Artık getLiveRates() DEĞİL, doğrudan dış API'ye giden gizli metodu çağırıyoruz!
         // Böylece Cache'i tamamen bypass etmiş oluyoruz.
@@ -55,8 +55,7 @@ public class CurrencyServiceImpl implements ICurrencyService {
 
         Double result = amount * rate;
 
-        log.info("✅ Çevirim Başarılı (CANLI KUR İLE): {} {} = {} {} (Uygulanan Çarpan: {})",
-                amount, fromCurrency.toUpperCase(), String.format("%.2f", result), toCurrency.toUpperCase(), rate);
+        log.info("Döviz dönüşümü hesaplandı. from={} to={}", fromCurrency.toUpperCase(), toCurrency.toUpperCase());
 
         return result;
     }
@@ -72,7 +71,7 @@ public class CurrencyServiceImpl implements ICurrencyService {
             log.info("Canlı kurlar başarıyla çekildi. Sağlayıcı yanıt verdi.");
             return response;
         } catch (Exception e) {
-            log.error("🚨 DIŞ API BAĞLANTI HATASI: Canlı kurlar çekilemedi! Hata Detayı: {}", e.getMessage());
+            log.error("Kur sağlayıcısı çağrısı başarısız. errorType={}", e.getClass().getSimpleName());
             throw new BankOperationException("Canlı kurlar çekilirken bir hata oluştu: " + e.getMessage());
         }
     }

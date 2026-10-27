@@ -13,6 +13,10 @@ public class UserProfileResponse {
     private String identityNumber;
     private String profileName; // Bireyse Ad-Soyad, Şirketse Ünvan dönecek
     private String email;
+    private String firstName;
+    private String lastName;
+    @Builder.Default
+    private boolean profileEditable = true;
     private String role;
     private String status;
     private String accessRestrictionStatus;

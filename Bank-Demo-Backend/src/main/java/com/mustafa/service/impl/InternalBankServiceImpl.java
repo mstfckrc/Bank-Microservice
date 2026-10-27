@@ -2,8 +2,10 @@ package com.mustafa.service.impl;
 
 import com.mustafa.dto.response.AccountValidationResponse;
 import com.mustafa.entity.Account;
+import com.mustafa.entity.Transaction;
 import com.mustafa.exception.BankOperationException;
 import com.mustafa.repository.IAccountRepository;
+import com.mustafa.repository.ITransactionRepository;
 import com.mustafa.service.IInternalBankService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -19,6 +21,7 @@ import java.util.List;
 public class InternalBankServiceImpl implements IInternalBankService {
 
     private final IAccountRepository accountRepository;
+    private final ITransactionRepository transactionRepository;
 
     @Override
     public AccountValidationResponse validateAccount(String iban) {
@@ -35,23 +38,27 @@ public class InternalBankServiceImpl implements IInternalBankService {
     @Override
     @Transactional
     public void deleteCustomerAccounts(String identityNumber) {
-        // 1. Kullanıcının tüm hesaplarını bul
-        // (Not: Repository'nde findByOwnerIdentityNumber veya findByIdentityNumber hangisi varsa o eşleşmeli. Entity'den yola çıkarak Owner kullandım)
         List<Account> accounts = accountRepository.findByOwnerIdentityNumber(identityNumber);
 
-        // 2. İçinde bakiye olan hesap var mı kontrol et (Kritik İş Kuralı!)
         boolean hasBalance = accounts.stream()
-                .anyMatch(acc -> acc.getBalance().compareTo(BigDecimal.ZERO) > 0);
+                .anyMatch(acc -> acc.getBalance().compareTo(BigDecimal.ZERO) != 0);
 
         if (hasBalance) {
-            log.error("HATA: {} numaralı müşterinin içinde bakiye olan hesabı var, silinemez!", identityNumber);
+            log.warn("Müşteri hesap kapatma talebi mevcut bakiye nedeniyle reddedildi.");
             throw new BankOperationException("Müşterinin bakiyesi olan hesapları var. Önce bakiyeler sıfırlanmalıdır!");
         }
 
-        // 🚀 3. Bakiye yoksa hesapları pasife çek (Soft Delete)
-        // Geçmiş dekontları olduğu için SQL Hard Delete yapmamıza izin vermez!
+        if (transactionRepository.existsByStatusAndSenderAccount_OwnerIdentityNumber(
+                Transaction.TransactionStatus.PENDING_APPROVAL, identityNumber)
+                || transactionRepository.existsByStatusAndReceiverAccount_OwnerIdentityNumber(
+                Transaction.TransactionStatus.PENDING_APPROVAL, identityNumber)) {
+            log.warn("Müşteri hesap kapatma talebi bekleyen transfer nedeniyle reddedildi.");
+            throw new BankOperationException("Müşterinin onay bekleyen transferleri var. Önce bu işlemler sonuçlandırılmalıdır.");
+        }
+
+        // Keep accounts and transaction history; repeated closure of an empty account is safe.
         accounts.forEach(acc -> acc.setActive(false));
         accountRepository.saveAll(accounts);
-        log.info("SERVICE: {} numaralı müşterinin tüm kasaları başarıyla PASİFE alındı.", identityNumber);
+        log.info("Müşteri hesapları için pasife alma kaydı hazırlandı. accountCount={}", accounts.size());
     }
 }

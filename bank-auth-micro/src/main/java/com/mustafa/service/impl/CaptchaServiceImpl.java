@@ -36,11 +36,11 @@ public class CaptchaServiceImpl implements ICaptchaService {
                 log.info("Siber Kalkan: Kullanıcı doğrulandı (İnsan).");
                 return true;
             } else {
-                log.warn("Siber Kalkan Uyarısı: Geçersiz veya süresi dolmuş Captcha! Google Cevabı: {}", apiResponse);
+                log.warn("Captcha doğrulaması reddedildi.");
                 return false;
             }
         } catch (Exception e) {
-            log.error("Google Captcha servisine ulaşılamadı! Hata: {}", e.getMessage());
+            log.error("Captcha sağlayıcısına ulaşılamadı. errorType={}", e.getClass().getSimpleName());
             // Sistem Google'a ulaşamazsa kimseyi içeri alma (Güvenlik önceliği)
             return false;
         }
