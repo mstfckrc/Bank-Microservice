@@ -98,7 +98,14 @@ class SelectiveReleaseTests(unittest.TestCase):
 
     def test_root_runtime_settings_reuse_every_image(self):
         catalog = rows()
-        for path in (".env.example", "docker-compose.yml", "nginx.conf"):
+        for path in (
+            ".env.example",
+            "alertmanager.yml",
+            "docker-compose.yml",
+            "nginx.conf",
+            "prometheus/alert.rules.yml",
+            "prometheus/prometheus.yml",
+        ):
             with self.subTest(path=path):
                 plan = compute_plan(catalog, catalog, previous_manifest(), [path], OLD_SOURCE)
                 self.assertFalse(plan["selected"])

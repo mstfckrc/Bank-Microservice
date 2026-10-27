@@ -27,3 +27,21 @@ groups:
         annotations:
           summary: "Kritik Hata: RAM Tükeniyor!"
           description: "Ubuntu VM bellek doluluğu 3 dakikadır %95'in üzerinde (Şu an: {{ $value }}%)."
+
+      - alert: KokDiskAlaniAzaliyor
+        expr: 100 * (1 - (node_filesystem_avail_bytes{job="node_exporter",mountpoint="/",fstype!~"tmpfs|overlay|squashfs"} / node_filesystem_size_bytes{job="node_exporter",mountpoint="/",fstype!~"tmpfs|overlay|squashfs"})) > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Uyarı: Kök disk alanı azalıyor."
+          description: "{{ $labels.instance }} kök dosya sisteminin kullanımı 5 dakikadır %85'in üzerinde (Şu an: {{ $value }}%)."
+
+      - alert: KritikKokDiskAlani
+        expr: 100 * (1 - (node_filesystem_avail_bytes{job="node_exporter",mountpoint="/",fstype!~"tmpfs|overlay|squashfs"} / node_filesystem_size_bytes{job="node_exporter",mountpoint="/",fstype!~"tmpfs|overlay|squashfs"})) > 95
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Kritik: Kök disk alanı tükeniyor."
+          description: "{{ $labels.instance }} kök dosya sisteminin kullanımı 2 dakikadır %95'in üzerinde (Şu an: {{ $value }}%)."
