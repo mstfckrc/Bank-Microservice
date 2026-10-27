@@ -41,7 +41,13 @@ DOC_PATHS = {"README.md", "README"}
 # Root runtime configuration is outside the current per-service build contexts.
 # Frontend image arguments come from ci/release-public.sh, not root .env.example
 # or Compose. Context matching below takes precedence if the catalog ever uses '.'.
-RUNTIME_ONLY_PATHS = {".env.example", "docker-compose.yml", "nginx.conf"}
+RUNTIME_ONLY_PATHS = {
+    ".env.example",
+    "alertmanager.yml",
+    "docker-compose.yml",
+    "nginx.conf",
+}
+RUNTIME_ONLY_PREFIXES = ("prometheus/",)
 
 
 class ReleaseError(ValueError):
@@ -220,7 +226,9 @@ def compute_plan(
             continue
 
         if (path in CONTROL_ONLY_PATHS or path in DOC_PATHS
-                or path in RUNTIME_ONLY_PATHS or path.startswith("docs/")):
+                or path in RUNTIME_ONLY_PATHS
+                or any(path.startswith(prefix) for prefix in RUNTIME_ONLY_PREFIXES)
+                or path.startswith("docs/")):
             continue
 
         # A removed context is still a known old image input; it cannot affect a

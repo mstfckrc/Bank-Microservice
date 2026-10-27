@@ -2,15 +2,7 @@ global:
   scrape_interval: 15s # İstihbarat toplama sıklığı: Her 15 saniyede bir git veri al.
   evaluation_interval: 15s
 
-# 🚀 YENİ EKLENEN: Alarm Merkezi Bağlantısı
-alerting:
-  alertmanagers:
-    - static_configs:
-        - targets:
-          # Alertmanager konteyner adı ve portu
-          - 'bank_alertmanager:9093'
-
-# 🚀 YENİ EKLENEN: Alarm Kuralları Dosyasının Yolu
+# Prometheus evaluates these rules; Grafana reads their state via its Prometheus datasource.
 rule_files:
   - "alert.rules.yml"
 
