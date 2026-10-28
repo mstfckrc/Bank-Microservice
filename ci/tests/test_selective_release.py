@@ -52,9 +52,19 @@ class SelectiveReleaseTests(unittest.TestCase):
 
     def test_readme_change_reuses_every_image(self):
         catalog = rows()
-        plan = compute_plan(catalog, catalog, previous_manifest(), ["README.md"], OLD_SOURCE)
-        self.assertFalse(plan["selected"])
-        self.assertEqual(set(plan["reused"]), {row.service for row in catalog})
+        for path in (
+            "README.md",
+            "JENKINS-PR-SMOKE.md",
+            "Detaylı Yüksek Seviye Sistem Mimarisi (Kuşbakışı).png",
+            "Güvenlik ve Veri Süzgeci Akışı (Zero-Trust JWT).png",
+            "Keycloak Sistem Mimarisi.png",
+            "Yüksek Seviye Sistem Mimarisi (Kuşbakışı).png",
+            "İç Hatlar (Endpoint & FeignClient) İletişim Ağı.png",
+        ):
+            with self.subTest(path=path):
+                plan = compute_plan(catalog, catalog, previous_manifest(), [path], OLD_SOURCE)
+                self.assertFalse(plan["selected"])
+                self.assertEqual(set(plan["reused"]), {row.service for row in catalog})
 
     def test_docs_only_completion_advances_source_and_preserves_all_digests(self):
         catalog = rows()
@@ -99,12 +109,17 @@ class SelectiveReleaseTests(unittest.TestCase):
     def test_root_runtime_settings_reuse_every_image(self):
         catalog = rows()
         for path in (
+            ".gitignore",
             ".env.example",
             "alertmanager.yml",
             "docker-compose.yml",
             "nginx.conf",
             "prometheus/alert.rules.yml",
             "prometheus/prometheus.yml",
+            "grafana/provisioning/datasources/bank-demo.yml",
+            "grafana/dashboards/node-exporter-full.json",
+            "keycloak/bank-realm.json",
+            "scripts/prepare-local-env.py",
         ):
             with self.subTest(path=path):
                 plan = compute_plan(catalog, catalog, previous_manifest(), [path], OLD_SOURCE)

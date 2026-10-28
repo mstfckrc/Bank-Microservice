@@ -8,6 +8,8 @@
 *.war
 *.class
 *.log
+__pycache__/
+*.py[cod]
 
 # 2. İşletim Sistemi ve IDE Dosyaları (Kimsenin Bilgisayarı Diğerini Bozmasın)
 .idea/

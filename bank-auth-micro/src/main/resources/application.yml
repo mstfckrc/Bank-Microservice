@@ -76,6 +76,17 @@ app:
   security:
     audience: ${OAUTH_AUDIENCE:bank-api}
 
+bank:
+  bootstrap:
+    admin:
+      enabled: ${BANK_BOOTSTRAP_ADMIN_ENABLED:false}
+      identity-number: ${BANK_BOOTSTRAP_ADMIN_IDENTITY_NUMBER:}
+      first-name: ${BANK_BOOTSTRAP_ADMIN_FIRST_NAME:}
+      last-name: ${BANK_BOOTSTRAP_ADMIN_LAST_NAME:}
+      email: ${BANK_BOOTSTRAP_ADMIN_EMAIL:}
+      password: ${BANK_BOOTSTRAP_ADMIN_PASSWORD:}
+      marker: ${BANK_BOOTSTRAP_ADMIN_MARKER:}
+
 recaptcha:
   secret: ${RECAPTCHA_SECRET}
 
@@ -90,6 +101,8 @@ management:
   endpoint:
     health:
       show-details: never
+      probes:
+        enabled: true
   prometheus:
     metrics:
       export:

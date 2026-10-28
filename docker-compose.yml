@@ -2,7 +2,17 @@ name: bank-microservice-env
 
 # build: kaynak koddan image uretir; environment: container calisirken kullanilir.
 # Java servisleri runtime, frontend runner asamasini son image olarak kullanir.
-# Registry etiketi, portlar, network'ler ve volume'lar bu build duzeninde degismez.
+# Registry etiketi, network'ler ve volume'lar bu build duzeninde degismez.
+# Altyapi portlari sadece VM'in loopback arayuzunde; dis giris Nginx 80/443.
+# Kibana ve RabbitMQ arayuzlerine baska makineden SSH port yonlendirmeyle erisilir.
+
+# TCP readiness avoids accepting PostgreSQL's temporary init-only Unix socket.
+x-postgres-healthcheck: &postgres-healthcheck
+  test: ["CMD-SHELL", 'pg_isready -h 127.0.0.1 -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+  interval: 5s
+  timeout: 5s
+  retries: 18
+  start_period: 30s
 
 services:
   # ==========================================
@@ -17,8 +27,9 @@ services:
       POSTGRES_USER: ${CORE_DB_USER}
       POSTGRES_PASSWORD: ${CORE_DB_PASS}
       POSTGRES_DB: bank_core_db
+    healthcheck: *postgres-healthcheck
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata_core:/var/lib/postgresql/data
     networks:
@@ -32,8 +43,9 @@ services:
       POSTGRES_USER: ${AUTH_DB_USER}
       POSTGRES_PASSWORD: ${AUTH_DB_PASS}
       POSTGRES_DB: bank_auth_db
+    healthcheck: *postgres-healthcheck
     ports:
-      - "5434:5432" 
+      - "127.0.0.1:5434:5432"
     volumes:
       - pgdata_auth:/var/lib/postgresql/data
     networks:
@@ -47,8 +59,9 @@ services:
       POSTGRES_USER: ${BILL_DB_USER}
       POSTGRES_PASSWORD: ${BILL_DB_PASS}
       POSTGRES_DB: bank_bill_db
+    healthcheck: *postgres-healthcheck
     ports:
-      - "5435:5432"
+      - "127.0.0.1:5435:5432"
     volumes:
       - pgdata_bill:/var/lib/postgresql/data
     networks:
@@ -62,8 +75,9 @@ services:
       POSTGRES_USER: ${CORP_DB_USER}
       POSTGRES_PASSWORD: ${CORP_DB_PASS}
       POSTGRES_DB: bank_corporate_db
+    healthcheck: *postgres-healthcheck
     ports:
-      - "5436:5432"
+      - "127.0.0.1:5436:5432"
     volumes:
       - pgdata_corporate:/var/lib/postgresql/data
     networks:
@@ -83,11 +97,11 @@ services:
     restart: always
     depends_on:
       postgres-core:
-        condition: service_started
+        condition: service_healthy
       rabbitmq:
-        condition: service_started
+        condition: service_healthy
       discovery-server:
-        condition: service_started
+        condition: service_healthy
       logstash:
         condition: service_healthy # 🚀 Ağır topçu tamamen uyanmadan hücum ETME!
     environment:
@@ -126,13 +140,13 @@ services:
       backend:
         condition: service_started
       discovery-server:
-        condition: service_started
+        condition: service_healthy
       bill-service:
         condition: service_started
       auth-service:
-        condition: service_started
+        condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
       logstash:
         condition: service_healthy # 🚀 Logstash'i bekle
     environment:
@@ -163,9 +177,9 @@ services:
     restart: always
     depends_on:
       rabbitmq:
-        condition: service_started
+        condition: service_healthy
       discovery-server:
-        condition: service_started
+        condition: service_healthy
       logstash:
         condition: service_healthy # 🚀 Logstash'i bekle
     environment:
@@ -203,7 +217,9 @@ services:
       - REDIS_PORT=${REDIS_PORT}
     depends_on:
       discovery-server:
-        condition: service_started
+        condition: service_healthy
+      redis:
+        condition: service_healthy
       logstash:
         condition: service_healthy # 🚀 Logstash'i bekle
     networks:
@@ -219,11 +235,11 @@ services:
     restart: always
     depends_on:
       postgres-bill:
-        condition: service_started
+        condition: service_healthy
       rabbitmq:
-        condition: service_started
+        condition: service_healthy
       discovery-server:
-        condition: service_started
+        condition: service_healthy
       logstash:
         condition: service_healthy # 🚀 Logstash'i bekle
     environment:
@@ -260,11 +276,11 @@ services:
     restart: always
     depends_on:
       postgres-corporate:
-        condition: service_started
+        condition: service_healthy
       rabbitmq:
-        condition: service_started
+        condition: service_healthy
       discovery-server:
-        condition: service_started
+        condition: service_healthy
       logstash:
         condition: service_healthy # 🚀 Logstash'i bekle
     environment:
@@ -301,11 +317,13 @@ services:
     restart: always
     depends_on:
       postgres-auth:
-        condition: service_started
+        condition: service_healthy
       rabbitmq:
-        condition: service_started
+        condition: service_healthy
       discovery-server:
-        condition: service_started
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
       logstash:
         condition: service_healthy # 🚀 Logstash'i bekle
     environment:
@@ -328,12 +346,20 @@ services:
       - JWT_SECRET=${JWT_SECRET}
       - RECAPTCHA_SECRET=${RECAPTCHA_SECRET}
       - KEYCLOAK_INTERNAL_URL=${KC_INTERNAL_URL}
+      # Disabled by default for an existing installation; enabled by first-setup preparation.
+      - BANK_BOOTSTRAP_ADMIN_ENABLED=${BANK_BOOTSTRAP_ADMIN_ENABLED:-false}
+      - BANK_BOOTSTRAP_ADMIN_IDENTITY_NUMBER=${BANK_BOOTSTRAP_ADMIN_IDENTITY_NUMBER:-}
+      - BANK_BOOTSTRAP_ADMIN_FIRST_NAME=${BANK_BOOTSTRAP_ADMIN_FIRST_NAME:-}
+      - BANK_BOOTSTRAP_ADMIN_LAST_NAME=${BANK_BOOTSTRAP_ADMIN_LAST_NAME:-}
+      - BANK_BOOTSTRAP_ADMIN_EMAIL=${BANK_BOOTSTRAP_ADMIN_EMAIL:-}
+      - BANK_BOOTSTRAP_ADMIN_PASSWORD=${BANK_BOOTSTRAP_ADMIN_PASSWORD:-}
+      - BANK_BOOTSTRAP_ADMIN_MARKER=${BANK_BOOTSTRAP_ADMIN_MARKER:-}
     healthcheck:
-      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "--max-time", "5", "--output", "/dev/null", "http://127.0.0.1:8086/actuator/health"]
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "--max-time", "5", "--output", "/dev/null", "http://127.0.0.1:8086/actuator/health/readiness"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 120s
+      start_period: 180s
     networks:
       - bank-network-micro
 
@@ -405,8 +431,9 @@ services:
       POSTGRES_DB: keycloak
       POSTGRES_USER: ${KC_DB_USER}
       POSTGRES_PASSWORD: ${KC_DB_PASS}
+    healthcheck: *postgres-healthcheck
     ports:
-      - "5433:5432" 
+      - "127.0.0.1:5433:5432"
     volumes: 
       - pgdata_keycloak:/var/lib/postgresql/data
     networks:
@@ -417,7 +444,8 @@ services:
     image: quay.io/keycloak/keycloak:24.0.4
     container_name: bank_keycloak_server
     restart: always
-    command: start-dev 
+    # Import is applied only when bank-realm does not already exist.
+    command: start-dev --import-realm
     environment:
       KC_DB: postgres
       KC_DB_URL: ${KC_DB_URL}
@@ -425,15 +453,39 @@ services:
       KC_DB_PASSWORD: ${KC_DB_PASS}
       KEYCLOAK_ADMIN: ${KC_ADMIN_USER}
       KEYCLOAK_ADMIN_PASSWORD: ${KC_ADMIN_PASS}
+      # The same per-client values are used by their application consumers.
+      NEXT_PUBLIC_FRONTEND_URL: ${NEXT_PUBLIC_FRONTEND_URL:-https://app.bank.local}
+      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:?Set KEYCLOAK_CLIENT_SECRET in root .env}
+      KEYCLOAK_ADMIN_CLIENT_SECRET: ${KEYCLOAK_ADMIN_CLIENT_SECRET:?Set KEYCLOAK_ADMIN_CLIENT_SECRET in root .env}
+      AUTH_BANK_SERVICE_CLIENT_SECRET: ${AUTH_BANK_SERVICE_CLIENT_SECRET:?Set AUTH_BANK_SERVICE_CLIENT_SECRET in root .env}
+      CORPORATE_BANK_SERVICE_CLIENT_SECRET: ${CORPORATE_BANK_SERVICE_CLIENT_SECRET:?Set CORPORATE_BANK_SERVICE_CLIENT_SECRET in root .env}
+      BILL_BANK_SERVICE_CLIENT_SECRET: ${BILL_BANK_SERVICE_CLIENT_SECRET:?Set BILL_BANK_SERVICE_CLIENT_SECRET in root .env}
+      CORE_BANK_SERVICE_CLIENT_SECRET: ${CORE_BANK_SERVICE_CLIENT_SECRET:?Set CORE_BANK_SERVICE_CLIENT_SECRET in root .env}
       KC_PROXY_HEADERS: xforwarded
       KC_HOSTNAME_STRICT: "false"
       # Keycloak 24 hostname v1: keep the issuer identical for browser HTTPS and internal HTTP token requests.
       KC_HOSTNAME_URL: https://auth.bank.local
     ports:
-      - "9090:8080" 
+      - "127.0.0.1:9090:8080"
+    volumes:
+      - ./keycloak/bank-realm.json:/opt/keycloak/data/import/bank-realm-realm.json:ro
+    # The OIDC discovery endpoint becomes available after the realm exists.
+    healthcheck:
+      test:
+        - CMD
+        - bash
+        - -c
+        - >-
+          exec 3<>/dev/tcp/127.0.0.1/8080 &&
+          printf 'GET /realms/bank-realm/.well-known/openid-configuration HTTP/1.0\r\nHost: localhost\r\n\r\n' >&3 &&
+          IFS= read -r status <&3 && [[ "$$status" == *" 200 "* ]]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 150s
     depends_on:
       keycloak-db:
-        condition: service_started
+        condition: service_healthy
     networks:
       - bank-network-micro
 
@@ -449,7 +501,7 @@ services:
       - xpack.security.enabled=false
       - ES_JAVA_OPTS=-Xms512m -Xmx512m
     ports:
-      - "9200:9200"
+      - "127.0.0.1:9200:9200"
     networks:
       - bank-network-micro
     # 🚀 YENİ EKLENDİ: Elasticsearch uyanmadan kimseye "hazırım" demeyecek
@@ -464,7 +516,7 @@ services:
     container_name: bank_logstash_micro
     restart: always
     ports:
-      - "5000:5000/tcp" 
+      - "127.0.0.1:5000:5000/tcp"
     environment:
       - LS_JAVA_OPTS=-Xms256m -Xmx256m
     volumes:
@@ -486,7 +538,7 @@ services:
     container_name: bank_kibana_micro
     restart: always
     ports:
-      - "5601:5601"
+      - "127.0.0.1:5601:5601"
     environment:
       - ELASTICSEARCH_HOSTS=${ES_URL}
     depends_on:
@@ -502,11 +554,17 @@ services:
     image: rabbitmq:3.13-management
     container_name: bank_rabbitmq_micro
     ports:
-      - "5672:5672"
-      - "15672:15672"
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
     environment:
       RABBITMQ_DEFAULT_USER: ${RMQ_USER}
       RABBITMQ_DEFAULT_PASS: ${RMQ_PASS}
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_listener", "5672"]
+      interval: 30s
+      timeout: 15s
+      retries: 6
+      start_period: 60s
     networks:
       - bank-network-micro
     restart: always
@@ -518,8 +576,14 @@ services:
     image: redis:7-alpine
     container_name: bank_redis_micro
     restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     networks:
       - bank-network-micro
 
@@ -535,16 +599,17 @@ services:
       - "443:443"
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro 
-      - ./certs:/etc/nginx/certs:ro
+      - ./certs/bank_local.crt:/etc/nginx/certs/bank_local.crt:ro
+      - ./certs/bank_local.key:/etc/nginx/certs/bank_local.key:ro
     depends_on:
       frontend:
-        condition: service_started
+        condition: service_healthy
       api-gateway:
-        condition: service_started
+        condition: service_healthy
       keycloak:
-        condition: service_started
+        condition: service_healthy
       discovery-server:
-        condition: service_started
+        condition: service_healthy
     networks:
       - bank-network-micro
 
@@ -592,6 +657,10 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASS}
     volumes:
       - grafana_data:/var/lib/grafana
+      # Ayni isimli mevcut UI kaynaklarini/dashboards'lari degistirmez.
+      - ./grafana/provisioning/datasources/bank-demo.yml:/etc/grafana/provisioning/datasources/bank-demo.yml:ro
+      - ./grafana/provisioning/dashboards/bank-demo.yml:/etc/grafana/provisioning/dashboards/bank-demo.yml:ro
+      - ./grafana/dashboards:/var/lib/grafana/bank-demo-dashboards:ro
     networks:
       - bank-network-micro
 

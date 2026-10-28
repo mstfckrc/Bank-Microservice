@@ -96,8 +96,10 @@ export default function UserDashboardPage() {
 
   // Sayfa yüklendiğinde talimatları çek
   useEffect(() => {
-    fetchInstructions();
-  }, [fetchInstructions]);
+    if (user?.status === "APPROVED") {
+      void fetchInstructions();
+    }
+  }, [fetchInstructions, user?.status]);
   
   return (
     <div className="space-y-6 max-w-7xl mx-auto p-4 md:p-0">

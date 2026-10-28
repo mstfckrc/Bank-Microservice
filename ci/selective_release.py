@@ -32,12 +32,22 @@ DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 # Jenkinsfile.release is deliberately *not* in this set: changes to the trusted
 # publisher definition conservatively rebuild the catalog.
 CONTROL_ONLY_PATHS = {
+    ".gitignore",
     "Jenkinsfile",
     "ci/selective_release.py",
     "ci/tests/test_selective_release.py",
     "ci/validate-release-catalog.sh",
 }
-DOC_PATHS = {"README.md", "README"}
+DOC_PATHS = {
+    "README.md",
+    "README",
+    "JENKINS-PR-SMOKE.md",
+    "Detaylı Yüksek Seviye Sistem Mimarisi (Kuşbakışı).png",
+    "Güvenlik ve Veri Süzgeci Akışı (Zero-Trust JWT).png",
+    "Keycloak Sistem Mimarisi.png",
+    "Yüksek Seviye Sistem Mimarisi (Kuşbakışı).png",
+    "İç Hatlar (Endpoint & FeignClient) İletişim Ağı.png",
+}
 # Root runtime configuration is outside the current per-service build contexts.
 # Frontend image arguments come from ci/release-public.sh, not root .env.example
 # or Compose. Context matching below takes precedence if the catalog ever uses '.'.
@@ -46,8 +56,9 @@ RUNTIME_ONLY_PATHS = {
     "alertmanager.yml",
     "docker-compose.yml",
     "nginx.conf",
+    "scripts/prepare-local-env.py",
 }
-RUNTIME_ONLY_PREFIXES = ("prometheus/",)
+RUNTIME_ONLY_PREFIXES = ("prometheus/", "keycloak/", "grafana/")
 
 
 class ReleaseError(ValueError):
