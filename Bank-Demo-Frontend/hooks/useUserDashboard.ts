@@ -8,6 +8,7 @@ import { AccountCurrency, AccountResponse, TransactionResponse, TransferFormValu
 import { toast } from "sonner";
 
 export function useUserDashboard() {
+  const isApproved = useAuthStore((state) => state.user?.status === "APPROVED");
   const [accounts, setAccounts] = useState<AccountResponse[]>([]);
   const [transactions, setTransactions] = useState<TransactionResponse[]>([]);
   const [selectedAccountNo, setSelectedAccountNo] = useState<string | null>(null);
@@ -17,8 +18,15 @@ export function useUserDashboard() {
   const [isProcessing, setIsProcessing] = useState(false);
 
   useEffect(() => {
-    fetchMyAccounts();
-  }, []);
+    if (isApproved) {
+      void fetchMyAccounts();
+    } else {
+      setAccounts([]);
+      setTransactions([]);
+      setSelectedAccountNo(null);
+      setLoading(false);
+    }
+  }, [isApproved]);
 
   const fetchMyAccounts = async () => {
     try {

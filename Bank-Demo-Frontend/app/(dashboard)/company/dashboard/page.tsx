@@ -89,10 +89,12 @@ export default function CompanyDashboardPage() {
   const [employeeToRemove, setEmployeeToRemove] = useState<{ identityNumber: string; fullName: string } | null>(null);
 
   useEffect(() => {
-    fetchEmployees();
-    fetchAccounts();
+    if (isApproved) {
+      void fetchEmployees();
+      void fetchAccounts();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [isApproved]);
 
   // --- İŞLEM YÖNETİCİLERİ ---
   const handleAddNewEmployee = () => {
@@ -171,7 +173,7 @@ export default function CompanyDashboardPage() {
 
   // --- ARAYÜZ (UI) RENDER ALANI ---
 
-  if (empLoading && employees.length === 0) {
+  if (isApproved && empLoading && employees.length === 0) {
     return (
       <div className="p-8 text-center text-gray-500 animate-pulse">
         Kurumsal veriler yükleniyor...
@@ -309,7 +311,7 @@ export default function CompanyDashboardPage() {
           </button>
         </div>
 
-        {accLoading ? (
+        {isApproved && accLoading ? (
           <div className="text-sm text-gray-500 animate-pulse">
             Kasalar kontrol ediliyor...
           </div>

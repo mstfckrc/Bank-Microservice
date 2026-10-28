@@ -1,81 +1,36 @@
-<div align="center">
-  <h1>💻 Banka Yönetim Sistemi (Frontend)</h1>
-  <p><strong>Next.js App Router ve Tailwind CSS ile inşa edilmiş; modern, duyarlı (responsive) ve tip güvenli (type-safe) bankacılık paneli.</strong></p>
-</div>
+# Bank-Demo Frontend
 
----
+Next.js 16 ve TypeScript ile bireysel müşteri, kurumsal müşteri ve yönetici
+ekranlarını sunar. Ana proje ve kurulum bilgileri için [kök README](../README.md)
+ve [yerel kurulum rehberini](../docs/yerel-kurulum.md) kullanın.
 
-## 📖 Genel Bakış
+## İstek ve oturum akışı
 
-**Bank-Demo-Frontend**, güçlü banka yönetim sistemimizin kullanıcı arayüzü (UI) katmanıdır. Bireysel Müşteriler, Kurumsal Yöneticiler ve Sistem Yöneticileri için birbirinden bağımsız ve güvenli yönetim panelleri sunar.
+Tarayıcı API isteklerini aynı origin altındaki `/api/bank` yoluna gönderir.
+Next.js sunucusu oturum çerezlerini okur ve erişim token'ını Gateway isteğine ekler.
+Giriş Keycloak üzerinden Authorization Code + PKCE ile yürür.
 
-Modern **App Router** mimarisini kullanarak **Next.js 14+** üzerinde inşa edilen bu proje; katı yerleşim (layout) gruplamaları, Zustand ile merkezi durum yönetimi (state management) ve yüksek oranda optimize edilmiş UI bileşenleriyle donatılmıştır.
+Oturum verisi şifreli, HttpOnly ve Secure çerezlerde saklanır. Zustand arayüzün
+profil ve oturum durumunu tutar; tarayıcı JavaScript'i token'ları cookie'den okuyup
+Authorization başlığına eklemez.
 
----
+[Kimlik ve güvenlik diyagramı](../docs/mimari/kimlik-ve-guvenlik.md)
 
-## ✨ Öne Çıkan Özellikler
+## Kaynak düzeni
 
-- **🔒 Akıllı Yönlendirme & Güvenlik Yazılımı (Middleware):** 
-  - Hassas rotaları koruyan dinamik `middleware.ts` yapısı.
-  - Kullanıcıları, sahip oldukları JWT rolüne (`RETAIL_CUSTOMER`, `CORPORATE_MANAGER`, `ADMIN`) göre otomatik olarak kendi panellerine yönlendirir.
-- **📊 Özel Tahsis Edilmiş Paneller (Dashboards):**
-  - **Kullanıcı (User) Paneli:** Bireylerin hesaplarını yönetmesi, para transferi yapması, hesaba para yatırması ve otomatik fatura ödeme talimatları verebilmesi içindir.
-  - **Şirket (Company) Paneli:** Kurumsal müşterilerin iş gücünü yönetmesi, yeni personel işe alması ve toplu olarak saniyeler içinde maaş dağıtımı yapabilmesi içindir.
-  - **Yönetici (Admin) Paneli:** Banka personelinin tüm kullanıcıları izleyebildiği, işlemleri denetleyebildiği ve global sistem hesaplarını yönetebildiği God-Mode paneli.
-- **⚡ İyimser UI (Optimistic Updates) & Canlı Modallar:**
-  - Veri çekme işlemleri için oluşturulmuş dinamik React Hook'ları (`useAccounts`, `useCompanyEmployees`, vb.).
-  - Sayfa yenilemeye gerek kalmadan değişiklikleri anında yansıtan, kendi durumlarını (state) yöneten etkileşimli modallar.
-- **🎨 Modern Estetik:**
-  - **Tailwind CSS** ve özelleştirilmiş modern UI bileşenleri (Shadcn UI alternatifleri) ile şekillendirilmiş arayüz.
-  - Birbirinden ayrılmış temiz gezinme çubukları (navbar), yan menüler (sidebar) ve durum etiketlerinden (status badges) oluşan yalın yerleşim.
+| Dizin | İçerik |
+| --- | --- |
+| `app/` | Sayfalar, ortak yerleşimler ve sunucu API route'ları |
+| `lib/server/` | Oturum, OIDC ve Gateway bağlantısı |
+| `components/` | Ekran bileşenleri ve ortak modallar |
+| `hooks/` ve `services/` | Sayfa işlemleri ve API çağrıları |
+| `store/` ve `types/` | Arayüz durumu ve TypeScript tipleri |
 
----
+## Yapılandırma
 
-## 🛠️ Teknoloji Yığını
+Desteklenen yerel akış repository kökündeki Docker Compose dosyasını ve `.env`
+dosyasını kullanır. Bu modül için ayrı `.env.local` hazırlanmaz.
 
-| Kategori | Teknoloji |
-| :--- | :--- |
-| **Çerçeve (Framework)** | Next.js 14+ (App Router) |
-| **Dil** | TypeScript |
-| **Durum Yönetimi (State)** | Zustand (`useAuthStore`) |
-| **API İstemcisi** | Axios |
-| **Stil/Tasarım** | Tailwind CSS |
-| **İkonlar & Yazı Tipleri**| Lucide React, Geist Font |
-
----
-
-## 📂 Çekirdek Mimari
-
-- **`app/`**: Next.js rota yapısını barındırır. Ortak yerleşim planlarını (layouts) uygulamak için `(auth)` ve `(dashboard)` gibi mantıksal rota gruplarını kullanır.
-- **`components/`**: Bağlama göre gruplandırılmış (`admin/`, `company/`, `dashboard/`, `shared/`, `ui/`) modüler, yeniden kullanılabilir arayüz öğeleri.
-- **`hooks/`**: İş mantığını ve API koordinasyonunu sayfalardan soyutlayan Özel React Hook'ları (Örn: `useBills.ts`, `useCustomers.ts`).
-- **`services/`**: Backend uç noktalarını (endpoints) hedefleyen Axios tabanlı API sargıları (wrappers).
-- **`types/`**: Kusursuz tip güvenliği sağlamak adına Backend'in Veri Transfer Nesneleriyle (DTO'lar) birebir eşleşen kapsamlı TypeScript arayüzleri (interfaces).
-- **`store/`**: Zustand ile güçlendirilmiş global hafıza (state management).
-
----
-
-## 🚀 Başlarken
-
-### Gereksinimler
-- Projenin Docker Compose ortamı (frontend BFF oturumu, internal Gateway erişimi ve yerel CA güveni gerektirir)
-
-### Kurulum
-
-Frontend, tarayıcıdan doğrudan API Gateway veya Keycloak'a token göndermez. Giriş,
-şifreli HttpOnly BFF cookie'si ve aynı-origin `/api/bank` uçları üzerinden yürür.
-Bu nedenle frontend'i tek başına `npm run dev` ile çalıştırmak desteklenen yerel
-akış değildir; BFF'nin Compose ağına, kök `.env` runtime ayarlarına ve yerel CA
-sertifikasına ihtiyacı vardır. Projeyi repository-root `docker-compose.yml` ile
-başlatın; BFF ayarlarının açıklaması root `.env.example` içindedir.
-
-### 🌍 Uygulamaya Erişim
-
-Tarayıcıda canonical HTTPS adresi `https://app.bank.local` kullanılır.
-- Bireysel bir müşteri hesabı açarak sistemi deneyebilir veya backend tarafında yetkilendirilmiş bir admin hesabı ile giriş yapıp tüm özellikleri test edebilirsiniz.
-
----
-
-<div align="center">
-  <i>Yeni nesil bankacılık deneyimi için özenle kodlanmıştır.</i>
-</div>
+`NEXT_PUBLIC_*` ayarları build sırasında tarayıcı paketine girer. BFF oturum
+anahtarı ve client secret gibi özel değerler Compose tarafından runtime'da verilir.
+Public ayar değişikliğinde frontend yeniden build edilmelidir.
